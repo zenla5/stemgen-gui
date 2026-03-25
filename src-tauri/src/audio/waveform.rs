@@ -24,7 +24,7 @@ impl WaveformData {
     /// Generate waveform from audio samples
     pub fn from_samples(samples: &AudioSamples, points_per_second: u32) -> Self {
         let frames = samples.samples.len() / samples.channels as usize;
-        let duration_secs = frames as f64 / samples.samples_to_secs(1);
+        let duration_secs = frames as f64 / samples.sample_rate as f64;
         let total_points = (duration_secs * points_per_second as f64).ceil() as usize;
         
         let frames_per_point = (frames / total_points.max(1)).max(1);
@@ -70,11 +70,6 @@ impl WaveformData {
             sample_rate: samples.sample_rate,
             duration_secs,
         }
-    }
-    
-    /// Convert samples index to seconds
-    pub fn samples_to_secs(&self, samples: usize) -> f64 {
-        samples as f64 / self.sample_rate as f64
     }
     
     /// Get peak values for normalization

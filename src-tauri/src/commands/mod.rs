@@ -8,6 +8,7 @@ use tracing::info;
 // Re-export commands
 pub use audio::*;
 pub use separation::*;
+pub use db::{get_processing_history, add_to_history, get_settings, save_settings, run_migrations};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CheckDependenciesResult {

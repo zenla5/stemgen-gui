@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::info;
 use crate::audio::{AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
-use crate::audio::waveform::WaveformData;
+use crate::audio::waveform::{WaveformData, WaveformPoint};
 use crate::stems::{StemPacker, StemType, DJSoftware, OutputFormat};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -25,13 +25,6 @@ pub struct WaveformResponse {
     pub points: Vec<WaveformPoint>,
     pub sample_rate: u32,
     pub duration_secs: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WaveformPoint {
-    pub min: f32,
-    pub max: f32,
-    pub rms: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

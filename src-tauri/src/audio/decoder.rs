@@ -3,7 +3,7 @@
 //! Supports MP3, FLAC, WAV, OGG, AAC, and more.
 
 use anyhow::{Context, Result};
-use symphonia::core::audio::AudioBufferRef;
+use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
@@ -69,7 +69,7 @@ impl AudioDecoder {
         let file = File::open(path)
             .with_context(|| format!("Failed to open audio file: {:?}", path))?;
         
-        // Use MediaSourceStream directly with the file (not BufReader)
+        // Use MediaSourceStream directly with the file
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
         // Create the probe
@@ -101,13 +101,15 @@ impl AudioDecoder {
 
         let track_id = track.id;
         let codec_params = &track.codec_params;
+        let track_sample_rate = codec_params.sample_rate.unwrap_or(44100);
+        let track_channels = codec_params.channels.map(|c| c.count() as u8).unwrap_or(2);
         
         debug!("Track info: {:?}", track);
         debug!("Codec params: {:?}", codec_params);
 
         // Update sample rate and channels
-        self.sample_rate = codec_params.sample_rate.unwrap_or(44100);
-        self.channels = codec_params.channels.map(|c| c.count() as u8).unwrap_or(2);
+        self.sample_rate = track_sample_rate;
+        self.channels = track_channels;
 
         // Create the decoder
         let decoder_opts = DecoderOptions::default();
@@ -118,6 +120,11 @@ impl AudioDecoder {
         // Decode all packets
         let mut all_samples: Vec<f32> = Vec::new();
         let mut total_duration = 0.0f64;
+        
+        // Get the codec format for proper buffer allocation
+        let codec_format = track.codec_params.clone();
+        let spec = *codec_params.to_spec();
+        let mut sample_buf = SampleBuffer::<f32>::new(0, spec);
 
         loop {
             let packet = match format.next_packet() {
@@ -136,10 +143,14 @@ impl AudioDecoder {
 
             // Decode the packet
             match decoder.decode(&packet) {
-                Ok(audio_buf) => {
-                    let samples = Self::extract_samples(&audio_buf);
-                    let sample_count = samples.len() / self.channels as usize;
-                    total_duration += sample_count as f64 / self.sample_rate as f64;
+                Ok(decoded) => {
+                    // Create a new sample buffer for this frame
+                    sample_buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+                    sample_buf.copy_interleaved_ref(decoded);
+                    
+                    let samples = sample_buf.samples().to_vec();
+                    let sample_count = samples.len();
+                    total_duration += sample_count as f64 / track_sample_rate as f64;
                     all_samples.extend(samples);
                 }
                 Err(e) => {
@@ -161,104 +172,6 @@ impl AudioDecoder {
             sample_rate: self.sample_rate,
             channels: self.channels,
         })
-    }
-
-    /// Extract samples from an AudioBufferRef
-    fn extract_samples(audio_buf: &AudioBufferRef) -> Vec<f32> {
-        match audio_buf {
-            AudioBufferRef::U8(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for &s in plane.as_slice() {
-                        samples.push((s as f32 - 128.0) / 128.0);
-                    }
-                }
-                samples
-            }
-            AudioBufferRef::U16(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for &s in plane.as_slice() {
-                        samples.push(s as f32 / 65535.0);
-                    }
-                }
-                samples
-            }
-            AudioBufferRef::U24(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for s in plane.as_slice() {
-                        let val = ((s[0] as i32) | ((s[1] as i32) << 8) | ((s[2] as i32) << 16)) << 8;
-                        samples.push(val as f32 / 8388608.0);
-                    }
-                }
-                samples
-            }
-            AudioBufferRef::U32(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for &s in plane.as_slice() {
-                        samples.push(s as f32 / 4294967295.0);
-                    }
-                }
-                samples
-            }
-            AudioBufferRef::S8(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for &s in plane.as_slice() {
-                        samples.push(s as f32 / 128.0);
-                    }
-                }
-                samples
-            }
-            AudioBufferRef::S16(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for &s in plane.as_slice() {
-                        samples.push(s as f32 / 32768.0);
-                    }
-                }
-                samples
-            }
-            AudioBufferRef::S24(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for s in plane.as_slice() {
-                        let val = (s[0] as i32) | ((s[1] as i32) << 8) | ((s[2] as i32) << 16);
-                        samples.push(val as f32 / 8388608.0);
-                    }
-                }
-                samples
-            }
-            AudioBufferRef::S32(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for &s in plane.as_slice() {
-                        samples.push(s as f32 / 2147483648.0);
-                    }
-                }
-                samples
-            }
-            AudioBufferRef::F32(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for &s in plane.as_slice() {
-                        samples.push(s);
-                    }
-                }
-                samples
-            }
-            AudioBufferRef::F64(buf) => {
-                let mut samples = Vec::with_capacity(buf.capacity() as usize);
-                for plane in buf.planes().iter() {
-                    for &s in plane.as_slice() {
-                        samples.push(s as f32);
-                    }
-                }
-                samples
-            }
-        }
     }
 
     /// Get the sample rate

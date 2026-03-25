@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use lofty::{AudioFile, TaggedFileExt};
+use lofty::{AudioFile, TaggedFileExt, Accessor};
 use std::path::Path;
 use tracing::info;
 
