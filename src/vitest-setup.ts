@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Define AudioContextState type for Web Audio API
+type AudioContextState = 'suspended' | 'running' | 'closed';
+
 // Mock Tauri API
 vi.mock('@tauri-apps/api', () => ({
   invoke: vi.fn(),
