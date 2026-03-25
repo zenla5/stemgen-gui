@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#080818"/>
+      <stop offset="100%" stop-color="#04040e"/>
+    </linearGradient>
+    <linearGradient id="bar0" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.85"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.85"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fb7185" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#fb7185" stop-opacity="0.85"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbbf24" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.85"/>
+    </linearGradient>
+    <filter id="glow0"><feGaussianBlur stdDeviation="18" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="glow1"><feGaussianBlur stdDeviation="18" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="glow2"><feGaussianBlur stdDeviation="18" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="glow3"><feGaussianBlur stdDeviation="18" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <clipPath id="appShape">
+      <rect width="1024" height="1024" rx="225" ry="225"/>
+    </clipPath>
+  </defs>
+
+  <!-- App background -->
+  <rect width="1024" height="1024" rx="225" ry="225" fill="url(#bg)"/>
+
+  <!-- Ambient glow -->
+  <ellipse cx="512" cy="640" rx="460" ry="230" fill="#4080ff" opacity="0.07"/>
+
+  <!-- GUI window chrome -->
+  <rect x="92" y="67" width="840" height="103" rx="46" ry="46" fill="white" opacity="0.09"/>
+  <!-- Traffic lights -->
+  <circle cx="165" cy="118" r="18" fill="#ff5f56" opacity="0.87"/>
+  <circle cx="214" cy="118" r="18" fill="#ffbd2e" opacity="0.87"/>
+  <circle cx="263" cy="118" r="18" fill="#27c93f" opacity="0.87"/>
+  <!-- Separator -->
+  <line x1="92" y1="180" x2="932" y2="180" stroke="white" stroke-opacity="0.07" stroke-width="2"/>
+
+  <!-- Stem bars (drums=cyan, bass=violet, vocals=rose, melody=amber) -->
+  <!-- bar heights: 72%, 55%, 82%, 48% of 720px area (y180-y920=740px) -->
+
+  <!-- bar 0 – cyan (drums) h=533 -->
+  <rect x="130" y="387" width="178" height="533" rx="22" fill="url(#bar0)" filter="url(#glow0)" opacity="0.95"/>
+
+  <!-- bar 1 – violet (bass) h=407 -->
+  <rect x="342" y="513" width="178" height="407" rx="22" fill="url(#bar1)" filter="url(#glow1)" opacity="0.95"/>
+
+  <!-- bar 2 – rose (vocals) h=607 -->
+  <rect x="554" y="313" width="178" height="607" rx="22" fill="url(#bar2)" filter="url(#glow2)" opacity="0.95"/>
+
+  <!-- bar 3 – amber (melody) h=355 -->
+  <rect x="766" y="565" width="178" height="355" rx="22" fill="url(#bar3)" filter="url(#glow3)" opacity="0.95"/>
+
+  <!-- Stem colour dots -->
+  <circle cx="219" cy="940" r="12" fill="#22d3ee" opacity="0.75"/>
+  <circle cx="431" cy="940" r="12" fill="#8b5cf6" opacity="0.75"/>
+  <circle cx="643" cy="940" r="12" fill="#fb7185" opacity="0.75"/>
+  <circle cx="855" cy="940" r="12" fill="#fbbf24" opacity="0.75"/>
+</svg>
