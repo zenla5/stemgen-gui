@@ -3,7 +3,7 @@
 //! Resamples audio to 44.1kHz (NI stem standard).
 
 use anyhow::{Context, Result};
-use rubato::{Resampler, SincFixedIn, InterpolationType, InterpolationParameters};
+use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, Resampler};
 use tracing::{debug, info};
 
 use crate::audio::decoder::AudioSamples;
@@ -56,16 +56,16 @@ impl AudioResampler {
         
         // Initialize resampler with parameters
         // Use a sinc resampler for high quality
-        let params = InterpolationParameters {
+        let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
-            interpolation: InterpolationType::Linear,
+            interpolation: SincInterpolationType::Linear,
             oversampling_factor: 256,
             window: rubato::WindowFunction::BlackmanHarris2,
         };
 
         let mut resampler = SincFixedIn::<f32>::new(
-            output_sample_rate / input_sample_rate,
+            resample_ratio,
             params,
             output_frames,
             samples.channels as usize,
@@ -82,9 +82,8 @@ impl AudioResampler {
                 .collect();
             
             // Resample
-            let resampled = resampler.process_single_channel(
+            let resampled = resampler.process_single_channel_into(
                 &channel_samples,
-                std::num::NonZeroUsize::new(256).unwrap(),
                 false,
             ).context("Failed to resample audio")?;
             
@@ -114,19 +113,19 @@ impl AudioResampler {
 
         // Calculate ratio
         let resample_ratio = output_sample_rate / input_sample_rate;
-        let input_frames = samples.samples.len() / samples.channels as usize;
+        let _input_frames = samples.samples.len() / samples.channels as usize;
         
         // Initialize resampler
-        let params = InterpolationParameters {
+        let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
-            interpolation: InterpolationType::Linear,
+            interpolation: SincInterpolationType::Linear,
             oversampling_factor: 256,
             window: rubato::WindowFunction::BlackmanHarris2,
         };
 
         let mut resampler = SincFixedIn::<f32>::new(
-            output_sample_rate / input_sample_rate,
+            resample_ratio,
             params,
             target_frames,
             samples.channels as usize,
@@ -141,9 +140,8 @@ impl AudioResampler {
                 .map(|frame| frame[ch])
                 .collect();
             
-            let resampled = resampler.process_single_channel(
+            let resampled = resampler.process_single_channel_into(
                 &channel_samples,
-                std::num::NonZeroUsize::new(256).unwrap(),
                 false,
             ).context("Failed to resample audio")?;
             

@@ -2,12 +2,11 @@
 //! 
 //! Handles audio decoding, resampling, and format conversion.
 
-mod decoder;
-mod resampler;
-mod converter;
-mod waveform;
+pub mod decoder;
+pub mod resampler;
+pub mod converter;
+pub mod waveform;
 
 pub use decoder::*;
 pub use resampler::*;
-pub use converter::*;
 pub use waveform::*;

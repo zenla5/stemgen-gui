@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
-use super::metadata::{NIStemMetadata, StemData, StemType, TrackInfo};
+use super::metadata::{NIStemMetadata, StemData, StemType};
 use super::presets::{DJSoftware, ExportSettings, OutputFormat};
 
 /// NI Stem Packer
@@ -50,7 +50,7 @@ impl StemPacker {
 
         // Reorder stems according to DJ software requirements
         let stem_order = self.settings.dj_software.stem_order();
-        let mut ordered_stems: Vec<(StemType, PathBuf)> = stem_order
+        let ordered_stems: Vec<(StemType, PathBuf)> = stem_order
             .iter()
             .filter_map(|st| {
                 stem_paths
@@ -105,19 +105,13 @@ impl StemPacker {
     async fn create_stem_mp4(
         &self,
         master_path: &Path,
-        stems: &[(StemType, PathBuf)],
+        _stems: &[(StemType, PathBuf)],
         metadata: &NIStemMetadata,
         output_path: &Path,
     ) -> Result<()> {
         use std::process::Command;
 
         info!("Creating stem.mp4 with FFmpeg...");
-
-        // Build FFmpeg command
-        // FFmpeg complex filter for combining audio tracks
-        // Format: ffmpeg -i master.m4a -i drums.m4a -i bass.m4a -i other.m4a -i vocals.m4a \
-        //         -filter_complex "[1:a][2:a][3:a][4:a]amix=inputs=4:duration=longest[aout]" \
-        //         -map 0:a -map "[aout]" output.m4a
 
         let codec = self.settings.output_format.codec_name();
         

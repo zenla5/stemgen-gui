@@ -10,11 +10,8 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 use tracing::{debug, info, warn};
-
-use crate::audio::resampler::Resampler;
 
 /// Supported audio formats
 const SUPPORTED_FORMATS: &[&str] = &[
@@ -72,7 +69,8 @@ impl AudioDecoder {
         let file = File::open(path)
             .with_context(|| format!("Failed to open audio file: {:?}", path))?;
         
-        let mss = MediaSourceStream::new(Box::new(BufReader::new(file)), Default::default());
+        // Use MediaSourceStream directly with the file (not BufReader)
+        let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
         // Create the probe
         let mut hint = Hint::new();
@@ -169,78 +167,96 @@ impl AudioDecoder {
     fn extract_samples(audio_buf: &AudioBufferRef) -> Vec<f32> {
         match audio_buf {
             AudioBufferRef::U8(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| (s as f32 - 128.0) / 128.0)
-                    .collect()
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for &s in plane.as_slice() {
+                        samples.push((s as f32 - 128.0) / 128.0);
+                    }
+                }
+                samples
             }
             AudioBufferRef::U16(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 65535.0)
-                    .collect()
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for &s in plane.as_slice() {
+                        samples.push(s as f32 / 65535.0);
+                    }
+                }
+                samples
             }
             AudioBufferRef::U24(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| {
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for s in plane.as_slice() {
                         let val = ((s[0] as i32) | ((s[1] as i32) << 8) | ((s[2] as i32) << 16)) << 8;
-                        val as f32 / 8388608.0
-                    })
-                    .collect()
+                        samples.push(val as f32 / 8388608.0);
+                    }
+                }
+                samples
             }
             AudioBufferRef::U32(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 4294967295.0)
-                    .collect()
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for &s in plane.as_slice() {
+                        samples.push(s as f32 / 4294967295.0);
+                    }
+                }
+                samples
             }
             AudioBufferRef::S8(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 128.0)
-                    .collect()
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for &s in plane.as_slice() {
+                        samples.push(s as f32 / 128.0);
+                    }
+                }
+                samples
             }
             AudioBufferRef::S16(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 32768.0)
-                    .collect()
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for &s in plane.as_slice() {
+                        samples.push(s as f32 / 32768.0);
+                    }
+                }
+                samples
             }
             AudioBufferRef::S24(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| {
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for s in plane.as_slice() {
                         let val = (s[0] as i32) | ((s[1] as i32) << 8) | ((s[2] as i32) << 16);
-                        val as f32 / 8388608.0
-                    })
-                    .collect()
+                        samples.push(val as f32 / 8388608.0);
+                    }
+                }
+                samples
             }
             AudioBufferRef::S32(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 2147483648.0)
-                    .collect()
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for &s in plane.as_slice() {
+                        samples.push(s as f32 / 2147483648.0);
+                    }
+                }
+                samples
             }
             AudioBufferRef::F32(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().to_vec())
-                    .collect()
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for &s in plane.as_slice() {
+                        samples.push(s);
+                    }
+                }
+                samples
             }
             AudioBufferRef::F64(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter().map(|&s| s as f32).to_vec())
-                    .collect()
+                let mut samples = Vec::with_capacity(buf.capacity() as usize);
+                for plane in buf.planes().iter() {
+                    for &s in plane.as_slice() {
+                        samples.push(s as f32);
+                    }
+                }
+                samples
             }
         }
     }
