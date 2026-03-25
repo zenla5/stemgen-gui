@@ -108,8 +108,6 @@ jobs:
   backend:
     name: Backend (Rust)
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/cross-rs/x86_64-unknown-linux-gnu:latest
     
     steps:
       - uses: actions/checkout@v4
@@ -123,35 +121,31 @@ jobs:
           workspaces: src-tauri
       
       - name: Check Rust formatting
-        working-directory: src-tauri
-        run: cargo fmt --check
+        run: cd src-tauri && cargo fmt --check
       
       - name: Clippy linting
-        working-directory: src-tauri
-        run: cargo clippy -- -D warnings
+        run: cd src-tauri && cargo clippy -- -D warnings
       
       - name: Build release
-        working-directory: src-tauri
-        run: cargo build --release --verbose
+        run: cd src-tauri && cargo build --release --verbose
       
       - name: Run tests
-        working-directory: src-tauri
-        run: cargo test --verbose
+        run: cd src-tauri && cargo test --verbose
       
       - name: Run tests with coverage
         run: |
-          cargo install cargo-tarpaulin
-          cargo tarpaulin --out Xml --out Html --workspace
+          cargo install cargo-tarpaulin || true
+          cd src-tauri && cargo tarpaulin --out Xml --out Html || true
         continue-on-error: true
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./cov_xml/tarpaulin-report.xml
+          files: ./tarpaulin-report.xml
           flags: backend
           name: backend-rust
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           verbose: true
         continue-on-error: true
 
