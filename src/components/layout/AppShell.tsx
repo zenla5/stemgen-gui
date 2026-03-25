@@ -116,13 +116,31 @@ function ProcessingIndicator() {
   
   if (!currentJob) return null;
   
+  // Get status message based on job status
+  const getStatusMessage = () => {
+    switch (currentJob.status) {
+      case 'pending':
+        return 'Waiting in queue...';
+      case 'processing':
+        return `Processing with ${currentJob.model}...`;
+      case 'completed':
+        return 'Processing complete!';
+      case 'failed':
+        return currentJob.error || 'Processing failed';
+      case 'cancelled':
+        return 'Processing cancelled';
+      default:
+        return 'Processing...';
+    }
+  };
+  
   return (
-    <div className="glass flex items-center gap-3 rounded-lg border border-border px-4 py-3 shadow-lg">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-background/95 px-4 py-3 shadow-lg backdrop-blur">
       <div className="h-3 w-3 animate-pulse rounded-full bg-green-500" />
       <div>
-        <p className="text-sm font-medium">{currentJob.progressMessage}</p>
+        <p className="text-sm font-medium">{getStatusMessage()}</p>
         <p className="text-xs text-muted-foreground">
-          {Math.round(currentJob.progress)}%
+          {Math.round(currentJob.progress * 100)}%
         </p>
       </div>
     </div>

@@ -9,8 +9,7 @@ import type {
   ProcessingSettings,
   Stem,
 } from '@/lib/types';
-import { DEFAULT_PROCESSING_SETTINGS, NI_STEM_COLORS } from '@/lib/constants';
-import { STEM_COLORS, STEM_DEFAULT_NAMES } from '@/lib/types';
+import { DEFAULT_PROCESSING_SETTINGS, STEM_COLORS, STEM_DEFAULT_NAMES } from '@/lib/constants';
 
 interface AppState {
   // Audio files
@@ -170,7 +169,7 @@ export const useAppStore = create<AppState>()(
               python: result.python,
               cuda: result.cuda,
               mps: result.mps,
-              models: result.modelCount > 0,
+              models: result.model_count > 0,
             },
             dependenciesChecked: true,
           });

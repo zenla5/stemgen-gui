@@ -2,260 +2,209 @@
 
 ## Overview
 
-This document outlines the phased implementation plan for Stemgen-GUI, a free and open source (FOSS) stem file generator GUI.
+**Stemgen-GUI** is a free and open source (FOSS) desktop application that converts audio files (MP3, FLAC, WAV, OGG, etc.) into `.stem.mp4` files for use with DJ software.
 
-## Phase 0: Foundation (Current State)
+## Tech Stack
 
-### Completed ✅
-- [x] Project scaffolding (Tauri v2 + React + TypeScript + Vite + Tailwind)
-- [x] CI/CD pipeline design (GitHub Actions with coverage gates)
-- [x] Core UI shell (AppShell, Sidebar, Header, StatusBar)
-- [x] File browser with drag & drop
-- [x] Processing queue UI
-- [x] Stem mixer UI
-- [x] Settings panel
-- [x] Zustand stores (appStore, settingsStore)
-- [x] TypeScript types and constants
-- [x] Dark/Light theme system
-- [x] i18n setup (English)
-- [x] Keyboard shortcuts system
-- [x] Rust backend skeleton with commands
-- [x] Database schema (SQLite)
-- [x] Dependency health check
-- [x] README and documentation
+- **Tauri v2** - Desktop shell (Rust)
+- **React 18** - Frontend UI
+- **TypeScript** - Type-safe frontend
+- **Rust** - High-performance backend
+- **Python sidecar** - AI model inference (demucs/bs_roformer)
+- **Tailwind CSS** - Styling
+- **Zustand** - State management
+- **Playwright** - E2E testing
 
-### Remaining
-- [x] Create app icons (icons folder)
-- [ ] Initialize Tauri plugins (capabilities)
-- [ ] Add Playwright test config
+## Implemented Features
 
-## Phase 1: Core Pipeline
+### ✅ Phase 1: Audio Processing Backend
 
-### 1.1 Audio Processing Backend
-- [ ] Implement audio decoding with symphonia
-- [ ] Implement resampling to 44.1kHz
-- [ ] Implement metadata extraction with lofty
-- [ ] Implement cover art extraction
+#### Rust Backend (`src-tauri/src/`)
 
-### 1.2 Python Sidecar Integration
-- [ ] Create Python wrapper script for demucs
-- [ ] Create Python wrapper script for bs_roformer
-- [ ] Implement subprocess management in Rust
-- [ ] Implement progress streaming via JSON-RPC
-- [ ] Implement GPU device detection
+**Audio Processing (`audio/`)**
+- `decoder.rs` - Audio decoding using symphonia (MP3, FLAC, WAV, OGG, AAC, AIFF, WMA, Opus)
+- `resampler.rs` - High-quality resampling to 44.1kHz using rubato
+- `converter.rs` - FFmpeg-based format conversion (WAV, FLAC, MP3, AAC, ALAC, OGG)
+- `waveform.rs` - Waveform generation for visualization
 
-### 1.3 NI Stem Format Packer
-- [ ] Implement MP4 container creation
-- [ ] Implement NI stem metadata atom
-- [ ] Implement 5-track stem creation
-- [ ] Support ALAC and AAC encoding
-- [ ] Support stem ordering per DJ software
-- [ ] Implement custom stem colors
+**NI Stem Packing (`stems/`)**
+- `metadata.rs` - NI stem metadata structure with colors
+- `presets.rs` - DJ software presets (Traktor, Rekordbox, Serato, Mixxx, djay, VirtualDJ)
+- `packer.rs` - `.stem.mp4` creation with proper stem ordering
 
-### 1.4 Stem Unpacking
-- [ ] Implement stem extraction from .stem.mp4
-- [ ] Implement metadata reading
-- [ ] Implement stem file export
+**Commands (`commands/`)**
+- `mod.rs` - Command exports and dependency checking
+- `db.rs` - SQLite database operations
+- `audio.rs` - Audio info commands
+- `separation.rs` - Stem separation and packing commands
 
-## Phase 2: User Experience
+#### Python Sidecar (`python/`)
 
-### 2.1 Waveform Visualization
-- [ ] Generate waveform data in Rust
-- [ ] Render waveforms with Canvas
-- [ ] Show stem waveforms
+- `stemgen_sidecar.py` - AI stem separation wrapper (demucs, bs_roformer)
+- `requirements.txt` - Python dependencies
 
-### 2.2 Audio Preview
-- [ ] Implement Web Audio API integration
-- [ ] Preview original audio
-- [ ] Preview individual stems
-- [ ] A/B comparison
+### ✅ Phase 2: Frontend UI Components
 
-### 2.3 Batch Processing
-- [ ] Implement job queue management
-- [ ] Implement parallel processing
-- [ ] Implement job cancellation
-- [ ] Implement progress reporting
+#### Core Files (`src/`)
 
-### 2.4 BPM & Key Detection
-- [ ] Implement BPM detection (aubio/rust)
-- [ ] Implement key detection
-- [ ] Embed in output metadata
+**Types & Constants (`lib/`)**
+- `types.ts` - TypeScript types for all data structures
+- `constants.ts` - Stem colors, DJ presets, AI models, shortcuts
+- `utils.ts` - Utility functions (cn, formatBytes, formatDuration)
 
-## Phase 3: Polish & Distribution
+**State Management (`stores/`)**
+- `appStore.ts` - App state (files, jobs, stems, dependencies)
+- `settingsStore.ts` - Settings state (theme, models, presets)
 
-### 3.1 Cross-Platform Builds
-- [ ] Windows: NSIS installer
-- [ ] macOS: DMG bundle
-- [ ] Linux: DEB, AppImage, Flatpak
+**Layout Components (`components/layout/`)**
+- `AppShell.tsx` - Main app shell with drag-drop overlay
+- `Header.tsx` - Header with theme toggle, GitHub link
+- `Sidebar.tsx` - Navigation sidebar (Files, Queue, Mixer, Settings)
+- `StatusBar.tsx` - Dependency status display
 
-### 3.2 Auto-Updater
-- [ ] Configure Tauri updater plugin
-- [ ] Set up update server
-- [ ] Implement update UI
+**Feature Components (`components/`)**
+- `file-browser/FileBrowser.tsx` - Drag & drop file selection
+- `processing/ProcessingQueue.tsx` - Job queue with status icons
+- `mixer/StemMixer.tsx` - 4-stem mixer with volume/solo/mute
+- `settings/SettingsPanel.tsx` - Full settings UI
 
-### 3.3 Desktop Notifications
-- [ ] Implement Tauri notification plugin
-- [ ] Notify on job completion
-- [ ] Notify on errors
+**Hooks (`hooks/`)**
+- `useHealthCheck.ts` - Dependency checking on mount
+- `useKeyboardShortcuts.ts` - Keyboard navigation (1-4, Ctrl+B)
 
-### 3.4 Processing History
-- [ ] Store history in SQLite
-- [ ] Display history UI
-- [ ] Implement re-process capability
+**i18n (`i18n/`)**
+- `index.ts` - i18next configuration
+- `en.json` - English translations
 
-## Phase 4: Advanced Features
+### ✅ Phase 3: Testing & CI/CD
 
-### 4.1 Paid Inference Providers
-- [ ] Replicate API integration
-- [ ] Modal API integration
-- [ ] RunPod API integration
+**E2E Tests (`src/__tests__/e2e/`)**
+- `app.spec.ts` - Complete Playwright test suite
+- `helpers.ts` - Test utility functions
+- `playwright.config.ts` - Multi-browser config
 
-### 4.2 CLI Mode
-- [ ] Implement headless mode
-- [ ] Document CLI usage
-- [ ] Support scripting/automation
+**GitHub Actions (`.github/workflows/`)**
+- `ci.yml` - Full CI pipeline with 80% coverage threshold
+- `release.yml` - Release workflow
 
-### 4.3 Localization
-- [ ] Add German translations
-- [ ] Add French translations
-- [ ] Add Spanish translations
-- [ ] Set up Crowdin/Localazy
+### ✅ Phase 4: Configuration
 
-### 4.4 Audio Analysis Dashboard
-- [ ] LUFS measurement
-- [ ] Dynamic range analysis
-- [ ] Spectral visualization
+**Tauri Configuration**
+- `src-tauri/tauri.conf.json` - Tauri app configuration
+- `src-tauri/capabilities/default.json` - Plugin permissions
+- `Cargo.toml` - Rust dependencies
 
-## Critical Path
+## DJ Software Presets
 
-```
-Phase 0 (Foundation)
-    │
-    ▼
-Phase 1 (Core Pipeline) ──► Phase 2 (UX) ──► Phase 3 (Distribution) ──► Phase 4 (Advanced)
-    │
-    ├─ Audio Decoding
-    ├─ Resampling
-    ├─ Metadata Extraction
-    ├─ Python Sidecar
-    ├─ NI Stem Packer
-    └─ GPU Detection
+| Software | Stem Order | Codec |
+|----------|-----------|-------|
+| Traktor | drums, bass, other, vocals | ALAC |
+| Rekordbox | drums, bass, other, vocals | AAC |
+| Serato | vocals, drums, bass, other | AAC |
+| Mixxx | drums, bass, other, vocals | ALAC |
+| djay | drums, bass, other, vocals | AAC |
+| VirtualDJ | vocals, drums, bass, other | AAC |
+
+## Stem Colors (NI-Compatible)
+
+```typescript
+const STEM_COLORS = {
+  drums: '#FF6B6B',  // Red
+  bass: '#4ECDC4',     // Teal
+  other: '#FFE66D',   // Yellow
+  vocals: '#95E1D3',  // Mint green
+};
 ```
 
-## Dependencies Graph
+## AI Models
+
+| Model | Quality | Speed |
+|-------|---------|-------|
+| demucs | Draft | Fast |
+| bs_roformer | Standard | Medium |
+| htdemucs | Standard | Slow |
+| htdemucs_ft | Master | Slow |
+
+## Directory Structure
 
 ```
-Frontend (React)
-    │
-    ├── Tauri API (@tauri-apps/api)
-    ├── UI Components (@radix-ui/*)
-    ├── State (Zustand)
-    └── Audio (wavesurfer.js)
-
-Backend (Rust)
-    │
-    ├── Tauri Core
-    ├── Audio (symphonia, hound, rubato)
-    ├── Metadata (lofty)
-    ├── MP4 (mp4 crate)
-    ├── Database (rusqlite)
-    └── HTTP (reqwest)
-
-Python Sidecar
-    │
-    ├── demucs
-    ├── bs_roformer
-    └── mutagen
+stemgen-gui/
+├── src/                          # React frontend
+│   ├── components/               # React components
+│   │   ├── ui/                  # shadcn/ui components
+│   │   ├── layout/              # AppShell, Sidebar, Header, StatusBar
+│   │   ├── file-browser/        # File selection & drag-drop
+│   │   ├── processing/           # Processing queue
+│   │   ├── mixer/               # Stem mixer
+│   │   └── settings/            # Settings panel
+│   ├── hooks/                   # Custom React hooks
+│   ├── stores/                  # Zustand stores
+│   ├── lib/                     # Utilities and types
+│   └── i18n/                   # Internationalization
+├── src-tauri/                   # Rust backend
+│   ├── src/
+│   │   ├── audio/               # Audio processing
+│   │   ├── stems/              # NI stem packing
+│   │   └── commands/            # Tauri IPC commands
+│   └── capabilities/            # Plugin permissions
+├── python/                       # Python sidecar
+├── .github/workflows/           # CI/CD pipelines
+└── package.json
 ```
 
-## Testing Strategy
+## Pending Features
 
-### Unit Tests
-- Frontend: Vitest with happy-dom
-- Backend: cargo test
+### High Priority (P1)
 
-### Integration Tests
-- Full pipeline test with sample audio
-- Stem format validation
-- Database migrations
+- [ ] Full AI separation pipeline (connect Python sidecar to Rust)
+- [ ] BPM/key detection
+- [ ] Stem unpacking for existing .stem.mp4 files
+- [ ] Audio preview with waveform visualization
+- [ ] Model download manager
 
-### E2E Tests
-- Playwright with Tauri driver
-- Critical user flows:
-  1. File drop → Queue → Process → Export
-  2. Settings change → Preview → Export
-  3. History browse → Re-process
+### Medium Priority (P2)
 
-### Coverage Requirements
-- Frontend: 80% line coverage
-- Backend: 80% line coverage
-- CI gate: fail if below threshold
+- [ ] Auto-update system (Tauri updater)
+- [ ] Processing history with quick re-process
+- [ ] Export presets management
+- [ ] Individual stem export (WAV/FLAC/MP3)
+- [ ] Desktop notifications
 
-## Build Targets
+### Lower Priority (P3)
 
-| Platform | Architecture | Format | Status |
-|---------|-------------|--------|--------|
-| Windows | x64 | .exe (NSIS) | Planned |
-| Windows | ARM64 | .exe (NSIS) | Planned |
-| macOS | Intel | .dmg | Planned |
-| macOS | Apple Silicon | .dmg | Planned |
-| Linux | x64 | .deb | Planned |
-| Linux | x64 | .AppImage | Planned |
-| Linux | x64 | Flatpak | Planned |
+- [ ] CLI mode for scripting
+- [ ] Multi-language support (i18n)
+- [ ] Audio analysis dashboard (LUFS, dynamic range)
+- [ ] Custom stem renaming
 
-## AI Agent Workflow
+## Common Commands
 
-When implementing features:
+```bash
+# Development
+npm run dev           # Start frontend
+npm run tauri:dev    # Start with Tauri
 
-1. **Check existing patterns** - Look at similar implementations
-2. **Write tests first** - TDD approach for critical paths
-3. **Follow type system** - No `any` types, strict TypeScript
-4. **Update documentation** - Keep README and code comments current
-5. **Add translations** - Include i18n keys for all UI text
-6. **Test locally** - Run before committing
+# Building
+npm run tauri:build  # Production build
 
-## Git Workflow
+# Testing
+npm run test          # Unit tests
+npm run test:e2e     # E2E tests
+npm run test:coverage # With coverage
 
-```
-Feature Branch → PR → Review → Merge to develop → Release → Merge to main
+# Linting
+npm run lint          # Frontend lint
+cargo clippy         # Backend lint
 ```
 
-- `main` - Stable releases only
-- `develop` - Integration branch
-- `feature/*` - Feature branches
-- `fix/*` - Bug fix branches
+## Dependencies
 
-## Release Process
+The app requires these system dependencies:
+- **FFmpeg** - Audio/video processing
+- **SoX** - Audio format conversion
+- **Python 3.9+** - For AI model inference
+- **CUDA** (optional) - GPU acceleration
 
-1. Update version in `package.json` and `Cargo.toml`
-2. Update `CHANGELOG.md`
-3. Create git tag: `git tag v0.1.0`
-4. Push tag: `git push origin v0.1.0`
-5. CI/CD builds all platforms
-6. Create GitHub Release
-7. Upload installer assets
-8. Update download links
+## License
 
-## Support Matrix
-
-| Feature | Priority | Difficulty | Status |
-|---------|----------|------------|--------|
-| Drag & Drop | P0 | Easy | Done |
-| Batch Processing | P0 | Medium | Partial |
-| AI Stem Separation | P0 | Hard | Planned |
-| NI Stem Packer | P0 | Hard | Planned |
-| DJ Presets | P0 | Easy | Done |
-| Waveform Preview | P1 | Medium | Planned |
-| Stem Mixer | P1 | Medium | Partial |
-| Model Download | P1 | Medium | Planned |
-| Auto-Update | P1 | Easy | Planned |
-| CLI Mode | P2 | Medium | Planned |
-| i18n | P3 | Easy | Planned |
-
-## References
-
-- [Tauri v2 Documentation](https://tauri.app/)
-- [React Documentation](https://react.dev/)
-- [Demucs GitHub](https://github.com/facebookresearch/demucs)
-- [NI Stem Format](https://www.native-instruments.com/)
-- [stemgen CLI](https://github.com/axeldelafosse/stemgen)
+GPL-3.0

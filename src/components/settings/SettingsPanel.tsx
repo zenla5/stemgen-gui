@@ -1,196 +1,257 @@
-import { Settings, Cpu, Database, FolderOutput, Palette } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-import { useAppStore } from '@/stores/appStore';
+import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useAppStore } from '@/stores/appStore';
+import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-import { AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS } from '@/lib/types';
-import type { AIModelId, DJSoftwarePreset, OutputFormat, QualityPreset } from '@/lib/types';
+import type { AIModel, DJSoftware } from '@/lib/types';
 
 export function SettingsPanel() {
-  const { settings, updateSettings } = useAppStore();
-  const { maxParallelJobs, setMaxParallelJobs, outputDirectory, setOutputDirectory } = useSettingsStore();
-  
+  const settings = useSettingsStore();
+  const appSettings = useAppStore();
+  const { updateSettings } = appSettings;
+  const { dependencies } = appSettings;
+
   return (
     <div className="flex h-full flex-col gap-6 overflow-auto p-6">
-      <h2 className="text-xl font-semibold">Settings</h2>
-      
+      <div className="flex items-center gap-3">
+        <Settings className="h-6 w-6" />
+        <h2 className="text-xl font-semibold">Settings</h2>
+      </div>
+
+      {/* Theme */}
+      <section className="space-y-3">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          {settings.theme === 'dark' ? <Moon className="h-4 w-4" /> : 
+           settings.theme === 'light' ? <Sun className="h-4 w-4" /> : 
+           <Monitor className="h-4 w-4" />}
+          Appearance
+        </h3>
+        <div className="flex gap-2">
+          {THEMES.map((theme) => (
+            <button
+              key={theme.id}
+              onClick={() => settings.setTheme(theme.id)}
+              className={cn(
+                'flex items-center gap-2 rounded-md border px-4 py-2 text-sm transition-colors',
+                settings.theme === theme.id
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-muted hover:border-primary/50'
+              )}
+            >
+              {theme.id === 'light' && <Sun className="h-4 w-4" />}
+              {theme.id === 'dark' && <Moon className="h-4 w-4" />}
+              {theme.id === 'system' && <Monitor className="h-4 w-4" />}
+              {theme.name}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Language */}
+      <section className="space-y-3">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          <Globe className="h-4 w-4" />
+          Language
+        </h3>
+        <select
+          value={settings.language}
+          onChange={(e) => settings.setLanguage(e.target.value)}
+          className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm"
+        >
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+          <option value="fr">Français</option>
+          <option value="es">Español</option>
+          <option value="ja">日本語</option>
+        </select>
+      </section>
+
       {/* AI Model */}
-      <SettingsSection icon={Cpu} title="AI Model" description="Select the stem separation model">
-        <div className="space-y-2">
+      <section className="space-y-3">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          <Sparkles className="h-4 w-4" />
+          AI Model
+        </h3>
+        <div className="grid gap-2">
           {AI_MODELS.map((model) => (
-            <label
+            <button
               key={model.id}
+              onClick={() => updateSettings({ model: model.id })}
               className={cn(
-                'flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors',
-                settings.model === model.id
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-primary/50'
+                'flex flex-col items-start rounded-md border p-3 text-left transition-colors',
+                appSettings.settings.model === model.id
+                  ? 'border-primary bg-primary/10'
+                  : 'border-muted hover:border-primary/50'
               )}
             >
-              <div className="flex items-center gap-3">
-                <input
-                  type="radio"
-                  name="model"
-                  value={model.id}
-                  checked={settings.model === model.id}
-                  onChange={() => updateSettings({ model: model.id as AIModelId })}
-                  className="h-4 w-4"
-                />
-                <div>
-                  <p className="font-medium">{model.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {model.speed} speed • {model.quality} quality
-                  </p>
-                </div>
+              <span className="font-medium">{model.name}</span>
+              <span className="text-xs text-muted-foreground">{model.description}</span>
+              <div className="mt-1 flex gap-2">
+                <span className={cn(
+                  'rounded px-1.5 py-0.5 text-xs',
+                  model.quality === 'draft' && 'bg-yellow-500/20 text-yellow-600',
+                  model.quality === 'standard' && 'bg-green-500/20 text-green-600',
+                  model.quality === 'master' && 'bg-purple-500/20 text-purple-600',
+                )}>
+                  {model.quality}
+                </span>
+                <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-600">
+                  {model.speed}
+                </span>
               </div>
-            </label>
+            </button>
           ))}
         </div>
-      </SettingsSection>
-      
-      {/* DJ Software Preset */}
-      <SettingsSection icon={Database} title="DJ Software" description="Choose your DJ software for optimal stem format">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      </section>
+
+      {/* Device */}
+      <section className="space-y-3">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          <Cpu className="h-4 w-4" />
+          Processing Device
+        </h3>
+        <div className="flex gap-2">
+          {DEVICE_OPTIONS.map((device) => {
+            const isDisabled = device.id === 'cuda' && !dependencies.cuda ||
+                             device.id === 'mps' && !dependencies.mps;
+            return (
+              <button
+                key={device.id}
+                onClick={() => updateSettings({ device: device.id })}
+                disabled={isDisabled}
+                className={cn(
+                  'flex items-center gap-2 rounded-md border px-4 py-2 text-sm transition-colors',
+                  appSettings.settings.device === device.id
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-muted hover:border-primary/50',
+                  isDisabled && 'cursor-not-allowed opacity-50'
+                )}
+              >
+                {device.name}
+                {isDisabled && <span className="text-xs">(unavailable)</span>}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* DJ Software */}
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium">Target DJ Software</h3>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {DJ_SOFTWARE_PRESETS.map((preset) => (
-            <label
-              key={preset}
+            <button
+              key={preset.id}
+              onClick={() => updateSettings({ djPreset: preset.id })}
               className={cn(
-                'flex cursor-pointer items-center justify-center rounded-lg border p-3 text-center transition-colors',
-                settings.djPreset === preset
-                  ? 'border-primary bg-primary/5 font-medium'
-                  : 'border-border hover:border-primary/50'
+                'flex flex-col items-start rounded-md border p-3 text-left transition-colors',
+                appSettings.settings.djPreset === preset.id
+                  ? 'border-primary bg-primary/10'
+                  : 'border-muted hover:border-primary/50'
               )}
             >
-              <input
-                type="radio"
-                name="djPreset"
-                value={preset}
-                checked={settings.djPreset === preset}
-                onChange={() => updateSettings({ djPreset: preset as DJSoftwarePreset })}
-                className="sr-only"
-              />
-              <span className="capitalize">{preset}</span>
-            </label>
+              <span className="font-medium">{preset.name}</span>
+              <span className="text-xs text-muted-foreground">Codec: {preset.codec.toUpperCase()}</span>
+            </button>
           ))}
         </div>
-      </SettingsSection>
-      
+      </section>
+
       {/* Output Format */}
-      <SettingsSection icon={FolderOutput} title="Output Format" description="Choose the audio encoding format">
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium">Output Format</h3>
         <div className="flex gap-2">
           {OUTPUT_FORMATS.map((format) => (
-            <label
-              key={format}
+            <button
+              key={format.id}
+              onClick={() => updateSettings({ outputFormat: format.id })}
               className={cn(
-                'flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2 transition-colors',
-                settings.outputFormat === format
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-primary/50'
+                'flex flex-col items-start rounded-md border p-3 text-left transition-colors',
+                appSettings.settings.outputFormat === format.id
+                  ? 'border-primary bg-primary/10'
+                  : 'border-muted hover:border-primary/50'
               )}
             >
-              <input
-                type="radio"
-                name="outputFormat"
-                value={format}
-                checked={settings.outputFormat === format}
-                onChange={() => updateSettings({ outputFormat: format as OutputFormat })}
-                className="h-4 w-4"
-              />
-              <span className="font-medium uppercase">{format}</span>
-            </label>
+              <span className="font-medium">{format.name}</span>
+              <span className="text-xs text-muted-foreground">{format.description}</span>
+            </button>
           ))}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          ALAC is lossless (larger files), AAC offers better compression with good quality.
-        </p>
-      </SettingsSection>
-      
+      </section>
+
       {/* Quality Preset */}
-      <SettingsSection icon={Palette} title="Quality Preset" description="Balance between speed and quality">
-        <div className="space-y-2">
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium">Quality Preset</h3>
+        <div className="flex gap-2">
           {QUALITY_PRESETS.map((preset) => (
-            <label
-              key={preset}
+            <button
+              key={preset.id}
+              onClick={() => updateSettings({ qualityPreset: preset.id })}
               className={cn(
-                'flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors',
-                settings.qualityPreset === preset
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-primary/50'
+                'flex flex-col items-start rounded-md border p-3 text-left transition-colors',
+                appSettings.settings.qualityPreset === preset.id
+                  ? 'border-primary bg-primary/10'
+                  : 'border-muted hover:border-primary/50'
               )}
             >
-              <input
-                type="radio"
-                name="qualityPreset"
-                value={preset}
-                checked={settings.qualityPreset === preset}
-                onChange={() => updateSettings({ qualityPreset: preset as QualityPreset })}
-                className="h-4 w-4"
-              />
-              <div>
-                <p className="font-medium capitalize">{preset}</p>
-                <p className="text-xs text-muted-foreground">
-                  {preset === 'draft' && 'Fast processing, lower quality'}
-                  {preset === 'standard' && 'Balanced speed and quality'}
-                  {preset === 'master' && 'Slowest processing, highest quality'}
-                </p>
-              </div>
-            </label>
+              <span className="font-medium">{preset.name}</span>
+              <span className="text-xs text-muted-foreground">{preset.description}</span>
+            </button>
           ))}
         </div>
-      </SettingsSection>
-      
+      </section>
+
+      {/* GPU Settings */}
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium">GPU Acceleration</h3>
+        <label className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={settings.gpuEnabled}
+            onChange={(e) => settings.setGpuEnabled(e.target.checked)}
+            className="h-4 w-4 rounded border-input"
+          />
+          <span className="text-sm">Enable GPU acceleration for faster processing</span>
+        </label>
+        {dependencies.cuda && (
+          <p className="text-xs text-green-600">✓ NVIDIA CUDA detected</p>
+        )}
+        {dependencies.mps && (
+          <p className="text-xs text-green-600">✓ Apple Silicon MPS detected</p>
+        )}
+      </section>
+
+      {/* CPU Threads */}
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium">CPU Threads</h3>
+        <div className="flex items-center gap-4">
+          <input
+            type="range"
+            min="1"
+            max="16"
+            value={settings.cpuThreads}
+            onChange={(e) => settings.setCpuThreads(parseInt(e.target.value))}
+            className="w-48"
+          />
+          <span className="text-sm">{settings.cpuThreads} threads</span>
+        </div>
+      </section>
+
       {/* Parallel Jobs */}
-      <SettingsSection icon={Settings} title="Performance" description="Number of files to process simultaneously">
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium">Parallel Jobs</h3>
         <div className="flex items-center gap-4">
           <input
             type="range"
             min="1"
             max="4"
-            value={maxParallelJobs}
-            onChange={(e) => setMaxParallelJobs(parseInt(e.target.value))}
-            className="flex-1"
+            value={settings.maxParallelJobs}
+            onChange={(e) => settings.setMaxParallelJobs(parseInt(e.target.value))}
+            className="w-48"
           />
-          <span className="w-8 text-center font-mono">{maxParallelJobs}</span>
+          <span className="text-sm">{settings.maxParallelJobs} job(s) at a time</span>
         </div>
-      </SettingsSection>
-      
-      {/* Output Directory */}
-      <SettingsSection icon={FolderOutput} title="Output Directory" description="Where to save processed files">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={outputDirectory}
-            onChange={(e) => setOutputDirectory(e.target.value)}
-            placeholder="Same as source file"
-            className="flex-1 rounded-lg border border-input bg-background px-3 py-2"
-          />
-          <Button variant="outline" size="sm">
-            Browse
-          </Button>
-        </div>
-      </SettingsSection>
-    </div>
-  );
-}
-
-interface SettingsSectionProps {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}
-
-function SettingsSection({ icon: Icon, title, description, children }: SettingsSectionProps) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="mb-4 flex items-center gap-3">
-        <Icon className="h-5 w-5 text-primary" />
-        <div>
-          <h3 className="font-medium">{title}</h3>
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      {children}
+      </section>
     </div>
   );
 }

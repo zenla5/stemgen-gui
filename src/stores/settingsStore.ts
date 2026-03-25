@@ -1,137 +1,110 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { Theme, ExportPreset } from '@/lib/types';
-import { DEFAULT_PROCESSING_SETTINGS } from '@/lib/constants';
+import type { AIModel, DJSoftware } from '@/lib/types';
+import type { Theme } from '@/lib/types';
+
+export type ExportPreset = {
+  id: string;
+  name: string;
+  model: AIModel;
+  djSoftware: DJSoftware;
+  outputFormat: 'alac' | 'aac';
+  qualityPreset: 'draft' | 'standard' | 'master';
+};
 
 interface SettingsState {
   // Theme
   theme: Theme;
-  setTheme: (theme: Theme) => void;
   
   // Language
   language: string;
-  setLanguage: (language: string) => void;
   
-  // Export presets
-  exportPresets: ExportPreset[];
-  addExportPreset: (preset: ExportPreset) => void;
-  updateExportPreset: (id: string, updates: Partial<ExportPreset>) => void;
-  removeExportPreset: (id: string) => void;
+  // Default export settings
+  defaultModel: AIModel;
+  defaultDjSoftware: DJSoftware;
+  defaultOutputFormat: 'alac' | 'aac';
   
   // Output directory
   outputDirectory: string;
-  setOutputDirectory: (dir: string) => void;
   
-  // Parallel jobs
+  // Export presets
+  exportPresets: ExportPreset[];
+  
+  // CPU/GPU settings
+  cpuThreads: number;
+  gpuEnabled: boolean;
   maxParallelJobs: number;
+  
+  // Actions
+  setTheme: (theme: Theme) => void;
+  setLanguage: (language: string) => void;
+  setDefaultModel: (model: AIModel) => void;
+  setDefaultDjSoftware: (software: DJSoftware) => void;
+  setDefaultOutputFormat: (format: 'alac' | 'aac') => void;
+  setOutputDirectory: (directory: string) => void;
+  setCpuThreads: (threads: number) => void;
+  setGpuEnabled: (enabled: boolean) => void;
   setMaxParallelJobs: (max: number) => void;
   
-  // Notifications
-  notificationsEnabled: boolean;
-  setNotificationsEnabled: (enabled: boolean) => void;
-  
-  // Auto-update
-  autoUpdateEnabled: boolean;
-  setAutoUpdateEnabled: (enabled: boolean) => void;
-  
-  // Inference API keys
-  replicateApiKey: string;
-  setReplicateApiKey: (key: string) => void;
-  modalApiKey: string;
-  setModalApiKey: (key: string) => void;
-  runpodApiKey: string;
-  setRunpodApiKey: (key: string) => void;
+  // Preset actions
+  addExportPreset: (preset: ExportPreset) => void;
+  removeExportPreset: (id: string) => void;
+  updateExportPreset: (id: string, updates: Partial<ExportPreset>) => void;
   
   // Reset
-  resetAllSettings: () => void;
+  resetSettings: () => void;
 }
+
+const DEFAULT_SETTINGS = {
+  theme: 'system' as Theme,
+  language: 'en',
+  defaultModel: 'bs_roformer' as AIModel,
+  defaultDjSoftware: 'traktor' as DJSoftware,
+  defaultOutputFormat: 'alac' as const,
+  outputDirectory: '',
+  cpuThreads: 4,
+  gpuEnabled: true,
+  maxParallelJobs: 1,
+  exportPresets: [] as ExportPreset[],
+};
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set, get) => ({
-      // Initial state
-      theme: 'system',
-      language: 'en',
-      exportPresets: [],
-      outputDirectory: '',
-      maxParallelJobs: 2,
-      notificationsEnabled: true,
-      autoUpdateEnabled: true,
-      replicateApiKey: '',
-      modalApiKey: '',
-      runpodApiKey: '',
+    (set) => ({
+      ...DEFAULT_SETTINGS,
       
-      // Theme actions
       setTheme: (theme) => set({ theme }),
-      
-      // Language actions
       setLanguage: (language) => set({ language }),
+      setDefaultModel: (model) => set({ defaultModel: model }),
+      setDefaultDjSoftware: (software) => set({ defaultDjSoftware: software }),
+      setDefaultOutputFormat: (format) => set({ defaultOutputFormat: format }),
+      setOutputDirectory: (directory) => set({ outputDirectory: directory }),
+      setCpuThreads: (threads) => set({ cpuThreads: threads }),
+      setGpuEnabled: (enabled) => set({ gpuEnabled: enabled }),
+      setMaxParallelJobs: (max) => set({ maxParallelJobs: max }),
       
-      // Export preset actions
-      addExportPreset: (preset) => {
+      addExportPreset: (preset) =>
         set((state) => ({
           exportPresets: [...state.exportPresets, preset],
-        }));
-      },
+        })),
       
-      updateExportPreset: (id, updates) => {
+      removeExportPreset: (id) =>
+        set((state) => ({
+          exportPresets: state.exportPresets.filter((p) => p.id !== id),
+        })),
+      
+      updateExportPreset: (id, updates) =>
         set((state) => ({
           exportPresets: state.exportPresets.map((p) =>
             p.id === id ? { ...p, ...updates } : p
           ),
-        }));
-      },
+        })),
       
-      removeExportPreset: (id) => {
-        set((state) => ({
-          exportPresets: state.exportPresets.filter((p) => p.id !== id),
-        }));
-      },
-      
-      // Output directory
-      setOutputDirectory: (dir) => set({ outputDirectory: dir }),
-      
-      // Parallel jobs
-      setMaxParallelJobs: (max) => set({ maxParallelJobs: Math.max(1, Math.min(max, 4)) }),
-      
-      // Notifications
-      setNotificationsEnabled: (enabled) => set({ notificationsEnabled: enabled }),
-      
-      // Auto-update
-      setAutoUpdateEnabled: (enabled) => set({ autoUpdateEnabled: enabled }),
-      
-      // API keys
-      setReplicateApiKey: (key) => set({ replicateApiKey: key }),
-      setModalApiKey: (key) => set({ modalApiKey: key }),
-      setRunpodApiKey: (key) => set({ runpodApiKey: key }),
-      
-      // Reset
-      resetAllSettings: () =>
-        set({
-          theme: 'system',
-          language: 'en',
-          exportPresets: [],
-          outputDirectory: '',
-          maxParallelJobs: 2,
-          notificationsEnabled: true,
-          autoUpdateEnabled: true,
-          replicateApiKey: '',
-          modalApiKey: '',
-          runpodApiKey: '',
-        }),
+      resetSettings: () => set(DEFAULT_SETTINGS),
     }),
     {
       name: 'stemgen-settings-storage',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        theme: state.theme,
-        language: state.language,
-        exportPresets: state.exportPresets,
-        outputDirectory: state.outputDirectory,
-        maxParallelJobs: state.maxParallelJobs,
-        notificationsEnabled: state.notificationsEnabled,
-        autoUpdateEnabled: state.autoUpdateEnabled,
-      }),
     }
   )
 );

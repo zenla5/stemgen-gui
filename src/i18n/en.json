@@ -1,107 +1,70 @@
 {
   "app": {
-    "name": "Stemgen GUI",
-    "version": "v{{version}}"
+    "name": "Stemgen-GUI",
+    "description": "A free and open source stem file generator for DJ software"
   },
   "nav": {
     "files": "Files",
     "queue": "Queue",
     "mixer": "Mixer",
-    "settings": "Settings",
-    "history": "History",
-    "models": "Models"
+    "settings": "Settings"
   },
   "files": {
-    "title": "Audio Files",
+    "title": "File Browser",
+    "dragDrop": "Drag & drop audio files",
+    "dropHere": "Drop audio files here",
+    "orBrowse": "or click to browse",
     "openFolder": "Open Folder",
-    "clearAll": "Clear All",
-    "dropzone": {
-      "title": "Drag & drop audio files",
-      "subtitle": "Supports MP3, FLAC, WAV, OGG, AIFF, M4A, AAC",
-      "dropping": "Drop audio files here"
-    },
-    "table": {
-      "name": "Name",
-      "duration": "Duration",
-      "format": "Format",
-      "size": "Size",
-      "sampleRate": "Sample Rate",
-      "actions": "Actions"
-    }
+    "selected": "{{count}} file selected",
+    "selected_plural": "{{count}} files selected",
+    "noFiles": "No files selected"
   },
   "queue": {
     "title": "Processing Queue",
-    "startProcessing": "Start Processing",
-    "stopProcessing": "Stop",
+    "empty": "No jobs in queue",
+    "emptyDescription": "Add audio files and start processing",
     "clearAll": "Clear All",
-    "empty": {
-      "title": "No jobs in queue",
-      "subtitle": "Add audio files to start processing"
-    },
-    "status": {
-      "pending": "Pending",
-      "processing": "Processing",
-      "completed": "Completed",
-      "failed": "Failed"
-    }
+    "startProcessing": "Start Processing"
   },
   "mixer": {
     "title": "Stem Mixer",
-    "soloAll": "Solo All",
-    "unmuteAll": "Unmute All",
     "reset": "Reset",
-    "stems": {
-      "drums": "Drums",
-      "bass": "Bass",
-      "other": "Other",
-      "vocals": "Vocals"
-    }
+    "volume": "Volume",
+    "preview": "Preview",
+    "drums": "Drums",
+    "bass": "Bass",
+    "other": "Other",
+    "vocals": "Vocals"
   },
   "settings": {
     "title": "Settings",
-    "aiModel": {
-      "title": "AI Model",
-      "description": "Select the stem separation model"
-    },
-    "djSoftware": {
-      "title": "DJ Software",
-      "description": "Choose your DJ software for optimal stem format"
-    },
-    "outputFormat": {
-      "title": "Output Format",
-      "description": "Choose the audio encoding format"
-    },
-    "quality": {
-      "title": "Quality Preset",
-      "description": "Balance between speed and quality"
-    },
-    "performance": {
-      "title": "Performance",
-      "description": "Number of files to process simultaneously"
-    },
-    "outputDirectory": {
-      "title": "Output Directory",
-      "description": "Where to save processed files"
-    }
+    "appearance": "Appearance",
+    "language": "Language",
+    "aiModel": "AI Model",
+    "device": "Processing Device",
+    "djSoftware": "Target DJ Software",
+    "outputFormat": "Output Format",
+    "qualityPreset": "Quality Preset",
+    "gpuAcceleration": "GPU Acceleration",
+    "cpuThreads": "CPU Threads",
+    "parallelJobs": "Parallel Jobs"
+  },
+  "models": {
+    "demucs": "Demucs",
+    "bs_roformer": "BS-RoFormer",
+    "htdemucs": "HT-Demucs",
+    "htdemucs_ft": "HT-Demucs FT"
   },
   "status": {
     "ready": "Ready",
-    "checkingDependencies": "Checking dependencies...",
-    "someDependenciesMissing": "Some dependencies missing"
+    "checking": "Checking dependencies...",
+    "processing": "Processing: {{progress}}%"
   },
   "dependencies": {
     "ffmpeg": "FFmpeg",
     "python": "Python",
-    "models": "Models",
-    "cuda": "CUDA",
-    "mps": "MPS",
-    "cpu": "CPU"
-  },
-  "models": {
-    "bs_roformer": "BS RoFormer",
-    "htdemucs": "HTDemucs",
-    "htdemucs_ft": "HTDemucs (fine-tuned)",
-    "demucs": "Demucs v4"
+    "gpu": "GPU",
+    "models": "Models"
   },
   "quality": {
     "draft": "Draft",
@@ -109,7 +72,7 @@
     "master": "Master"
   },
   "format": {
-    "alac": "ALAC (Lossless)",
-    "aac": "AAC (Compressed)"
+    "alac": "ALAC",
+    "aac": "AAC"
   }
 }

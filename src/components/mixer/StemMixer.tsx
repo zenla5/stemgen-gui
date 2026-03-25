@@ -1,149 +1,109 @@
-import { useState } from 'react';
-import { Sliders, Volume2, VolumeX, Headphones } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-import { Slider } from '@/components/ui/Slider';
+import { Volume2, VolumeX, Headphones, RefreshCw } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
+import { STEM_COLORS } from '@/lib/constants';
 
 export function StemMixer() {
   const { currentStems, updateStem, resetStemMixer } = useAppStore();
-  
-  const handleVolumeChange = (stemId: string, volume: number[]) => {
-    updateStem(stemId, { volume: volume[0] });
-  };
-  
-  const handleToggleMute = (stemId: string) => {
-    const stem = currentStems.find((s) => s.id === stemId);
-    if (stem) {
-      updateStem(stemId, { muted: !stem.muted });
-    }
-  };
-  
-  const handleToggleSolo = (stemId: string) => {
-    const stem = currentStems.find((s) => s.id === stemId);
-    if (stem) {
-      // If enabling solo, disable solo on all other stems
-      if (!stem.solo) {
-        currentStems.forEach((s) => updateStem(s.id, { solo: false }));
-      }
-      updateStem(stemId, { solo: !stem.solo });
-    }
-  };
-  
-  const handleSoloAll = () => {
-    currentStems.forEach((s) => updateStem(s.id, { solo: true }));
-  };
-  
-  const handleUnmuteAll = () => {
-    currentStems.forEach((s) => updateStem(s.id, { muted: false, solo: false }));
-  };
-  
+
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
-      {/* Header */}
+    <div className="flex h-full flex-col gap-6 p-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Stem Mixer</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleSoloAll}>
-            <Headphones className="mr-2 h-4 w-4" />
-            Solo All
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleUnmuteAll}>
-            <Volume2 className="mr-2 h-4 w-4" />
-            Unmute All
-          </Button>
-          <Button variant="ghost" size="sm" onClick={resetStemMixer}>
-            Reset
-          </Button>
-        </div>
+        <h2 className="text-lg font-semibold">Stem Mixer</h2>
+        <button
+          onClick={resetStemMixer}
+          className="flex items-center gap-2 rounded-md border border-muted px-3 py-1.5 text-sm hover:bg-muted/50"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Reset
+        </button>
       </div>
-      
-      {/* Mixer channels */}
-      <div className="flex flex-1 gap-4">
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {currentStems.map((stem) => (
           <div
             key={stem.id}
-            className={cn(
-              'flex flex-1 flex-col rounded-xl border p-4 transition-colors',
-              stem.muted ? 'border-border bg-muted/30' : 'border-border bg-card'
-            )}
+            className="flex flex-col gap-3 rounded-lg border p-4"
+            style={{ borderColor: `${stem.color}40` }}
           >
-            {/* Stem header */}
-            <div className="mb-4 text-center">
-              <div
-                className="mx-auto mb-2 h-3 w-12 rounded-full"
-                style={{ backgroundColor: stem.color }}
-              />
-              <h3 className="font-medium">{stem.name}</h3>
-            </div>
-            
-            {/* Volume fader */}
-            <div className="flex flex-1 items-center justify-center">
-              <div className="relative h-full">
-                <Slider
-                  orientation="vertical"
-                  value={[stem.volume * 100]}
-                  onValueChange={(value) => handleVolumeChange(stem.id, value)}
-                  max={100}
-                  step={1}
-                  className="h-full"
-                />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <div
-                  className="pointer-events-none absolute left-1/2 w-1 rounded-full transition-all"
-                  style={{
-                    height: `${stem.volume * 100}%`,
-                    backgroundColor: stem.color,
-                    bottom: 0,
-                    transform: 'translateX(-50%)',
-                  }}
+                  className="h-3 w-3 rounded-full"
+                  style={{ backgroundColor: stem.color }}
                 />
+                <span className="font-medium">{stem.name}</span>
+              </div>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => updateStem(stem.id, { solo: !stem.solo })}
+                  className={cn(
+                    'rounded p-1 transition-colors',
+                    stem.solo
+                      ? 'bg-yellow-500/20 text-yellow-600'
+                      : 'hover:bg-muted'
+                  )}
+                  title="Solo"
+                >
+                  <Headphones className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => updateStem(stem.id, { muted: !stem.muted })}
+                  className={cn(
+                    'rounded p-1 transition-colors',
+                    stem.muted
+                      ? 'bg-red-500/20 text-red-600'
+                      : 'hover:bg-muted'
+                  )}
+                  title="Mute"
+                >
+                  {stem.muted ? (
+                    <VolumeX className="h-4 w-4" />
+                  ) : (
+                    <Volume2 className="h-4 w-4" />
+                  )}
+                </button>
               </div>
             </div>
-            
-            {/* Volume percentage */}
-            <div className="mt-4 text-center">
-              <span className="font-mono text-sm">
-                {Math.round(stem.volume * 100)}%
-              </span>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Volume</span>
+                <span>{Math.round(stem.volume * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={stem.volume * 100}
+                onChange={(e) =>
+                  updateStem(stem.id, { volume: parseInt(e.target.value) / 100 })
+                }
+                className="w-full accent-primary"
+                style={{
+                  accentColor: stem.color,
+                }}
+              />
             </div>
-            
-            {/* Control buttons */}
-            <div className="mt-4 flex justify-center gap-2">
-              <Button
-                variant={stem.muted ? 'destructive' : 'outline'}
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => handleToggleMute(stem.id)}
-                title={stem.muted ? 'Unmute' : 'Mute'}
-              >
-                {stem.muted ? (
-                  <VolumeX className="h-4 w-4" />
-                ) : (
-                  <Volume2 className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant={stem.solo ? 'default' : 'outline'}
-                size="icon"
-                className={cn(
-                  'h-8 w-8',
-                  stem.solo && 'bg-yellow-500 hover:bg-yellow-600'
-                )}
-                onClick={() => handleToggleSolo(stem.id)}
-                title={stem.solo ? 'Unsolo' : 'Solo'}
-              >
-                <Headphones className="h-4 w-4" />
-              </Button>
-            </div>
+
+            {stem.file_path && (
+              <p className="truncate text-xs text-muted-foreground">
+                {stem.file_path.split(/[/\\]/).pop()}
+              </p>
+            )}
           </div>
         ))}
       </div>
-      
-      {/* Preview info */}
-      <div className="rounded-lg border border-border bg-card p-4">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Sliders className="h-4 w-4" />
-          <span>Adjust stem volumes and preview before exporting.</span>
+
+      <div className="mt-auto rounded-lg border bg-muted/50 p-4">
+        <h3 className="mb-2 text-sm font-medium">Preview</h3>
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div className="h-full w-1/3 animate-pulse bg-primary" />
+            </div>
+          </div>
+          <span className="text-sm text-muted-foreground">0:00 / 3:45</span>
         </div>
       </div>
     </div>

@@ -1,20 +1,46 @@
-// Supported audio formats
-export const SUPPORTED_AUDIO_FORMATS = [
-  '.mp3', '.flac', '.wav', '.wave', '.aiff', '.aif', '.ogg', '.m4a', '.aac'
-] as const;
+// Types for Stemgen-GUI
 
-export type SupportedAudioFormat = typeof SUPPORTED_AUDIO_FORMATS[number];
+// Audio types
+export interface AudioFileMetadata {
+  path: string;
+  name: string;
+  size: number;
+  duration: number;
+  sample_rate: number;
+  bit_depth: number;
+  channels: number;
+  format: string;
+  metadata: Record<string, string>;
+  cover_art_path?: string;
+}
+
+export interface AudioInfo {
+  path: string;
+  name: string;
+  size: number;
+  duration: number;
+  sample_rate: number;
+  bit_depth: number;
+  channels: number;
+  format: string;
+  metadata: Record<string, string>;
+  cover_art_path?: string;
+}
+
+export interface WaveformPoint {
+  min: number;
+  max: number;
+  rms: number;
+}
+
+export interface WaveformData {
+  points: WaveformPoint[];
+  sample_rate: number;
+  duration_secs: number;
+}
 
 // Stem types
-export const STEM_TYPES = ['drums', 'bass', 'other', 'vocals'] as const;
-export type StemType = typeof STEM_TYPES[number];
-
-export const STEM_COLORS: Record<StemType, string> = {
-  drums: '#FF6B6B',
-  bass: '#4ECDC4',
-  other: '#FFE66D',
-  vocals: '#95E1D3',
-};
+export type StemType = 'drums' | 'bass' | 'other' | 'vocals';
 
 export const STEM_DEFAULT_NAMES: Record<StemType, string> = {
   drums: 'Drums',
@@ -23,140 +49,115 @@ export const STEM_DEFAULT_NAMES: Record<StemType, string> = {
   vocals: 'Vocals',
 };
 
-// DJ Software presets
-export const DJ_SOFTWARE_PRESETS = [
-  'traktor',
-  'rekordbox',
-  'serato',
-  'mixxx',
-  'djay',
-  'virtualdj',
-] as const;
-export type DJSoftwarePreset = typeof DJ_SOFTWARE_PRESETS[number];
-
-// Stem order per DJ software
-export const STEM_ORDERS: Record<DJSoftwarePreset, StemType[]> = {
-  traktor: ['drums', 'bass', 'other', 'vocals'],
-  rekordbox: ['drums', 'bass', 'other', 'vocals'],
-  serato: ['vocals', 'drums', 'bass', 'other'],
-  mixxx: ['drums', 'bass', 'other', 'vocals'],
-  djay: ['drums', 'bass', 'other', 'vocals'],
-  virtualdj: ['vocals', 'drums', 'bass', 'other'],
+export const STEM_COLORS: Record<StemType, string> = {
+  drums: '#FF6B6B',
+  bass: '#4ECDC4',
+  other: '#FFE66D',
+  vocals: '#95E1D3',
 };
 
-// AI Models
-export const AI_MODELS = [
-  { id: 'bs_roformer', name: 'BS RoFormer', quality: 'high', speed: 'medium' },
-  { id: 'htdemucs', name: 'HTDemucs', quality: 'high', speed: 'slow' },
-  { id: 'htdemucs_ft', name: 'HTDemucs (fine-tuned)', quality: 'highest', speed: 'slow' },
-  { id: 'demucs', name: 'Demucs v4', quality: 'medium', speed: 'fast' },
-] as const;
-export type AIModelId = typeof AI_MODELS[number]['id'];
-
-// Processing device
-export const PROCESSING_DEVICES = ['cuda', 'mps', 'cpu'] as const;
-export type ProcessingDevice = typeof PROCESSING_DEVICES[number];
-
-// Output formats
-export const OUTPUT_FORMATS = ['alac', 'aac'] as const;
-export type OutputFormat = typeof OUTPUT_FORMATS[number];
-
-// Quality presets
-export const QUALITY_PRESETS = ['draft', 'standard', 'master'] as const;
-export type QualityPreset = typeof QUALITY_PRESETS[number];
-
-// Job status
-export const JOB_STATUSES = [
-  'pending',
-  'converting',
-  'separating',
-  'encoding',
-  'packing',
-  'tagging',
-  'completed',
-  'failed',
-] as const;
-export type JobStatus = typeof JOB_STATUSES[number];
-
-// Inference providers
-export const INFERENCE_PROVIDERS = [
-  { id: 'local', name: 'Local (Your GPU/CPU)' },
-  { id: 'replicate', name: 'Replicate' },
-  { id: 'modal', name: 'Modal' },
-  { id: 'runpod', name: 'RunPod' },
-] as const;
-export type InferenceProviderId = typeof INFERENCE_PROVIDERS[number]['id'];
-
-// Theme
-export const THEMES = ['light', 'dark', 'system'] as const;
-export type Theme = typeof THEMES[number];
-
-// Audio file metadata
-export interface AudioFileMetadata {
-  path: string;
-  name: string;
-  size: number;
-  duration: number;
-  sampleRate: number;
-  bitDepth: number;
-  channels: number;
-  format: SupportedAudioFormat;
-  title?: string;
-  artist?: string;
-  album?: string;
-  year?: string;
-  bpm?: number;
-  key?: string;
-  genre?: string;
-  coverArt?: string;
-}
-
-// Stem data
 export interface Stem {
   id: string;
   type: StemType;
   name: string;
   color: string;
-  filePath?: string;
   volume: number;
   muted: boolean;
   solo: boolean;
+  file_path?: string;
 }
 
-// Processing job
+export interface NIStemMetadata {
+  version: string;
+  application: {
+    name: string;
+    version: string;
+    build: string;
+  };
+  stems: StemData[];
+  master: MasterData;
+  track?: TrackInfo;
+}
+
+export interface StemData {
+  name: string;
+  color: string;
+  file_path: string;
+}
+
+export interface MasterData {
+  name: string;
+  file_path: string;
+}
+
+export interface TrackInfo {
+  title?: string;
+  artist?: string;
+  album?: string;
+  year?: number;
+  genre?: string;
+  bpm?: number;
+  key?: string;
+  duration?: number;
+  cover_art?: string;
+}
+
+// DJ Software presets
+export type DJSoftware = 'traktor' | 'rekordbox' | 'serato' | 'mixxx' | 'djay' | 'virtualdj';
+
+export interface DJSoftwareInfo {
+  id: DJSoftware;
+  name: string;
+  codec: string;
+  stem_order: StemType[];
+}
+
+// AI Models
+export type AIModel = 'bs_roformer' | 'htdemucs' | 'htdemucs_ft' | 'demucs';
+
+export interface ModelInfo {
+  id: AIModel;
+  name: string;
+  description: string;
+  quality: 'draft' | 'standard' | 'master';
+  speed: 'fast' | 'medium' | 'slow';
+}
+
+// Inference Provider
+export type InferenceProvider = 'local' | 'replicate' | 'magnetic' | 'argilla';
+
+// Processing types
+export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+
 export interface ProcessingJob {
   id: string;
-  sourceFile: AudioFileMetadata;
-  outputPath: string;
-  status: JobStatus;
+  input_path: string;
+  output_path: string;
+  status: ProcessingStatus;
   progress: number;
-  progressMessage: string;
-  model: AIModelId;
-  device: ProcessingDevice;
-  outputFormat: OutputFormat;
-  djPreset: DJSoftwarePreset;
-  stems: Stem[];
+  model: AIModel;
+  dj_software: DJSoftware;
   error?: string;
-  createdAt: Date;
-  completedAt?: Date;
+  started_at?: string;
+  completed_at?: string;
+  stems?: Stem[];
 }
 
-// Processing settings
 export interface ProcessingSettings {
-  model: AIModelId;
-  device: ProcessingDevice;
-  outputFormat: OutputFormat;
-  qualityPreset: QualityPreset;
-  djPreset: DJSoftwarePreset;
-  inferenceProvider: InferenceProviderId;
-  customStemNames: Partial<Record<StemType, string>>;
-  customStemColors: Partial<Record<StemType, string>>;
-  outputDirectory: string;
-  individualStemExport: boolean;
-  extractCoverArt: boolean;
+  model: AIModel;
+  device: 'cpu' | 'cuda' | 'mps';
+  outputFormat: 'alac' | 'aac';
+  qualityPreset: 'draft' | 'standard' | 'master';
+  djPreset: DJSoftware;
+  inferenceProvider: InferenceProvider;
+  customStemColors: boolean;
+  normalizeAudio: boolean;
+  preserveOriginal: boolean;
+  cpuThreads: number;
+  gpuEnabled: boolean;
 }
 
-// Dependency status
+// Dependencies
 export interface DependencyStatus {
   ffmpeg: boolean;
   sox: boolean;
@@ -166,58 +167,54 @@ export interface DependencyStatus {
   models: boolean;
 }
 
-// Export preset
-export interface ExportPreset {
-  id: string;
-  name: string;
-  model: AIModelId;
-  outputFormat: OutputFormat;
-  qualityPreset: QualityPreset;
-  djPreset: DJSoftwarePreset;
-  individualStemExport: boolean;
-}
-
-// Processing history entry
-export interface HistoryEntry {
-  id: string;
-  sourcePath: string;
-  outputPath: string;
-  model: AIModelId;
-  djPreset: DJSoftwarePreset;
-  processedAt: Date;
-  duration: number;
-  fileSize: number;
-}
-
-// Tauri command types
-export interface CheckDependenciesResult {
+export interface DependenciesStatus {
   ffmpeg: boolean;
-  ffmpegVersion?: string;
+  ffmpeg_version?: string;
   sox: boolean;
-  soxVersion?: string;
+  sox_version?: string;
   python: boolean;
-  pythonVersion?: string;
+  python_version?: string;
   cuda: boolean;
   mps: boolean;
-  modelDirectory: string;
-  modelCount: number;
+  model_directory: string;
+  model_count: number;
 }
 
-export interface AudioInfoResult {
-  path: string;
+export interface CheckDependenciesResult {
+  ffmpeg: boolean;
+  ffmpeg_version?: string;
+  sox: boolean;
+  sox_version?: string;
+  python: boolean;
+  python_version?: string;
+  cuda: boolean;
+  mps: boolean;
+  model_directory: string;
+  model_count: number;
+}
+
+// App state
+export interface AppSettings {
+  theme: 'light' | 'dark' | 'system';
+  language: string;
+  default_model: AIModel;
+  default_dj_software: DJSoftware;
+  default_output_format: 'alac' | 'aac';
+  output_directory: string;
+  cpu_threads: number;
+  gpu_enabled: boolean;
+}
+
+// History
+export interface HistoryEntry {
+  id: string;
+  input_file: string;
+  output_file: string;
+  model: AIModel;
+  dj_software: DJSoftware;
+  created_at: string;
   duration: number;
-  sampleRate: number;
-  bitDepth: number;
-  channels: number;
-  format: string;
-  metadata: Record<string, string>;
-  coverArtPath?: string;
 }
 
-export interface SeparationProgress {
-  jobId: string;
-  stage: 'converting' | 'separating' | 'encoding' | 'packing' | 'tagging';
-  progress: number;
-  message: string;
-  stemType?: StemType;
-}
+// Theme type
+export type Theme = 'light' | 'dark' | 'system';
