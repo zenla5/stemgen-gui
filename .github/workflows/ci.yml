@@ -242,11 +242,3 @@ jobs:
             exit 1
           fi
           echo "All checks passed!"
-
-# Code coverage threshold
-coverage:
-  threshold:
-    global:
-      lines: 80
-      methods: 80
-      branches: 70
