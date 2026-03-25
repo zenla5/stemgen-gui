@@ -152,6 +152,118 @@ stemgen-gui/
 └── package.json
 ```
 
+## CI/CD Issues & Fixes
+
+The CI pipeline requires fixes for the following issues. Create a dedicated branch `fix/rust-backend` to address these:
+
+### 🔴 Critical: Rust Backend Compilation (58 errors)
+
+**Create a new branch:** `fix/rust-backend`
+
+**Issues to fix:**
+
+#### 1. Frontend Dist Missing
+```
+The `frontendDist` configuration is set to `"../dist"` but this path doesn't exist
+```
+**Fix:** Add `npm run build` step before `cargo build` in CI, or update `tauri.conf.json` to disable frontend validation.
+
+#### 2. Rubato API Changes
+```
+error[E0432]: unresolved import `rubato::InterpolationParameters`, `rubato::InterpolationType`
+```
+**Fix:** Update `src-tauri/src/audio/resampler.rs` to use new rubato API:
+- `InterpolationParameters` → `SincInterpolationParameters`
+- `InterpolationType` → `SincInterpolationType`
+- `SincFixedIn::new()` takes different arguments in newer versions
+
+#### 3. Lofty API Changes
+```
+error[E0432]: could not find `prelude` in `lofty`
+error[E0599]: no method named `properties` found
+error[E0599]: no method named `primary_tag` found
+```
+**Fix:** Update `src-tauri/src/commands/audio.rs`:
+- Add `use lofty::AudioFile;`
+- Add `use lofty::TaggedFileExt;`
+- Update method calls to match lofty v0.18 API
+
+#### 4. Symphonia API Changes
+```
+error[E0277]: trait `MediaSource` is not implemented for `BufReader<File>`
+error[E0599]: no method named `iter` found for `AudioPlanes`
+```
+**Fix:** Update `src-tauri/src/audio/decoder.rs`:
+- Use `File` directly instead of `BufReader<File>`
+- Fix `planes()` method calls for symphonia v0.5
+
+#### 5. Missing DB Commands
+```
+error[E0433]: could not find `get_processing_history` in `commands`
+error[E0433]: could not find `add_to_history` in `commands`
+```
+**Fix:** Implement missing commands in `src-tauri/src/commands/db.rs`:
+- `get_processing_history`
+- `add_to_history`
+- `get_settings`
+- `save_settings`
+
+#### 6. Missing Tracing Import
+```
+error: cannot find macro `info` in this scope
+```
+**Fix:** Add `use tracing::info;` to `src-tauri/src/commands/db.rs`
+
+#### 7. Private Module Exports
+```
+error[E0603]: module `waveform` is private
+error[E0603]: trait `Resampler` is private
+```
+**Fix:** Update visibility in `src-tauri/src/audio/mod.rs`:
+- Make `waveform` module public
+- Export `Resampler` trait properly
+
+#### 8. Various Unused Imports
+**Fix:** Remove unused imports across files:
+- `converter::*`, `waveform::*` in mod.rs
+- `error` in commands
+- `AppState`, `State` in mod.rs
+- `TrackInfo` in packer.rs
+- `mut` on `ordered_stems` variable
+
+#### 9. Variable Move Error
+```
+error[E0382]: borrow of moved value: `request.output_path`
+```
+**Fix:** Clone or borrow properly in `src-tauri/src/commands/separation.rs`
+
+#### 10. Build Step
+```
+frontendDist path doesn't exist
+```
+**Fix:** Add frontend build step:
+```yaml
+- name: Build frontend
+  run: npm run build
+
+- name: Build Rust backend
+  run: cd src-tauri && cargo build --release
+```
+
+### 🟡 Non-Critical: ESLint Configuration
+
+**Issues:** TypeScript parsing errors due to missing parser
+**Fix:** Already fixed - added `@typescript-eslint/parser` to `eslint.config.js`
+
+### 🟡 Non-Critical: Testing Library Missing
+
+**Issues:** `@testing-library/jest-dom` not in dependencies
+**Fix:** Already fixed - added to `package.json`:
+- `@testing-library/jest-dom`
+- `@testing-library/react`
+
+---
+
 ## Pending Features
 
 ### High Priority (P1)
