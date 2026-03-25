@@ -70,8 +70,8 @@ impl AudioResampler {
             output_frames,
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
-        // Process each channel using VecResampler trait
-        let resampled = resampler.process(&samples.samples, None)
+        // Process samples - use as_slice() to get &[f32] which implements AsRef<[f32]>
+        let resampled = resampler.process(samples.samples.as_slice(), None)
             .context("Failed to resample audio")?;
 
         // resampled is Vec<Vec<f32>>, one vector per channel
@@ -126,8 +126,8 @@ impl AudioResampler {
             target_frames,
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
-        // Process using VecResampler trait
-        let resampled = resampler.process(&samples.samples, None)
+        // Process using as_slice() to get &[f32]
+        let resampled = resampler.process(samples.samples.as_slice(), None)
             .context("Failed to resample audio")?;
 
         // Interleave channels
