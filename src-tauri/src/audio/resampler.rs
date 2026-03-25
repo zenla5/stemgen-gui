@@ -3,7 +3,7 @@
 //! Resamples audio to 44.1kHz (NI stem standard).
 
 use anyhow::{Context, Result};
-use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType};
+use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, Resampler};
 use tracing::{debug, info};
 
 use crate::audio::decoder::AudioSamples;
@@ -80,7 +80,7 @@ impl AudioResampler {
                 .map(|frame| frame[ch])
                 .collect();
             
-            // Resample
+            // Resample using the Resampler trait
             let resampled = resampler
                 .process(&channel_samples, false)
                 .context("Failed to resample audio")?;

@@ -2,10 +2,11 @@
 //! 
 //! Generates waveform data for visualization.
 
+use serde::{Deserialize, Serialize};
 use crate::audio::decoder::AudioSamples;
 
 /// Waveform data point
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WaveformPoint {
     pub min: f32,
     pub max: f32,

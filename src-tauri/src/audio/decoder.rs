@@ -3,7 +3,7 @@
 //! Supports MP3, FLAC, WAV, OGG, AAC, and more.
 
 use anyhow::{Context, Result};
-use symphonia::core::audio::{AudioBufferRef, SampleBuffer};
+use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
@@ -117,14 +117,12 @@ impl AudioDecoder {
             .make(codec_params, &decoder_opts)
             .context("Failed to create decoder")?;
 
+        // Get track format for buffer creation
+        let track_format = track.codec_params.clone();
+
         // Decode all packets
         let mut all_samples: Vec<f32> = Vec::new();
         let mut total_duration = 0.0f64;
-        
-        // Get the codec format for proper buffer allocation
-        let codec_format = track.codec_params.clone();
-        let spec = *codec_params.to_spec();
-        let mut sample_buf = SampleBuffer::<f32>::new(0, spec);
 
         loop {
             let packet = match format.next_packet() {
@@ -144,8 +142,9 @@ impl AudioDecoder {
             // Decode the packet
             match decoder.decode(&packet) {
                 Ok(decoded) => {
-                    // Create a new sample buffer for this frame
-                    sample_buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+                    // Get the format spec and create a sample buffer
+                    let spec = *decoded.spec();
+                    let mut sample_buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
                     sample_buf.copy_interleaved_ref(decoded);
                     
                     let samples = sample_buf.samples().to_vec();
