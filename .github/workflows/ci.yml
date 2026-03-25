@@ -44,17 +44,14 @@ jobs:
       
       - name: Lint
         run: npm run lint
-        continue-on-error: true
       
       - name: Run unit tests
         run: npm run test
-        continue-on-error: true
       
       - name: Run unit tests with coverage
         run: npm run test:coverage
         env:
           COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
-        continue-on-error: true
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -65,7 +62,6 @@ jobs:
           name: frontend-${{ matrix.os }}
           fail_ci_if_error: true
           verbose: true
-        continue-on-error: true
 
   # E2E tests
   e2e:
@@ -115,6 +111,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install frontend dependencies
+        run: npm ci
+      
+      - name: Build frontend
+        run: npm run build
+      
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
       
@@ -129,7 +137,10 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libwebkitgtk-6.0-dev \
             libglib2.0-dev \
-            libcairo2-dev
+            libcairo2-dev \
+            libssl-dev \
+            pkg-config \
+            libasound2-dev
       
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -138,17 +149,12 @@ jobs:
       
       - name: Check Rust formatting
         run: cd src-tauri && cargo fmt && cargo fmt --check
-        continue-on-error: true
       
       - name: Clippy linting
         run: cd src-tauri && cargo clippy -- -D warnings
-        continue-on-error: true
       
       - name: Build release
-        run: |
-          # Disable frontend validation since we're building Rust only
-          cd src-tauri && cargo build --release --verbose --config 'build.rustflags=["-C", "link-args=-Wl,--no-check-dynamic-section"]'
-        continue-on-error: true
+        run: cd src-tauri && cargo build --release --verbose
       
       - name: Run tests
         run: cd src-tauri && cargo test --verbose
@@ -227,6 +233,7 @@ jobs:
           
           # Note: Full integration tests require GUI environment
           echo "Integration test environment ready"
+        continue-on-error: true
 
   # Final check
   check:
