@@ -25,7 +25,7 @@ This document outlines the phased implementation plan for Stemgen-GUI, a free an
 - [x] README and documentation
 
 ### Remaining
-- [ ] Create app icons (icons folder)
+- [x] Create app icons (icons folder)
 - [ ] Initialize Tauri plugins (capabilities)
 - [ ] Add Playwright test config
 

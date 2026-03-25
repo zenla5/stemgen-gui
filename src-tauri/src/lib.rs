@@ -1,4 +1,10 @@
+//! Stemgen-GUI - Main library
+//! 
+//! A free and open source (FOSS) stem file generator for DJ software.
+
+mod audio;
 mod commands;
+mod stems;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -92,6 +98,8 @@ pub fn run() {
             commands::add_to_history,
             commands::get_settings,
             commands::save_settings,
+            commands::get_waveform_data,
+            commands::pack_stems,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
