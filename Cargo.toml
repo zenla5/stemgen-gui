@@ -6,6 +6,7 @@ members = ["src-tauri"]
 version = "0.1.0"
 authors = ["The Stemgen-GUI Contributors"]
 edition = "2021"
+rust-version = "1.70"
 license = "GPL-3.0"
 repository = "https://github.com/zenla5/stemgen-gui"
 homepage = "https://github.com/zenla5/stemgen-gui"
@@ -40,7 +41,7 @@ symphonia = { version = "0.5", features = ["all"] }
 hound = "3.5"
 rubato = "0.15"
 lodepng = "3"
- kira = "0.9"
+kira = "0.9"
 
 # MP4/Stem format
 mp4 = "0.14"
