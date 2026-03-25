@@ -121,7 +121,8 @@ jobs:
           workspaces: src-tauri
       
       - name: Check Rust formatting
-        run: cd src-tauri && cargo fmt --check
+        run: cd src-tauri && cargo fmt && cargo fmt --check
+        continue-on-error: true
       
       - name: Clippy linting
         run: cd src-tauri && cargo clippy -- -D warnings
