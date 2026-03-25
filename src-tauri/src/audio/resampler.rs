@@ -3,7 +3,7 @@
 //! Resamples audio to 44.1kHz (NI stem standard).
 
 use anyhow::{Context, Result};
-use rubato::{Resampler, SincFixedIn, InterpolationType, InterpolationParameters};
+use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, Resampler};
 use tracing::{debug, info};
 
 use crate::audio::decoder::AudioSamples;
@@ -14,7 +14,6 @@ pub const TARGET_SAMPLE_RATE: u32 = 44100;
 /// Audio resampler
 pub struct AudioResampler {
     target_sample_rate: u32,
-    sinc_resampler: Option<SincFixedIn<f32>>,
 }
 
 impl AudioResampler {
@@ -22,7 +21,6 @@ impl AudioResampler {
     pub fn new(target_sample_rate: u32) -> Self {
         Self {
             target_sample_rate,
-            sinc_resampler: None,
         }
     }
 
@@ -31,13 +29,48 @@ impl AudioResampler {
         Self::new(TARGET_SAMPLE_RATE)
     }
 
+    /// Deinterleave interleaved samples into channel-separated samples
+    fn deinterleave(samples: &[f32], num_channels: usize) -> Vec<Vec<f32>> {
+        let frames = samples.len() / num_channels;
+        
+        let mut deinterleaved: Vec<Vec<f32>> = vec![Vec::with_capacity(frames); num_channels];
+        
+        for frame in 0..frames {
+            for ch in 0..num_channels {
+                deinterleaved[ch].push(samples[frame * num_channels + ch]);
+            }
+        }
+        
+        deinterleaved
+    }
+
+    /// Interleave channel-separated samples back into interleaved format
+    fn interleave(channels: &[Vec<f32>]) -> Vec<f32> {
+        if channels.is_empty() {
+            return Vec::new();
+        }
+        
+        let num_channels = channels.len();
+        let frames = channels[0].len();
+        
+        let mut interleaved = Vec::with_capacity(frames * num_channels);
+        
+        for frame in 0..frames {
+            for ch in 0..num_channels {
+                interleaved.push(channels[ch][frame]);
+            }
+        }
+        
+        interleaved
+    }
+
     /// Resample audio to target sample rate
     pub fn resample(&mut self, samples: &AudioSamples) -> Result<AudioSamples> {
         let input_sample_rate = samples.sample_rate as f64;
         let output_sample_rate = self.target_sample_rate as f64;
 
         // If already at target rate, return as-is
-        if input_sample_rate == output_sample_rate {
+        if (input_sample_rate - output_sample_rate).abs() < f64::EPSILON {
             debug!("Audio already at target sample rate, skipping resampling");
             return Ok(samples.clone());
         }
@@ -50,46 +83,39 @@ impl AudioResampler {
         // Calculate resampling ratio
         let resample_ratio = output_sample_rate / input_sample_rate;
         
-        // Number of output samples
-        let input_frames = samples.samples.len() / samples.channels as usize;
+        // Number of input frames
+        let num_channels = samples.channels as usize;
+        let input_frames = samples.samples.len() / num_channels;
         let output_frames = (input_frames as f64 * resample_ratio).ceil() as usize;
         
         // Initialize resampler with parameters
         // Use a sinc resampler for high quality
-        let params = InterpolationParameters {
+        let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
-            interpolation: InterpolationType::Linear,
+            interpolation: SincInterpolationType::Linear,
             oversampling_factor: 256,
             window: rubato::WindowFunction::BlackmanHarris2,
         };
 
         let mut resampler = SincFixedIn::<f32>::new(
-            output_sample_rate / input_sample_rate,
+            resample_ratio,
+            0.5, // max_resample_ratio_relative
             params,
+            num_channels,
             output_frames,
-            samples.channels as usize,
-        );
+        ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
-        // Process each channel
-        let mut output_samples = Vec::with_capacity(output_frames * samples.channels as usize);
+        // Deinterleave the input samples (rubato expects Vec<Vec<f32>>)
+        let deinterleaved = Self::deinterleave(&samples.samples, num_channels);
         
-        for ch in 0..samples.channels as usize {
-            // Extract channel
-            let channel_samples: Vec<f32> = samples.samples
-                .chunks(samples.channels as usize)
-                .map(|frame| frame[ch])
-                .collect();
-            
-            // Resample
-            let resampled = resampler.process_single_channel(
-                &channel_samples,
-                std::num::NonZeroUsize::new(256).unwrap(),
-                false,
-            ).context("Failed to resample audio")?;
-            
-            output_samples.extend(resampled);
-        }
+        // Process samples - rubato expects Vec<Vec<f32>> (one channel per vector)
+        // Pass reference as required by the API
+        let resampled = resampler.process(&deinterleaved, None)
+            .context("Failed to resample audio")?;
+
+        // Reinterleave the output channels
+        let interleaved = Self::interleave(&resampled);
 
         info!(
             "Resampling complete: {} frames -> {} frames",
@@ -97,7 +123,7 @@ impl AudioResampler {
         );
 
         Ok(AudioSamples {
-            samples: output_samples,
+            samples: interleaved,
             sample_rate: self.target_sample_rate,
             channels: samples.channels,
         })
@@ -114,44 +140,37 @@ impl AudioResampler {
 
         // Calculate ratio
         let resample_ratio = output_sample_rate / input_sample_rate;
-        let input_frames = samples.samples.len() / samples.channels as usize;
+        let num_channels = samples.channels as usize;
         
         // Initialize resampler
-        let params = InterpolationParameters {
+        let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
-            interpolation: InterpolationType::Linear,
+            interpolation: SincInterpolationType::Linear,
             oversampling_factor: 256,
             window: rubato::WindowFunction::BlackmanHarris2,
         };
 
         let mut resampler = SincFixedIn::<f32>::new(
-            output_sample_rate / input_sample_rate,
+            resample_ratio,
+            0.5, // max_resample_ratio_relative
             params,
+            num_channels,
             target_frames,
-            samples.channels as usize,
-        );
+        ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
-        // Process each channel
-        let mut output_samples = Vec::with_capacity(target_frames * samples.channels as usize);
+        // Deinterleave the input samples
+        let deinterleaved = Self::deinterleave(&samples.samples, num_channels);
         
-        for ch in 0..samples.channels as usize {
-            let channel_samples: Vec<f32> = samples.samples
-                .chunks(samples.channels as usize)
-                .map(|frame| frame[ch])
-                .collect();
-            
-            let resampled = resampler.process_single_channel(
-                &channel_samples,
-                std::num::NonZeroUsize::new(256).unwrap(),
-                false,
-            ).context("Failed to resample audio")?;
-            
-            output_samples.extend(resampled);
-        }
+        // Process using the deinterleaved data (pass reference)
+        let resampled = resampler.process(&deinterleaved, None)
+            .context("Failed to resample audio")?;
+
+        // Reinterleave channels
+        let interleaved = Self::interleave(&resampled);
 
         Ok(AudioSamples {
-            samples: output_samples,
+            samples: interleaved,
             sample_rate: self.target_sample_rate,
             channels: samples.channels,
         })

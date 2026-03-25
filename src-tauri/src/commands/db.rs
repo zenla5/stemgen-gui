@@ -1,4 +1,26 @@
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, params, Result};
+use serde::{Deserialize, Serialize};
+use tauri::State;
+use tracing::info;
+use crate::AppState;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProcessingHistoryEntry {
+    pub id: String,
+    pub source_path: String,
+    pub output_path: String,
+    pub model: String,
+    pub dj_preset: String,
+    pub processed_at: String,
+    pub duration_ms: i64,
+    pub file_size: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SettingEntry {
+    pub key: String,
+    pub value: String,
+}
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     info!("Running database migrations");
@@ -39,5 +61,112 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     )?;
     
     info!("Database migrations complete");
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_processing_history(
+    state: State<'_, AppState>,
+    limit: Option<i64>,
+) -> Result<Vec<ProcessingHistoryEntry>, String> {
+    info!("Getting processing history");
+    
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(100);
+    
+    let mut stmt = conn
+        .prepare("SELECT id, source_path, output_path, model, dj_preset, processed_at, duration_ms, file_size FROM processing_history ORDER BY processed_at DESC LIMIT ?")
+        .map_err(|e| e.to_string())?;
+    
+    let entries = stmt
+        .query_map([limit], |row| {
+            Ok(ProcessingHistoryEntry {
+                id: row.get(0)?,
+                source_path: row.get(1)?,
+                output_path: row.get(2)?,
+                model: row.get(3)?,
+                dj_preset: row.get(4)?,
+                processed_at: row.get(5)?,
+                duration_ms: row.get(6)?,
+                file_size: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .collect();
+    
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn add_to_history(
+    state: State<'_, AppState>,
+    entry: ProcessingHistoryEntry,
+) -> Result<(), String> {
+    info!("Adding to processing history: {}", entry.id);
+    
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    conn.execute(
+        "INSERT OR REPLACE INTO processing_history (id, source_path, output_path, model, dj_preset, processed_at, duration_ms, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            entry.id,
+            entry.source_path,
+            entry.output_path,
+            entry.model,
+            entry.dj_preset,
+            entry.processed_at,
+            entry.duration_ms,
+            entry.file_size,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_settings(
+    state: State<'_, AppState>,
+) -> Result<Vec<SettingEntry>, String> {
+    info!("Getting settings");
+    
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM settings")
+        .map_err(|e| e.to_string())?;
+    
+    let entries = stmt
+        .query_map([], |row| {
+            Ok(SettingEntry {
+                key: row.get(0)?,
+                value: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .collect();
+    
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn save_settings(
+    state: State<'_, AppState>,
+    settings: Vec<SettingEntry>,
+) -> Result<(), String> {
+    info!("Saving settings");
+    
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    
+    for setting in settings {
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            params![setting.key, setting.value],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    
     Ok(())
 }

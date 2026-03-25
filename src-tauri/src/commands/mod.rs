@@ -3,9 +3,7 @@ pub mod audio;
 pub mod separation;
 
 use serde::{Deserialize, Serialize};
-use crate::AppState;
-use tauri::State;
-use tracing::{info, error};
+use tracing::info;
 
 // Re-export commands
 pub use audio::*;

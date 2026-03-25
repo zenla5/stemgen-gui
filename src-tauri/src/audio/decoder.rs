@@ -3,18 +3,15 @@
 //! Supports MP3, FLAC, WAV, OGG, AAC, and more.
 
 use anyhow::{Context, Result};
-use symphonia::core::audio::AudioBufferRef;
+use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 use tracing::{debug, info, warn};
-
-use crate::audio::resampler::Resampler;
 
 /// Supported audio formats
 const SUPPORTED_FORMATS: &[&str] = &[
@@ -72,7 +69,8 @@ impl AudioDecoder {
         let file = File::open(path)
             .with_context(|| format!("Failed to open audio file: {:?}", path))?;
         
-        let mss = MediaSourceStream::new(Box::new(BufReader::new(file)), Default::default());
+        // Use MediaSourceStream directly with the file
+        let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
         // Create the probe
         let mut hint = Hint::new();
@@ -103,13 +101,15 @@ impl AudioDecoder {
 
         let track_id = track.id;
         let codec_params = &track.codec_params;
+        let track_sample_rate = codec_params.sample_rate.unwrap_or(44100);
+        let track_channels = codec_params.channels.map(|c| c.count() as u8).unwrap_or(2);
         
         debug!("Track info: {:?}", track);
         debug!("Codec params: {:?}", codec_params);
 
         // Update sample rate and channels
-        self.sample_rate = codec_params.sample_rate.unwrap_or(44100);
-        self.channels = codec_params.channels.map(|c| c.count() as u8).unwrap_or(2);
+        self.sample_rate = track_sample_rate;
+        self.channels = track_channels;
 
         // Create the decoder
         let decoder_opts = DecoderOptions::default();
@@ -138,10 +138,15 @@ impl AudioDecoder {
 
             // Decode the packet
             match decoder.decode(&packet) {
-                Ok(audio_buf) => {
-                    let samples = Self::extract_samples(&audio_buf);
-                    let sample_count = samples.len() / self.channels as usize;
-                    total_duration += sample_count as f64 / self.sample_rate as f64;
+                Ok(decoded) => {
+                    // Get the format spec and create a sample buffer
+                    let spec = *decoded.spec();
+                    let mut sample_buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
+                    sample_buf.copy_interleaved_ref(decoded);
+                    
+                    let samples = sample_buf.samples().to_vec();
+                    let sample_count = samples.len();
+                    total_duration += sample_count as f64 / track_sample_rate as f64;
                     all_samples.extend(samples);
                 }
                 Err(e) => {
@@ -163,86 +168,6 @@ impl AudioDecoder {
             sample_rate: self.sample_rate,
             channels: self.channels,
         })
-    }
-
-    /// Extract samples from an AudioBufferRef
-    fn extract_samples(audio_buf: &AudioBufferRef) -> Vec<f32> {
-        match audio_buf {
-            AudioBufferRef::U8(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| (s as f32 - 128.0) / 128.0)
-                    .collect()
-            }
-            AudioBufferRef::U16(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 65535.0)
-                    .collect()
-            }
-            AudioBufferRef::U24(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| {
-                        let val = ((s[0] as i32) | ((s[1] as i32) << 8) | ((s[2] as i32) << 16)) << 8;
-                        val as f32 / 8388608.0
-                    })
-                    .collect()
-            }
-            AudioBufferRef::U32(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 4294967295.0)
-                    .collect()
-            }
-            AudioBufferRef::S8(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 128.0)
-                    .collect()
-            }
-            AudioBufferRef::S16(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 32768.0)
-                    .collect()
-            }
-            AudioBufferRef::S24(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| {
-                        let val = (s[0] as i32) | ((s[1] as i32) << 8) | ((s[2] as i32) << 16);
-                        val as f32 / 8388608.0
-                    })
-                    .collect()
-            }
-            AudioBufferRef::S32(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter())
-                    .map(|&s| s as f32 / 2147483648.0)
-                    .collect()
-            }
-            AudioBufferRef::F32(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().to_vec())
-                    .collect()
-            }
-            AudioBufferRef::F64(buf) => {
-                buf.planes()
-                    .iter()
-                    .flat_map(|plane| plane.as_slice().iter().map(|&s| s as f32).to_vec())
-                    .collect()
-            }
-        }
     }
 
     /// Get the sample rate

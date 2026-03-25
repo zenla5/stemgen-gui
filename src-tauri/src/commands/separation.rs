@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tracing::{info, error};
+use tracing::info;
 use crate::audio::{AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
-use crate::audio::waveform::WaveformData;
+use crate::audio::waveform::WaveformPoint;
 use crate::stems::{StemPacker, StemType, DJSoftware, OutputFormat};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -25,13 +25,6 @@ pub struct WaveformResponse {
     pub points: Vec<WaveformPoint>,
     pub sample_rate: u32,
     pub duration_secs: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WaveformPoint {
-    pub min: f32,
-    pub max: f32,
-    pub rms: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -99,7 +92,7 @@ pub async fn get_models() -> Result<Vec<String>, String> {
 #[tauri::command]
 pub async fn download_model(
     model_id: String,
-    window: tauri::Window,
+    _window: tauri::Window,
 ) -> Result<(), String> {
     info!("Downloading model: {}", model_id);
     
@@ -201,9 +194,10 @@ pub async fn pack_stems(
         .map_err(|e| e.to_string())?;
     
     // Return response
+    let output_path_clone = request.output_path.clone();
     Ok(PackStemsResponse {
         success: true,
-        output_path: request.output_path,
+        output_path: output_path_clone,
         metadata_path: Some(format!("{}.metadata.json", request.output_path)),
     })
 }

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use lofty::prelude::*;
+use lofty::{AudioFile, TaggedFileExt, Accessor};
 use std::path::Path;
-use tracing::{info, error};
+use tracing::info;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AudioInfo {
