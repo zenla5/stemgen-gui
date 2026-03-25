@@ -48,7 +48,7 @@ hound.workspace = true
 rubato.workspace = true
 
 # MP4/Stem format
-mp4 = "0.14"
+mp4.workspace = true
 
 [features]
 default = ["custom-protocol"]
@@ -57,10 +57,3 @@ devtools = ["tauri/devtools"]
 
 [profile.dev]
 incremental = true
-
-[profile.release]
-panic = "abort"
-codegen-units = 1
-lto = true
-opt-level = "z"
-strip = true
