@@ -50,14 +50,14 @@ Download the latest release for your platform:
 
 #### Prerequisites
 
-- Node.js 20+
-- Rust 1.75+
-- FFmpeg
-- SoX
-- Python 3.9+ (for AI models)
-- CUDA (optional, for GPU acceleration)
+- **Node.js** 20+
+- **Rust** 1.70+ (with `cargo`)
+- **FFmpeg** - Audio/video processing
+- **SoX** - Audio format conversion
+- **Python** 3.9+ (for AI models)
+- **CUDA** (optional, for GPU acceleration on NVIDIA)
 
-#### Steps
+#### Quick Start
 
 ```bash
 # Clone the repository
@@ -67,7 +67,20 @@ cd stemgen-gui
 # Install dependencies
 npm install
 
-# Build the app
+# Run type check and lint
+npm run check
+npm run lint
+
+# Run tests
+npm run test
+
+# Start development server (frontend only)
+npm run dev
+
+# Start with Tauri (full app, requires Rust)
+npm run tauri:dev
+
+# Build for production
 npm run tauri:build
 ```
 
@@ -83,7 +96,34 @@ npm run tauri:build
 
 5. **Export** - The `.stem.mp4` file will be created alongside the original
 
-## Architecture
+## Development
+
+### Available Scripts
+
+```bash
+# Development
+npm run dev              # Start frontend dev server
+npm run tauri:dev       # Start with Tauri (requires Rust)
+
+# Building
+npm run build           # Build frontend
+npm run tauri:build     # Build Tauri app
+
+# Quality checks
+npm run check           # TypeScript type check
+npm run lint            # ESLint linting
+npm run lint:fix        # Auto-fix lint issues
+npm run format          # Prettier formatting
+
+# Testing
+npm run test            # Unit tests
+npm run test:watch      # Watch mode
+npm run test:coverage    # With coverage report
+npm run test:e2e        # E2E tests (requires app running)
+npm run test:e2e:ui     # E2E tests with UI
+```
+
+### Architecture
 
 The application is built with:
 
@@ -92,28 +132,51 @@ The application is built with:
 - **TypeScript** - Type-safe frontend code
 - **Rust** - High-performance backend
 - **Python sidecar** - AI model inference (demucs/bs_roformer)
+- **Tailwind CSS** - Styling
+- **Zustand** - State management
+- **Vitest** - Unit testing
+- **Playwright** - E2E testing
 
-## Development
+### Project Structure
 
-```bash
-# Start development server
-npm run tauri:dev
-
-# Run tests
-npm run test          # Unit tests
-npm run test:e2e     # E2E tests
-npm run test:coverage # With coverage report
-
-# Lint and format
-npm run lint          # Lint frontend
-cargo clippy         # Lint backend
-npm run format       # Format frontend
-cargo fmt           # Format backend
 ```
+stemgen-gui/
+├── src/                      # React frontend
+│   ├── components/           # React components
+│   │   ├── ui/             # shadcn/ui components
+│   │   ├── layout/         # AppShell, Sidebar, Header
+│   │   ├── file-browser/   # File selection & drag-drop
+│   │   ├── processing/     # Processing queue
+│   │   ├── mixer/          # Stem mixer
+│   │   └── settings/      # Settings panel
+│   ├── hooks/               # Custom React hooks
+│   ├── stores/              # Zustand stores
+│   ├── lib/                 # Utilities and types
+│   └── __tests__/          # Tests
+├── src-tauri/               # Rust backend
+│   └── src/
+│       ├── audio/           # Audio processing
+│       ├── stems/           # NI stem packing
+│       └── commands/       # Tauri IPC commands
+├── python/                  # Python sidecar
+├── .github/workflows/       # CI/CD pipelines
+└── package.json
+```
+
+## CI/CD
+
+The project uses GitHub Actions for CI/CD:
+
+- **Frontend checks** (3 OSes) - Type check, lint, tests
+- **Backend checks** (Linux) - Clippy, tests
+- **Security audit** - npm audit, cargo audit
+- **Release builds** - Windows, macOS (Intel + ARM), Linux
+
+See `.github/workflows/` for details.
 
 ## Contributing
 
-Contributions are welcome! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please read our guidelines and submit PRs.
 
 ## License
 
