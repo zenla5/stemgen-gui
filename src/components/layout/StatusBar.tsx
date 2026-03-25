@@ -1,6 +1,6 @@
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
-import { CheckCircle, XCircle, AlertCircle, Cpu, CpuIcon } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle, Cpu } from 'lucide-react';
 
 export function StatusBar() {
   const { dependencies, dependenciesChecked, audioFiles, jobs } = useAppStore();

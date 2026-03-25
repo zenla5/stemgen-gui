@@ -7,7 +7,7 @@ import { useHealthCheck } from './hooks/useHealthCheck';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 function App() {
-  const { theme, setTheme } = useSettingsStore();
+  const { theme } = useSettingsStore();
   const { checkDependencies } = useAppStore();
 
   // Health check hook

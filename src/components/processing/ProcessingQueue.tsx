@@ -1,16 +1,10 @@
-import { Play, Pause, Trash2, RefreshCw, Music, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Play, Trash2, Music, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import type { ProcessingJob, ProcessingStatus } from '@/lib/types';
 
 export function ProcessingQueue() {
   const { jobs, removeJob, clearJobs, selectedFile } = useAppStore();
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">

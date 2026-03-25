@@ -1,7 +1,6 @@
 import { Volume2, VolumeX, Headphones, RefreshCw } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
-import { STEM_COLORS } from '@/lib/constants';
 
 export function StemMixer() {
   const { currentStems, updateStem, resetStemMixer } = useAppStore();

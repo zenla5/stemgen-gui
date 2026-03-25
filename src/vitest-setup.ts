@@ -6,7 +6,6 @@ vi.mock('@tauri-apps/api', () => ({
   invoke: vi.fn(),
   emit: vi.fn(),
   listen: vi.fn(),
-  ...jest.requireActual('@tauri-apps/api'),
 }));
 
 // Mock window.matchMedia
@@ -53,9 +52,9 @@ class MockMediaElement {
 }
 
 global.AudioContext = MockAudioContext as unknown as typeof AudioContext;
-global.AudioBufferSourceNode = {} as AudioBufferSourceNode;
-global.MediaElementAudioSourceNode = {} as MediaElementAudioSourceNode;
-global.HTMLAudioElement = MockMediaElement as unknown as typeof HTMLAudioElement;
+(global as Record<string, unknown>)['AudioBufferSourceNode'] = {};
+(global as Record<string, unknown>)['MediaElementAudioSourceNode'] = MockMediaElement;
+(global as Record<string, unknown>)['HTMLAudioElement'] = MockMediaElement;
 
 // Mock HTMLMediaElement methods
 Object.defineProperty(HTMLMediaElement.prototype, 'duration', {

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 // Test suite for Stemgen-GUI E2E tests
 
@@ -120,10 +120,6 @@ test.describe('Processing Queue', () => {
 test.describe('Keyboard Shortcuts', () => {
   test('should toggle sidebar with Ctrl+B', async ({ page }) => {
     await page.goto('/');
-    
-    // Get initial sidebar visibility
-    const sidebar = page.locator('nav, aside, [class*="sidebar"]');
-    const initialVisible = await sidebar.first().isVisible();
     
     // Press Ctrl+B
     await page.keyboard.press('Control+b');

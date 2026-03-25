@@ -1,4 +1,4 @@
-import { Music, ListMusic, Sliders, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Music, ListMusic, Sliders, Settings } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 

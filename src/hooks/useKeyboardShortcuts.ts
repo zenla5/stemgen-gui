@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 
 export function useKeyboardShortcuts() {
-  const { setActiveView, toggleSidebar, audioFiles, addJob } = useAppStore();
+  const { setActiveView, toggleSidebar } = useAppStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

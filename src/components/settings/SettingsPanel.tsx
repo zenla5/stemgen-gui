@@ -3,7 +3,6 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
 import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-import type { AIModel, DJSoftware } from '@/lib/types';
 
 export function SettingsPanel() {
   const settings = useSettingsStore();
