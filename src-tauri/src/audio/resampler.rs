@@ -29,13 +29,49 @@ impl AudioResampler {
         Self::new(TARGET_SAMPLE_RATE)
     }
 
+    /// Deinterleave interleaved samples into channel-separated samples
+    fn deinterleave(samples: &[f32], channels: u16) -> Vec<Vec<f32>> {
+        let num_channels = channels as usize;
+        let frames = samples.len() / num_channels;
+        
+        let mut deinterleaved: Vec<Vec<f32>> = vec![Vec::with_capacity(frames); num_channels];
+        
+        for frame in 0..frames {
+            for ch in 0..num_channels {
+                deinterleaved[ch].push(samples[frame * num_channels + ch]);
+            }
+        }
+        
+        deinterleaved
+    }
+
+    /// Interleave channel-separated samples back into interleaved format
+    fn interleave(channels: &[Vec<f32>]) -> Vec<f32> {
+        if channels.is_empty() {
+            return Vec::new();
+        }
+        
+        let num_channels = channels.len();
+        let frames = channels[0].len();
+        
+        let mut interleaved = Vec::with_capacity(frames * num_channels);
+        
+        for frame in 0..frames {
+            for ch in 0..num_channels {
+                interleaved.push(channels[ch][frame]);
+            }
+        }
+        
+        interleaved
+    }
+
     /// Resample audio to target sample rate
     pub fn resample(&mut self, samples: &AudioSamples) -> Result<AudioSamples> {
         let input_sample_rate = samples.sample_rate as f64;
         let output_sample_rate = self.target_sample_rate as f64;
 
         // If already at target rate, return as-is
-        if input_sample_rate == output_sample_rate {
+        if (input_sample_rate - output_sample_rate).abs() < f64::EPSILON {
             debug!("Audio already at target sample rate, skipping resampling");
             return Ok(samples.clone());
         }
@@ -48,7 +84,7 @@ impl AudioResampler {
         // Calculate resampling ratio
         let resample_ratio = output_sample_rate / input_sample_rate;
         
-        // Number of output samples
+        // Number of input frames
         let input_frames = samples.samples.len() / samples.channels as usize;
         let output_frames = (input_frames as f64 * resample_ratio).ceil() as usize;
         
@@ -62,7 +98,7 @@ impl AudioResampler {
             window: rubato::WindowFunction::BlackmanHarris2,
         };
 
-        let resampler = SincFixedIn::<f32>::new(
+        let mut resampler = SincFixedIn::<f32>::new(
             resample_ratio,
             output_sample_rate / input_sample_rate,
             params,
@@ -70,20 +106,15 @@ impl AudioResampler {
             output_frames,
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
-        // Process samples - use as_slice() to get &[f32] which implements AsRef<[f32]>
-        let resampled = resampler.process(samples.samples.as_slice(), None)
+        // Deinterleave the input samples (rubato expects Vec<Vec<f32>>)
+        let deinterleaved = Self::deinterleave(&samples.samples, samples.channels);
+        
+        // Process samples - rubato expects Vec<Vec<f32>> (one channel per vector)
+        let resampled = resampler.process(deinterleaved, None)
             .context("Failed to resample audio")?;
 
-        // resampled is Vec<Vec<f32>>, one vector per channel
-        // We need to interleave the channels back into a single vector
-        let num_channels = samples.channels as usize;
-        let mut interleaved = Vec::with_capacity(resampled[0].len() * num_channels);
-        
-        for frame_idx in 0..resampled[0].len() {
-            for ch in 0..num_channels {
-                interleaved.push(resampled[ch][frame_idx]);
-            }
-        }
+        // Reinterleave the output channels
+        let interleaved = Self::interleave(&resampled);
 
         info!(
             "Resampling complete: {} frames -> {} frames",
@@ -118,7 +149,7 @@ impl AudioResampler {
             window: rubato::WindowFunction::BlackmanHarris2,
         };
 
-        let resampler = SincFixedIn::<f32>::new(
+        let mut resampler = SincFixedIn::<f32>::new(
             resample_ratio,
             output_sample_rate / input_sample_rate,
             params,
@@ -126,19 +157,15 @@ impl AudioResampler {
             target_frames,
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
-        // Process using as_slice() to get &[f32]
-        let resampled = resampler.process(samples.samples.as_slice(), None)
+        // Deinterleave the input samples
+        let deinterleaved = Self::deinterleave(&samples.samples, samples.channels);
+        
+        // Process using the deinterleaved data
+        let resampled = resampler.process(deinterleaved, None)
             .context("Failed to resample audio")?;
 
-        // Interleave channels
-        let num_channels = samples.channels as usize;
-        let mut interleaved = Vec::with_capacity(resampled[0].len() * num_channels);
-        
-        for frame_idx in 0..resampled[0].len() {
-            for ch in 0..num_channels {
-                interleaved.push(resampled[ch][frame_idx]);
-            }
-        }
+        // Reinterleave channels
+        let interleaved = Self::interleave(&resampled);
 
         Ok(AudioSamples {
             samples: interleaved,
