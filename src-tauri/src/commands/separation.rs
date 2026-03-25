@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::info;
 use crate::audio::{AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
-use crate::audio::waveform::{WaveformData, WaveformPoint};
+use crate::audio::waveform::WaveformPoint;
 use crate::stems::{StemPacker, StemType, DJSoftware, OutputFormat};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

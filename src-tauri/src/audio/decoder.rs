@@ -117,9 +117,6 @@ impl AudioDecoder {
             .make(codec_params, &decoder_opts)
             .context("Failed to create decoder")?;
 
-        // Get track format for buffer creation
-        let track_format = track.codec_params.clone();
-
         // Decode all packets
         let mut all_samples: Vec<f32> = Vec::new();
         let mut total_duration = 0.0f64;

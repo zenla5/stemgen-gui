@@ -70,22 +70,19 @@ impl AudioResampler {
             output_frames,
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
-        // Process each channel
-        let mut output_samples = Vec::with_capacity(output_frames * samples.channels as usize);
+        // Process each channel using VecResampler trait
+        let resampled = resampler.process(&samples.samples, None)
+            .context("Failed to resample audio")?;
+
+        // resampled is Vec<Vec<f32>>, one vector per channel
+        // We need to interleave the channels back into a single vector
+        let num_channels = samples.channels as usize;
+        let mut interleaved = Vec::with_capacity(resampled[0].len() * num_channels);
         
-        for ch in 0..samples.channels as usize {
-            // Extract channel
-            let channel_samples: Vec<f32> = samples.samples
-                .chunks(samples.channels as usize)
-                .map(|frame| frame[ch])
-                .collect();
-            
-            // Resample using the Resampler trait
-            let resampled = resampler
-                .process(&channel_samples, false)
-                .context("Failed to resample audio")?;
-            
-            output_samples.extend(resampled);
+        for frame_idx in 0..resampled[0].len() {
+            for ch in 0..num_channels {
+                interleaved.push(resampled[ch][frame_idx]);
+            }
         }
 
         info!(
@@ -94,7 +91,7 @@ impl AudioResampler {
         );
 
         Ok(AudioSamples {
-            samples: output_samples,
+            samples: interleaved,
             sample_rate: self.target_sample_rate,
             channels: samples.channels,
         })
@@ -129,24 +126,22 @@ impl AudioResampler {
             target_frames,
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
-        // Process each channel
-        let mut output_samples = Vec::with_capacity(target_frames * samples.channels as usize);
+        // Process using VecResampler trait
+        let resampled = resampler.process(&samples.samples, None)
+            .context("Failed to resample audio")?;
+
+        // Interleave channels
+        let num_channels = samples.channels as usize;
+        let mut interleaved = Vec::with_capacity(resampled[0].len() * num_channels);
         
-        for ch in 0..samples.channels as usize {
-            let channel_samples: Vec<f32> = samples.samples
-                .chunks(samples.channels as usize)
-                .map(|frame| frame[ch])
-                .collect();
-            
-            let resampled = resampler
-                .process(&channel_samples, false)
-                .context("Failed to resample audio")?;
-            
-            output_samples.extend(resampled);
+        for frame_idx in 0..resampled[0].len() {
+            for ch in 0..num_channels {
+                interleaved.push(resampled[ch][frame_idx]);
+            }
         }
 
         Ok(AudioSamples {
-            samples: output_samples,
+            samples: interleaved,
             sample_rate: self.target_sample_rate,
             channels: samples.channels,
         })
