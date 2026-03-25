@@ -1,0 +1,115 @@
+{
+  "app": {
+    "name": "Stemgen GUI",
+    "version": "v{{version}}"
+  },
+  "nav": {
+    "files": "Files",
+    "queue": "Queue",
+    "mixer": "Mixer",
+    "settings": "Settings",
+    "history": "History",
+    "models": "Models"
+  },
+  "files": {
+    "title": "Audio Files",
+    "openFolder": "Open Folder",
+    "clearAll": "Clear All",
+    "dropzone": {
+      "title": "Drag & drop audio files",
+      "subtitle": "Supports MP3, FLAC, WAV, OGG, AIFF, M4A, AAC",
+      "dropping": "Drop audio files here"
+    },
+    "table": {
+      "name": "Name",
+      "duration": "Duration",
+      "format": "Format",
+      "size": "Size",
+      "sampleRate": "Sample Rate",
+      "actions": "Actions"
+    }
+  },
+  "queue": {
+    "title": "Processing Queue",
+    "startProcessing": "Start Processing",
+    "stopProcessing": "Stop",
+    "clearAll": "Clear All",
+    "empty": {
+      "title": "No jobs in queue",
+      "subtitle": "Add audio files to start processing"
+    },
+    "status": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "completed": "Completed",
+      "failed": "Failed"
+    }
+  },
+  "mixer": {
+    "title": "Stem Mixer",
+    "soloAll": "Solo All",
+    "unmuteAll": "Unmute All",
+    "reset": "Reset",
+    "stems": {
+      "drums": "Drums",
+      "bass": "Bass",
+      "other": "Other",
+      "vocals": "Vocals"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "aiModel": {
+      "title": "AI Model",
+      "description": "Select the stem separation model"
+    },
+    "djSoftware": {
+      "title": "DJ Software",
+      "description": "Choose your DJ software for optimal stem format"
+    },
+    "outputFormat": {
+      "title": "Output Format",
+      "description": "Choose the audio encoding format"
+    },
+    "quality": {
+      "title": "Quality Preset",
+      "description": "Balance between speed and quality"
+    },
+    "performance": {
+      "title": "Performance",
+      "description": "Number of files to process simultaneously"
+    },
+    "outputDirectory": {
+      "title": "Output Directory",
+      "description": "Where to save processed files"
+    }
+  },
+  "status": {
+    "ready": "Ready",
+    "checkingDependencies": "Checking dependencies...",
+    "someDependenciesMissing": "Some dependencies missing"
+  },
+  "dependencies": {
+    "ffmpeg": "FFmpeg",
+    "python": "Python",
+    "models": "Models",
+    "cuda": "CUDA",
+    "mps": "MPS",
+    "cpu": "CPU"
+  },
+  "models": {
+    "bs_roformer": "BS RoFormer",
+    "htdemucs": "HTDemucs",
+    "htdemucs_ft": "HTDemucs (fine-tuned)",
+    "demucs": "Demucs v4"
+  },
+  "quality": {
+    "draft": "Draft",
+    "standard": "Standard",
+    "master": "Master"
+  },
+  "format": {
+    "alac": "ALAC (Lossless)",
+    "aac": "AAC (Compressed)"
+  }
+}

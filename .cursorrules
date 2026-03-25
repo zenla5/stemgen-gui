@@ -1,0 +1,194 @@
+# Stemgen-GUI Cursor Rules
+
+This file contains AI agent instructions for working on the Stemgen-GUI project.
+
+## Project Overview
+
+Stemgen-GUI is a free and open source (FOSS) desktop application that converts audio files (MP3, FLAC, WAV, OGG, etc.) into `.stem.mp4` files for use with DJ software like Traktor, rekordbox, Serato DJ, Mixxx, djay, and VirtualDJ.
+
+## Tech Stack
+
+- **Tauri v2** - Desktop shell (Rust)
+- **React 18** - Frontend UI
+- **TypeScript** - Type-safe frontend
+- **Rust** - High-performance backend
+- **Python sidecar** - AI model inference (demucs/bs_roformer)
+- **Tailwind CSS** - Styling
+- **Zustand** - State management
+
+## Directory Structure
+
+```
+stemgen-gui/
+├── src/                    # React frontend
+│   ├── components/         # React components
+│   │   ├── ui/            # shadcn/ui components
+│   │   ├── layout/        # AppShell, Sidebar, Header
+│   │   ├── file-browser/  # File selection & drag-drop
+│   │   ├── processing/    # Processing queue
+│   │   ├── mixer/         # Stem mixer
+│   │   └── settings/      # Settings panel
+│   ├── hooks/             # Custom React hooks
+│   ├── stores/            # Zustand stores
+│   ├── lib/               # Utilities and types
+│   └── i18n/              # Internationalization
+├── src-tauri/             # Rust backend
+│   └── src/
+│       ├── commands/      # Tauri IPC commands
+│       ├── lib.rs         # Main entry
+│       └── main.rs        # Binary entry
+├── .github/workflows/     # CI/CD pipelines
+└── package.json
+```
+
+## Key Implementation Details
+
+### 1. Audio Processing Pipeline
+
+The processing pipeline follows these steps:
+1. **Ingest** - Decode audio file, extract metadata/cover art
+2. **Convert** - Resample to 44.1kHz, normalize bit depth
+3. **Separate** - Run AI model (bs_roformer/demucs) → 4 stems
+4. **Preview** - Optional: user previews/mixes stems
+5. **Encode** - Encode stems to ALAC/AAC
+6. **Pack** - Create .stem.mp4 container with NI stem format
+7. **Tag** - Write metadata (title, artist, BPM, key, cover, colors)
+
+### 2. NI Stem Format
+
+The `.stem.mp4` format is based on MP4 with specific atoms:
+- 5 audio tracks (master + 4 stems)
+- NI stem metadata JSON atom
+- Specific stem ordering per DJ software
+
+### 3. AI Models
+
+Available models:
+- `bs_roformer` - High quality, medium speed
+- `htdemucs` - High quality, slow
+- `htdemucs_ft` - Highest quality, slow
+- `demucs` - Medium quality, fast
+
+### 4. DJ Software Presets
+
+Each DJ software has specific requirements:
+
+| Software | Stem Order | Codec | Notes |
+|----------|-----------|-------|-------|
+| Traktor | drums, bass, other, vocals | ALAC/AAC | Native NI format |
+| rekordbox | drums, bass, other, vocals | AAC | Pioneer format |
+| Serato | vocals, drums, bass, other | AAC | Different order |
+| Mixxx | drums, bass, other, vocals | ALAC/AAC | Open source |
+| djay | drums, bass, other, vocals | AAC | Algoriddim |
+| VirtualDJ | vocals, drums, bass, other | AAC | Atomix |
+
+### 5. Stem Colors (NI-Compatible)
+
+```typescript
+const STEM_COLORS = {
+  drums: '#FF6B6B',  // Red
+  bass: '#4ECDC4',    // Teal
+  other: '#FFE66D',  // Yellow
+  vocals: '#95E1D3', // Mint green
+};
+```
+
+## Coding Guidelines
+
+### TypeScript
+- Use strict TypeScript with no implicit any
+- Prefer `interface` over `type` for object shapes
+- Use `import type` for type-only imports
+- Follow existing patterns in `src/lib/types.ts`
+
+### React Components
+- Use functional components with hooks
+- Follow shadcn/ui component patterns
+- Keep components small and focused
+- Use proper TypeScript types for props
+
+### Rust Backend
+- Use `thiserror` for error handling
+- Follow Rust idioms and best practices
+- Use tracing for logging
+- Keep commands in `src-tauri/src/commands/`
+
+### CSS/Tailwind
+- Use Tailwind utility classes
+- Follow shadcn/ui theming system
+- Support dark/light mode via CSS variables
+- Use `cn()` utility for class merging
+
+## Testing Requirements
+
+All new features must include:
+1. **Unit tests** - Vitest for frontend, cargo test for backend
+2. **Coverage threshold** - 80% minimum line coverage
+3. **E2E tests** - Playwright for critical user flows
+4. **Integration tests** - Test full pipeline when possible
+
+## Common Commands
+
+```bash
+# Development
+npm run tauri:dev     # Start with Tauri
+npm run dev           # Frontend only
+
+# Building
+npm run tauri:build   # Production build
+npm run build         # Frontend build
+
+# Testing
+npm run test          # Unit tests
+npm run test:e2e     # E2E tests
+npm run test:coverage # With coverage
+
+# Linting
+npm run lint          # Frontend lint
+cargo clippy         # Backend lint
+```
+
+## Important Notes
+
+### Dependencies
+The app requires these system dependencies:
+- FFmpeg - Audio/video processing
+- SoX - Audio format conversion
+- Python 3.9+ - For AI model inference
+- CUDA (optional) - GPU acceleration
+
+### GPU Acceleration
+- **Windows**: CUDA via NVIDIA GPU
+- **macOS**: MPS via Apple Silicon
+- **Linux**: CUDA via NVIDIA GPU
+
+### Database
+Uses SQLite for:
+- Processing history
+- User settings
+- Export presets
+
+## Architecture Decisions
+
+### Why Tauri v2?
+- Small binaries (~5MB vs ~150MB Electron)
+- Native performance
+- Built-in plugins for dialogs, notifications, updater
+- Cross-platform support
+
+### Why Python Sidecar?
+- AI models only available in Python
+- Managed subprocess with health checks
+- Graceful restart capability
+
+### Why Rust Native Packing?
+- Eliminate Python dependency for final step
+- Better performance
+- Cleaner dependency tree
+
+## Future Considerations
+
+- Plugin system for community extensions
+- Remote GPU server support
+- Real-time stem separation (already in upstream)
+- WebAssembly audio processing
