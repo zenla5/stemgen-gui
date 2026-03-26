@@ -1,5 +1,6 @@
 pub mod db;
 pub mod audio;
+pub mod models;
 pub mod separation;
 pub mod sidecar;
 
@@ -7,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 pub use audio::*;
-pub use separation::*;
 pub use db::*;
+pub use models::*;
 pub use sidecar::*;
 
 /// Check if Python and required AI libraries are available

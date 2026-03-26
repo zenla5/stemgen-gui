@@ -126,7 +126,6 @@ pub fn run() {
             commands::start_separation,
             commands::cancel_separation,
             commands::get_models,
-            commands::download_model,
             commands::get_processing_history,
             commands::add_to_history,
             commands::get_settings,

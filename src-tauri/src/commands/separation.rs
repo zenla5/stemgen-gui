@@ -4,6 +4,7 @@ use tauri::Emitter;
 use tracing::{error, info};
 use crate::audio::{AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
 use crate::audio::waveform::WaveformPoint;
+use crate::commands::models::{get_available_models, ModelInfo};
 use crate::commands::sidecar::SidecarManager;
 use crate::stems::{StemPacker, StemType, DJSoftware, OutputFormat};
 
@@ -63,13 +64,13 @@ pub struct SeparationResponse {
 #[tauri::command]
 pub async fn start_separation(
     source_path: String,
-    output_path: String,
+    _output_path: String,
     settings: SeparationSettings,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<StemInfo>, String> {
     info!(
-        "Starting separation: {} -> {} (model: {}, device: {})",
-        source_path, output_path, settings.model, settings.device
+        "Starting separation: {} (model: {}, device: {})",
+        source_path, settings.model, settings.device
     );
     
     // Get or create sidecar manager
@@ -140,73 +141,9 @@ pub async fn cancel_separation(
 
 /// Get list of available separation models
 #[tauri::command]
-pub async fn get_models() -> Result<Vec<ModelInfo>, String> {
+pub fn get_models() -> Result<Vec<ModelInfo>, String> {
     info!("Getting available models");
-    
-    // Return list of available models with metadata
-    Ok(vec![
-        ModelInfo {
-            id: "bs_roformer".to_string(),
-            name: "BS-RoFormer".to_string(),
-            description: "High quality, medium speed. Best for vocals separation.".to_string(),
-            quality: "high".to_string(),
-            speed: "medium".to_string(),
-            gpu_required: true,
-        },
-        ModelInfo {
-            id: "htdemucs".to_string(),
-            name: "HTDemucs".to_string(),
-            description: "High quality, slower. Good all-around performer.".to_string(),
-            quality: "high".to_string(),
-            speed: "slow".to_string(),
-            gpu_required: true,
-        },
-        ModelInfo {
-            id: "htdemucs_ft".to_string(),
-            name: "HTDemucs FT".to_string(),
-            description: "Highest quality, slowest. Fine-tuned for best results.".to_string(),
-            quality: "highest".to_string(),
-            speed: "very_slow".to_string(),
-            gpu_required: true,
-        },
-        ModelInfo {
-            id: "demucs".to_string(),
-            name: "Demucs".to_string(),
-            description: "Medium quality, faster. Good for CPU inference.".to_string(),
-            quality: "medium".to_string(),
-            speed: "fast".to_string(),
-            gpu_required: false,
-        },
-    ])
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ModelInfo {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub quality: String,
-    pub speed: String,
-    pub gpu_required: bool,
-}
-
-/// Download a model from HuggingFace
-#[tauri::command]
-pub async fn download_model(
-    model_id: String,
-    window: tauri::Window,
-) -> Result<(), String> {
-    info!("Downloading model: {}", model_id);
-    
-    // This would download the model from HuggingFace
-    // For now, just emit a simple progress event
-    
-    window.emit("model-download-progress", serde_json::json!({
-        "status": "not_implemented",
-        "model": model_id,
-    })).map_err(|e| e.to_string())?;
-    
-    Err("Model download not yet implemented. Please install models manually.".to_string())
+    Ok(get_available_models())
 }
 
 /// Get waveform data for audio file
@@ -281,7 +218,6 @@ pub async fn pack_stems(
     let packer = StemPacker::new(settings);
     
     // Parse stem paths
-    let master_path = PathBuf::from(&request.master_path);
     let stem_paths: Vec<(StemType, PathBuf)> = request.stem_paths.iter()
         .filter_map(|sp| {
             let stem_type = match sp.stem_type.to_lowercase().as_str() {
@@ -295,6 +231,7 @@ pub async fn pack_stems(
         })
         .collect();
     
+    let master_path = PathBuf::from(&request.master_path);
     let output_path = PathBuf::from(&request.output_path);
     
     // Pack stems
