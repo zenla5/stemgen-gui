@@ -108,14 +108,40 @@ stemgen-gui/
 
 ## 3. Local Development Setup
 
+### Rust & Cargo Installation
+
+**IMPORTANT**: Rust is installed via `rustup`, not standalone. The `rustup-init.exe` file is a bootstrap installer that downloads and installs the actual Rust toolchain.
+
+#### Windows
+1. Download `rustup-init.exe` from https://rustup.rs/
+2. Run it and follow the prompts
+3. Restart your terminal/shell after installation
+4. Verify: `rustc --version` and `cargo --version`
+
+#### Linux/macOS
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env  # or restart terminal
+```
+
+#### CI Environment
+- CI uses `dtolnay/rust-toolchain@stable` GitHub Action
+- Rust is NOT pre-installed on CI runners; it downloads via rustup
+- This is why `rustup-init.exe` may appear in working directories during debugging
+
 ### Prerequisites
 ```bash
 # Core tools
 node >= 20
 npm >= 9
-rust >= stable
+rust >= stable       # Installed via rustup (rustup-init.exe on Windows)
 python >= 3.9
 git
+
+# Verify Rust installation
+rustc --version      # Should show stable version
+cargo --version      # Should show cargo version
+rustup show          # Shows installed toolchains
 
 # Optional (for full Tauri dev)
 # Windows: Visual Studio Build Tools with C++ workload
