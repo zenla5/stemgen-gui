@@ -1,7 +1,7 @@
 # Stemgen-GUI Agent Task List
 
 ## Current CI Run
-- **CI #49** (fix: use Fft resampler for rubato v1 API) — IN PROGRESS
+- **CI #53** (fix: rewrite resampler for rubato v1.0.1 API) — RUNNING
 - URL: https://github.com/zenla5/stemgen-gui/actions/runs
 
 ## All Fixes Applied
@@ -13,10 +13,16 @@
   - Added #[allow(unused_imports)] 
   - Upgraded rubato from 0.15 to 1.0
   - Changed to `Fft` resampler for rubato v1 API compatibility
+  - **FIXED**: Rewrote resampler.rs with correct rubato v1.0.1 API:
+    - Added `audioadapter` and `audioadapter-buffers` v2 dependencies
+    - Fixed `Fft::new()` signature with `FixedSync` parameter
+    - Used `InterleavedOwned` buffers for audio adapter compatibility
+    - Fixed `main.rs` redundant import warning
+    - Used safe `read_sample`/`write_sample` methods
 
 ---
 
-## PHASE C: E2E Test Re-enablement (After CI #49 Passes)
+## PHASE C: E2E Test Re-enablement (After CI #53 Passes)
 
 ### Step C-1: Review E2E Test Status
 Check the existing E2E tests and Playwright config.
