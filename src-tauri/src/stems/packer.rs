@@ -27,7 +27,7 @@ impl StemPacker {
     }
 
     /// Create with default settings
-    #[allow(dead_code)]
+    #[allow(dead_code, clippy::should_implement_trait)]
     pub fn default() -> Self {
         Self::new(ExportSettings::default())
     }
