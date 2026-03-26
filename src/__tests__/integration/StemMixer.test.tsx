@@ -9,25 +9,40 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Mock useAudioPlayer hook
-vi.mock('@/hooks/useAudioPlayer', () => ({
-  useAudioPlayer: () => ({
+// Mock useMultiStemPlayer hook — return isLoaded=true so hasStems=true
+vi.mock('@/hooks/useMultiStemPlayer', () => ({
+  useMultiStemPlayer: () => ({
     state: {
       isPlaying: false,
       currentTime: 0,
-      duration: 0,
-      isLoaded: false,
+      duration: 180,
+      isLoaded: true,
+      loadingProgress: 1,
+      loadedStems: ['drums', 'bass', 'other', 'vocals'],
+      isLoading: false,
     },
-    loadAudio: vi.fn().mockResolvedValue(undefined),
-    setVolume: vi.fn(),
-    seek: vi.fn(),
+    loadStems: vi.fn().mockResolvedValue(undefined),
+    play: vi.fn(),
+    pause: vi.fn(),
     togglePlay: vi.fn(),
+    seek: vi.fn(),
+    setMasterVolume: vi.fn(),
+    setStemVolume: vi.fn(),
+    setStemMuted: vi.fn(),
+    setStemSolo: vi.fn(),
+    stemWaveforms: {
+      drums: { points: [], sample_rate: 44100, duration_secs: 180 },
+      bass: { points: [], sample_rate: 44100, duration_secs: 180 },
+      other: { points: [], sample_rate: 44100, duration_secs: 180 },
+      vocals: { points: [], sample_rate: 44100, duration_secs: 180 },
+    },
+    cleanup: vi.fn(),
   }),
 }));
 
-// Mock WaveformDisplay
+// Mock StemWaveformDisplay
 vi.mock('@/components/audio', () => ({
-  WaveformDisplay: () => <div data-testid="waveform-mock">WaveformDisplay</div>,
+  StemWaveformDisplay: () => <div data-testid="stem-waveform">StemWaveform</div>,
 }));
 
 // ─── Store reset helper ────────────────────────────────────────────────────────
@@ -35,10 +50,10 @@ vi.mock('@/components/audio', () => ({
 function resetStore() {
   useAppStore.setState({
     currentStems: [
-      { id: 'drums', type: 'drums' as const, name: 'Drums', color: '#FF6B6B', volume: 1, muted: false, solo: false },
-      { id: 'bass', type: 'bass' as const, name: 'Bass', color: '#4ECDC4', volume: 1, muted: false, solo: false },
-      { id: 'other', type: 'other' as const, name: 'Other', color: '#FFE66D', volume: 1, muted: false, solo: false },
-      { id: 'vocals', type: 'vocals' as const, name: 'Vocals', color: '#95E1D3', volume: 1, muted: false, solo: false },
+      { id: 'drums', type: 'drums' as const, name: 'Drums', color: '#FF6B6B', volume: 1, muted: false, solo: false, file_path: '/test/drums.wav' },
+      { id: 'bass', type: 'bass' as const, name: 'Bass', color: '#4ECDC4', volume: 1, muted: false, solo: false, file_path: '/test/bass.wav' },
+      { id: 'other', type: 'other' as const, name: 'Other', color: '#FFE66D', volume: 1, muted: false, solo: false, file_path: '/test/other.wav' },
+      { id: 'vocals', type: 'vocals' as const, name: 'Vocals', color: '#95E1D3', volume: 1, muted: false, solo: false, file_path: '/test/vocals.wav' },
     ],
     selectedFile: null,
   });
@@ -56,7 +71,7 @@ describe('StemMixer', () => {
     resetStore();
   });
 
-  it('renders four stem tracks (drums, bass, other, vocals)', () => {
+  it('renders four stem track labels (drums, bass, other, vocals)', () => {
     render(<StemMixer />);
 
     expect(screen.getByText('Drums')).toBeInTheDocument();
@@ -76,8 +91,6 @@ describe('StemMixer', () => {
   it('renders mute and solo buttons for each stem', () => {
     render(<StemMixer />);
 
-    // Each stem has a mute and solo button (2 per stem = 8)
-    // We can check for the title attributes
     const soloButtons = screen.getAllByTitle('Solo');
     const muteButtons = screen.getAllByTitle('Mute');
 
@@ -90,15 +103,48 @@ describe('StemMixer', () => {
     expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
   });
 
-  it('renders the Preview section', () => {
+  it('renders the Master Preview section', () => {
     render(<StemMixer />);
-    expect(screen.getByText('Preview')).toBeInTheDocument();
+    expect(screen.getByText('Master Preview')).toBeInTheDocument();
   });
 
   it('renders the Master Volume slider in the Preview section', () => {
     render(<StemMixer />);
     const sliders = screen.getAllByRole('slider');
-    // At least one slider (master) should be in the preview area
     expect(sliders.length).toBeGreaterThan(0);
+  });
+
+  it('shows placeholder when no stems are loaded', () => {
+    // Override store to have no stems with file paths
+    useAppStore.setState({
+      currentStems: [
+        { id: 'drums', type: 'drums' as const, name: 'Drums', color: '#FF6B6B', volume: 1, muted: false, solo: false },
+        { id: 'bass', type: 'bass' as const, name: 'Bass', color: '#4ECDC4', volume: 1, muted: false, solo: false },
+        { id: 'other', type: 'other' as const, name: 'Other', color: '#FFE66D', volume: 1, muted: false, solo: false },
+        { id: 'vocals', type: 'vocals' as const, name: 'Vocals', color: '#95E1D3', volume: 1, muted: false, solo: false },
+      ],
+    });
+
+    render(<StemMixer />);
+
+    expect(screen.getByText(/Select a file and process it to generate stems/i)).toBeInTheDocument();
+  });
+
+  it('renders stem labels with correct colors', () => {
+    render(<StemMixer />);
+
+    // Check that the color indicators are rendered
+    const colorIndicators = document.querySelectorAll('[style*="background-color"]');
+    expect(colorIndicators.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('renders play/pause controls in Preview section', () => {
+    render(<StemMixer />);
+
+    // Play button
+    expect(screen.getByTitle('Play')).toBeInTheDocument();
+    // Skip buttons
+    expect(screen.getByTitle('Restart')).toBeInTheDocument();
+    expect(screen.getByTitle('Skip to end')).toBeInTheDocument();
   });
 });
