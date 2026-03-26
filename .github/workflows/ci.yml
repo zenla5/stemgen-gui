@@ -178,11 +178,12 @@ jobs:
           echo "Build exit code: $?"
       
       - name: Run tests
-        # Runs both unit tests (src/) and integration tests (tests/)
+        # Runs unit tests for lib crate only (no Tauri binary needed)
+        # Integration tests in tests/ are also included
         run: |
-          echo "=== Running cargo test ==="
-          cd src-tauri && cargo test
-          echo "Test exit code: $?"
+          echo "=== Running cargo test (lib + integration) ==="
+          cd src-tauri && cargo test --lib --tests 2>&1
+          echo "Exit code: $?"
       
       - name: Upload backend artifacts on failure
         uses: actions/upload-artifact@v4
