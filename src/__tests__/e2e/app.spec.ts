@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('App Shell', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    // Wait for the app to be fully loaded
+    await page.goto('/', { waitUntil: 'networkidle' });
   });
 
   test('should load the app', async ({ page }) => {
@@ -19,24 +20,24 @@ test.describe('App Shell', () => {
   });
 
   test('should have dark/light theme toggle', async ({ page }) => {
-    // Look for theme toggle button
-    const themeButton = page.locator('button[aria-label*="theme" i], button[class*="theme"], button:has-text("Dark"), button:has-text("Light")');
+    // Look for theme toggle button - be more specific
+    const themeButton = page.locator('button:has-text("Appearance"), button:has-text("Dark"), button:has-text("Light")');
     await expect(themeButton.first()).toBeVisible();
   });
 });
 
 test.describe('File Browser', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' });
+  });
+
   test('should display drag & drop zone', async ({ page }) => {
-    await page.goto('/');
-    
-    // Check for dropzone
-    const dropzone = page.locator('[class*="dropzone"], [class*="drop-zone"], [class*="drag"]');
+    // Check for dropzone - look for the drop overlay or main content
+    const dropzone = page.locator('[class*="dropzone"], [class*="drop-zone"], [class*="drag"], text="Drop"');
     await expect(dropzone.first()).toBeVisible();
   });
 
   test('should have open folder button', async ({ page }) => {
-    await page.goto('/');
-    
     // Check for open folder button
     const openButton = page.getByRole('button', { name: /open|folder|browse/i });
     await expect(openButton.first()).toBeVisible();
@@ -44,8 +45,8 @@ test.describe('File Browser', () => {
 });
 
 test.describe('Settings Panel', () => {
-  test('should display AI model options', async ({ page }) => {
-    await page.goto('/');
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' });
     
     // Navigate to settings
     const settingsButton = page.getByRole('button', { name: /settings/i }).or(
@@ -53,64 +54,55 @@ test.describe('Settings Panel', () => {
     );
     await settingsButton.first().click();
     
-    // Check for model selection
-    const modelSection = page.locator('text=/model|ai/i').first();
+    // Wait for settings panel to load
+    await page.waitForSelector('text="Settings"', { state: 'visible' });
+  });
+
+  test('should display AI model options', async ({ page }) => {
+    // Check for AI Model section with more specific selector
+    const modelSection = page.locator('h3:has-text("AI Model")');
     await expect(modelSection).toBeVisible();
+    
+    // Also check for model names from constants
+    const modelButton = page.locator('button:has-text("bs_roformer"), button:has-text("Demucs")');
+    await expect(modelButton.first()).toBeVisible();
   });
 
   test('should display DJ software presets', async ({ page }) => {
-    await page.goto('/');
+    // Check for DJ Software section
+    const djSection = page.locator('h3:has-text("Target DJ Software")');
+    await expect(djSection).toBeVisible();
     
-    // Navigate to settings
-    const settingsButton = page.getByRole('button', { name: /settings/i }).or(
-      page.locator('nav a:has-text("Settings")')
-    );
-    await settingsButton.first().click();
-    
-    // Check for DJ software options
-    const djSection = page.locator('text=/traktor|rekordbox|serato|mixxx|djay|virtualdj/i');
-    await expect(djSection.first()).toBeVisible();
+    // Check for DJ software names
+    const djSoftware = page.locator('button:has-text("Traktor"), button:has-text("rekordbox")');
+    await expect(djSoftware.first()).toBeVisible();
   });
 
   test('should display output format options', async ({ page }) => {
-    await page.goto('/');
-    
-    // Navigate to settings
-    const settingsButton = page.getByRole('button', { name: /settings/i }).or(
-      page.locator('nav a:has-text("Settings")')
-    );
-    await settingsButton.first().click();
-    
-    // Check for format options
-    const formatSection = page.locator('text=/alac|aac|format/i');
-    await expect(formatSection.first()).toBeVisible();
+    // Check for Output Format section
+    const formatSection = page.locator('h3:has-text("Output Format")');
+    await expect(formatSection).toBeVisible();
   });
 });
 
 test.describe('Processing Queue', () => {
-  test('should display queue view', async ({ page }) => {
-    await page.goto('/');
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' });
     
     // Navigate to queue
     const queueButton = page.getByRole('button', { name: /queue/i }).or(
       page.locator('nav a:has-text("Queue")')
     );
     await queueButton.first().click();
-    
-    // Check for queue elements
+  });
+
+  test('should display queue view', async ({ page }) => {
+    // Check for queue elements - look for ProcessingQueue section or empty state
     const queueView = page.locator('text=/queue|processing|jobs/i').first();
     await expect(queueView).toBeVisible();
   });
 
   test('should have start processing button', async ({ page }) => {
-    await page.goto('/');
-    
-    // Navigate to queue
-    const queueButton = page.getByRole('button', { name: /queue/i }).or(
-      page.locator('nav a:has-text("Queue")')
-    );
-    await queueButton.first().click();
-    
     // Check for start button
     const startButton = page.getByRole('button', { name: /start|process/i });
     await expect(startButton.first()).toBeVisible();
@@ -118,9 +110,11 @@ test.describe('Processing Queue', () => {
 });
 
 test.describe('Keyboard Shortcuts', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' });
+  });
+
   test('should toggle sidebar with Ctrl+B', async ({ page }) => {
-    await page.goto('/');
-    
     // Press Ctrl+B
     await page.keyboard.press('Control+b');
     
@@ -130,8 +124,6 @@ test.describe('Keyboard Shortcuts', () => {
   });
 
   test('should navigate views with number keys', async ({ page }) => {
-    await page.goto('/');
-    
     // Press 1-4 for navigation
     await page.keyboard.press('1');
     await page.waitForTimeout(100);
@@ -144,9 +136,12 @@ test.describe('Keyboard Shortcuts', () => {
 });
 
 test.describe('Responsive Design', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' });
+  });
+
   test('should work on mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/');
     
     // App should still be visible and functional
     await expect(page.locator('body')).toBeVisible();
@@ -154,7 +149,6 @@ test.describe('Responsive Design', () => {
 
   test('should work on tablet viewport', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto('/');
     
     // App should still be visible and functional
     await expect(page.locator('body')).toBeVisible();
