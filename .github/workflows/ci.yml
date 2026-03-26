@@ -111,7 +111,7 @@ jobs:
             test-results/
           retention-days: 7
 
-  # Rust backend: clippy, fmt, build, and test
+  # Rust backend: clippy, fmt, build, and tests
   backend:
     name: Backend (Rust)
     runs-on: ubuntu-latest
@@ -172,8 +172,11 @@ jobs:
       - name: Run Rust tests
         run: |
           echo "=== Running cargo test ==="
-          cd src-tauri && cargo test 2>&1
-          echo "Exit code: $?"
+          cd src-tauri && cargo test 2>&1 | tee test_output.txt
+          echo "Exit code: ${PIPESTATUS[0]}"
+          # Show last 100 lines of output for debugging
+          echo "=== LAST 100 LINES OF TEST OUTPUT ==="
+          tail -100 test_output.txt
 
   # Security audit
   security:
