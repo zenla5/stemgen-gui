@@ -192,3 +192,79 @@ pub fn all_dj_software() -> Vec<DJSoftware> {
         DJSoftware::VirtualDJ,
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_djsoftware_stem_order_traktor() {
+        let order = DJSoftware::Traktor.stem_order();
+        assert_eq!(order.len(), 4);
+        assert_eq!(order[0], StemType::Drums);
+        assert_eq!(order[1], StemType::Bass);
+        assert_eq!(order[2], StemType::Other);
+        assert_eq!(order[3], StemType::Vocals);
+    }
+
+    #[test]
+    fn test_djsoftware_stem_order_serato() {
+        let order = DJSoftware::Serato.stem_order();
+        assert_eq!(order.len(), 4);
+        // Serato has different order: vocals first
+        assert_eq!(order[0], StemType::Vocals);
+        assert_eq!(order[1], StemType::Drums);
+        assert_eq!(order[2], StemType::Bass);
+        assert_eq!(order[3], StemType::Other);
+    }
+
+    #[test]
+    fn test_djsoftware_stem_order_rekordbox() {
+        let order = DJSoftware::Rekordbox.stem_order();
+        // Rekordbox uses same order as Traktor
+        assert_eq!(order[0], StemType::Drums);
+    }
+
+    #[test]
+    fn test_djsoftware_from_str() {
+        assert_eq!(DJSoftware::from_str("traktor"), Some(DJSoftware::Traktor));
+        assert_eq!(DJSoftware::from_str("rekordbox"), Some(DJSoftware::Rekordbox));
+        assert_eq!(DJSoftware::from_str("serato"), Some(DJSoftware::Serato));
+        assert_eq!(DJSoftware::from_str("TRASKTRO"), None); // Invalid
+    }
+
+    #[test]
+    fn test_output_format_codec() {
+        assert_eq!(OutputFormat::Alac.codec_name(), "alac");
+        assert_eq!(OutputFormat::Aac.codec_name(), "aac");
+    }
+
+    #[test]
+    fn test_quality_preset_bitrate() {
+        assert_eq!(QualityPreset::Draft.aac_bitrate(), 128);
+        assert_eq!(QualityPreset::Standard.aac_bitrate(), 256);
+        assert_eq!(QualityPreset::Master.aac_bitrate(), 320);
+    }
+
+    #[test]
+    fn test_quality_preset_model() {
+        assert_eq!(QualityPreset::Draft.model(), "demucs");
+        assert_eq!(QualityPreset::Standard.model(), "bs_roformer");
+        assert_eq!(QualityPreset::Master.model(), "htdemucs_ft");
+    }
+
+    #[test]
+    fn test_export_settings_default() {
+        let settings = ExportSettings::default();
+        assert_eq!(settings.dj_software, DJSoftware::Traktor);
+        assert_eq!(settings.output_format, OutputFormat::Alac);
+        assert_eq!(settings.quality, QualityPreset::Standard);
+        assert!(settings.custom_colors);
+    }
+
+    #[test]
+    fn test_all_dj_software_count() {
+        let software = all_dj_software();
+        assert_eq!(software.len(), 6);
+    }
+}

@@ -1,31 +1,27 @@
 //! Audio decoder using symphonia
-//! 
-//! Supports MP3, FLAC, WAV, OGG, AAC, and more.
+//!
+//! Decodes audio files (MP3, FLAC, WAV, OGG) into raw PCM samples.
 
 use anyhow::{Context, Result};
-use symphonia::core::audio::SampleBuffer;
+use std::path::Path;
+use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-use std::fs::File;
-use std::path::Path;
-use tracing::{debug, info, warn};
 
 /// Supported audio formats
 const SUPPORTED_FORMATS: &[&str] = &[
-    "mp3", "flac", "wav", "ogg", "m4a", "aac", "aiff", "aif", "wma", "opus"
+    "mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "aiff",
 ];
 
 /// Audio metadata
-#[derive(Debug, Clone)]
 pub struct AudioMetadata {
     pub sample_rate: u32,
     pub channels: u8,
     pub duration_secs: f64,
-    pub bit_depth: Option<u16>,
-    pub format: String,
+    pub bit_depth: Option<u8>,
 }
 
 impl AudioMetadata {
@@ -38,16 +34,24 @@ impl AudioMetadata {
     }
 }
 
-/// Audio sample data
+/// Raw audio sample data
 #[derive(Debug, Clone)]
-pub struct AudioSamples {
+pub struct SampleData {
     pub samples: Vec<f32>,
     pub sample_rate: u32,
     pub channels: u8,
 }
 
-/// Audio decoder for extracting raw samples from audio files
+impl SampleData {
+    /// Generate waveform data from samples
+    pub fn generate_waveform(&self, points_per_second: u32) -> WaveformData {
+        WaveformData::from_samples(self, points_per_second)
+    }
+}
+
+/// Audio decoder for reading various audio formats
 pub struct AudioDecoder {
+    samples: Vec<f32>,
     sample_rate: u32,
     channels: u8,
 }
@@ -56,118 +60,105 @@ impl AudioDecoder {
     /// Create a new audio decoder
     pub fn new() -> Self {
         Self {
+            samples: Vec::new(),
             sample_rate: 44100,
             channels: 2,
         }
     }
 
-    /// Decode audio file to raw samples
-    pub fn decode(&mut self, path: &Path) -> Result<AudioSamples> {
-        info!("Decoding audio file: {:?}", path);
-
-        // Open the file
-        let file = File::open(path)
-            .with_context(|| format!("Failed to open audio file: {:?}", path))?;
+    /// Decode an audio file
+    pub fn decode(&mut self, path: &Path) -> Result<SampleData> {
+        // Create the media source stream
+        let file = std::fs::File::open(path)
+            .context(format!("Failed to open audio file: {}", path.display()))?;
         
-        // Use MediaSourceStream directly with the file
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
-
+        
         // Create the probe
-        let mut hint = Hint::new();
+        let hint = Hint::new();
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             hint.with_extension(ext);
         }
-
-        // Probe the format
-        let format_opts = FormatOptions {
-            enable_gapless: false,
-            ..Default::default()
-        };
         
+        let format_opts = FormatOptions::default();
         let metadata_opts = MetadataOptions::default();
         
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &format_opts, &metadata_opts)
-            .context("Failed to probe audio format")?;
-
-        let mut format = probed.format;
-
-        // Find the first audio track
-        let track = format
-            .tracks()
-            .iter()
-            .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
-            .with_context(|| "No audio track found in file")?;
-
-        let track_id = track.id;
-        let codec_params = &track.codec_params;
-        let track_sample_rate = codec_params.sample_rate.unwrap_or(44100);
-        let track_channels = codec_params.channels.map(|c| c.count() as u8).unwrap_or(2);
+            .context("Unsupported audio format")?;
         
-        debug!("Track info: {:?}", track);
-        debug!("Codec params: {:?}", codec_params);
-
-        // Update sample rate and channels
-        self.sample_rate = track_sample_rate;
-        self.channels = track_channels;
-
+        let mut format = probed.format;
+        
+        // Get the default track
+        let track = format
+            .default_track()
+            .context("No audio track found")?;
+        
+        let codec_params = track.codec_params.clone();
+        let sample_rate = codec_params.sample_rate.unwrap_or(44100);
+        let channels = codec_params.channels.map(|c| c.count() as u8).unwrap_or(2);
+        
         // Create the decoder
         let decoder_opts = DecoderOptions::default();
         let mut decoder = symphonia::default::get_codecs()
-            .make(codec_params, &decoder_opts)
+            .make(&codec_params, &decoder_opts)
             .context("Failed to create decoder")?;
-
-        // Decode all packets
-        let mut all_samples: Vec<f32> = Vec::new();
-        let mut total_duration = 0.0f64;
-
+        
+        // Decode all samples
+        let mut all_samples = Vec::new();
+        
         loop {
             let packet = match format.next_packet() {
                 Ok(packet) => packet,
-                Err(symphonia::core::errors::Error::IoError(ref err)) 
-                    if err.kind() == std::io::ErrorKind::UnexpectedEof => break,
-                Err(e) => {
-                    warn!("Error reading packet: {}", e);
-                    break;
-                }
+                Err(symphonia::core::errors::Error::IoError(ref e)) 
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(e) => return Err(e).context("Error reading packet"),
             };
-
-            if packet.track_id() != track_id {
+            
+            // Skip non-audio packets
+            if packet.track_id() != track.id {
                 continue;
             }
-
+            
             // Decode the packet
-            match decoder.decode(&packet) {
-                Ok(decoded) => {
-                    // Get the format spec and create a sample buffer
-                    let spec = *decoded.spec();
-                    let mut sample_buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
-                    sample_buf.copy_interleaved_ref(decoded);
-                    
-                    let samples = sample_buf.samples().to_vec();
-                    let sample_count = samples.len();
-                    total_duration += sample_count as f64 / track_sample_rate as f64;
-                    all_samples.extend(samples);
+            let decoded = match decoder.decode(&packet) {
+                Ok(decoded) => decoded,
+                Err(_) => continue,
+            };
+            
+            // Convert to f32 samples
+            match decoded {
+                AudioBufferRef::F32(buf) => {
+                    let samples = buf.chan(0);
+                    all_samples.extend_from_slice(samples);
                 }
-                Err(e) => {
-                    debug!("Error decoding packet: {}", e);
+                AudioBufferRef::S16(buf) => {
+                    let samples = buf.chan(0);
+                    all_samples.extend(samples.iter().map(|&s| s as f32 / 32768.0));
                 }
+                AudioBufferRef::S32(buf) => {
+                    let samples = buf.chan(0);
+                    all_samples.extend(samples.iter().map(|&s| s as f32 / 2147483648.0));
+                }
+                _ => {}
             }
         }
-
-        info!(
-            "Decoded {} samples ({} channels, {} Hz, {:.2}s)",
-            all_samples.len(),
-            self.channels,
-            self.sample_rate,
-            total_duration
-        );
-
-        Ok(AudioSamples {
+        
+        // Store decoded data
+        self.samples = all_samples.clone();
+        self.sample_rate = sample_rate;
+        self.channels = channels;
+        
+        Ok(SampleData {
             samples: all_samples,
-            sample_rate: self.sample_rate,
-            channels: self.channels,
+            sample_rate,
+            channels,
         })
+    }
+
+    /// Get the decoded samples
+    pub fn get_samples(&self) -> &[f32] {
+        &self.samples
     }
 
     /// Get the sample rate
@@ -187,14 +178,64 @@ impl Default for AudioDecoder {
     }
 }
 
+use super::waveform::{WaveformData, WaveformPoint};
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_format_support() {
+    fn test_decoder_creation() {
+        let decoder = AudioDecoder::new();
+        assert_eq!(decoder.sample_rate, 44100);
+        assert_eq!(decoder.channels, 2);
+        assert!(decoder.samples.is_empty());
+    }
+
+    #[test]
+    fn test_sample_data_creation() {
+        let samples = vec![0.5f32; 1000];
+        let sample_data = SampleData {
+            samples,
+            sample_rate: 44100,
+            channels: 2,
+        };
+        
+        assert_eq!(sample_data.samples.len(), 1000);
+        assert_eq!(sample_data.sample_rate, 44100);
+        assert_eq!(sample_data.channels, 2);
+    }
+
+    #[test]
+    fn test_waveform_point_values() {
+        // Test that waveform point values are valid
+        let min = -1.0f32;
+        let max = 1.0f32;
+        let rms = 0.707f32; // Approximate RMS for sine wave
+        
+        assert!(min <= rms && rms <= max);
+    }
+
+    #[test]
+    fn test_format_support_check() {
+        // Test that supported formats are recognized
         assert!(AudioMetadata::is_format_supported(Path::new("test.mp3")));
         assert!(AudioMetadata::is_format_supported(Path::new("test.flac")));
+        assert!(AudioMetadata::is_format_supported(Path::new("test.wav")));
         assert!(!AudioMetadata::is_format_supported(Path::new("test.xyz")));
+    }
+
+    #[test]
+    fn test_empty_samples_waveform() {
+        let samples = vec![0.0f32; 0];
+        let sample_data = SampleData {
+            samples,
+            sample_rate: 44100,
+            channels: 2,
+        };
+        
+        let waveform = sample_data.generate_waveform(100);
+        // Empty samples should produce empty waveform
+        assert_eq!(waveform.points.len(), 0);
     }
 }
