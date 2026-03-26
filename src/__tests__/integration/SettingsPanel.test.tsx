@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import React from 'react';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -107,21 +106,21 @@ describe('SettingsPanel', () => {
 
   it('renders Appearance section', () => {
     render(<SettingsPanel />);
-    expect(screen.getByText(/appearance/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /appearance/i })).toBeInTheDocument();
   });
 
   it('renders GPU Acceleration section', () => {
     render(<SettingsPanel />);
-    expect(screen.getByText(/gpu acceleration/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /gpu acceleration/i })).toBeInTheDocument();
   });
 
   it('renders CPU Threads section', () => {
     render(<SettingsPanel />);
-    expect(screen.getByText(/cpu threads/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /cpu threads/i })).toBeInTheDocument();
   });
 
   it('renders Parallel Jobs section', () => {
     render(<SettingsPanel />);
-    expect(screen.getByText(/parallel jobs/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /parallel jobs/i })).toBeInTheDocument();
   });
 });
