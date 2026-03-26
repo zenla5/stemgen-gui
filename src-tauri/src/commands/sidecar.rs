@@ -18,7 +18,8 @@ pub struct SeparationProcess {
     child: Child,
     /// Job ID for tracking
     job_id: String,
-    /// The model being using
+    /// The model being used (stored for potential future use)
+    #[allow(dead_code)]
     model: String,
 }
 

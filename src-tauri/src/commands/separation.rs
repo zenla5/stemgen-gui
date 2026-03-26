@@ -202,7 +202,7 @@ pub async fn pack_stems(
     // Parse output format
     let output_format = match request.output_format.to_lowercase().as_str() {
         "alac" => OutputFormat::Alac,
-        "aac" | _ => OutputFormat::Aac,
+        _ => OutputFormat::Aac,
     };
     
     // Create packer settings
