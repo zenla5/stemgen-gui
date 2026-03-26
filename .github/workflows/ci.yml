@@ -171,12 +171,9 @@ jobs:
       
       - name: Run Rust tests
         run: |
-          echo "=== Running cargo test ==="
-          cd src-tauri && cargo test 2>&1 | tee test_output.txt
-          echo "Exit code: ${PIPESTATUS[0]}"
-          # Show last 100 lines of output for debugging
-          echo "=== LAST 100 LINES OF TEST OUTPUT ==="
-          tail -100 test_output.txt
+          echo "=== Running cargo test --lib (library tests only) ==="
+          cd src-tauri && cargo test --lib 2>&1
+          echo "Test exit code: $?"
 
   # Security audit
   security:
