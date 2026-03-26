@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tauri::Emitter;
 use tracing::{error, info};
 use crate::audio::{AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
 use crate::audio::waveform::WaveformPoint;

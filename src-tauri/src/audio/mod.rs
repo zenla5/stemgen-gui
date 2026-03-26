@@ -9,4 +9,5 @@ pub mod waveform;
 
 pub use decoder::*;
 pub use resampler::*;
+#[allow(unused_imports)]
 pub use waveform::*;

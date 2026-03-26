@@ -65,6 +65,7 @@ impl AudioResampler {
     }
 
     /// Resample audio to target sample rate
+    #[allow(clippy::similar_names)]
     pub fn resample(&mut self, samples: &SampleData) -> Result<SampleData> {
         let input_sample_rate = samples.sample_rate as f64;
         let output_sample_rate = self.target_sample_rate as f64;
@@ -82,9 +83,9 @@ impl AudioResampler {
 
         // Number of input frames
         let num_channels = samples.channels as usize;
-        let input_frames = samples.samples.len() / num_channels;
+        let _input_frames = samples.samples.len() / num_channels;
         
-        // rubato 0.15+ uses (output_sample_rate, input_sample_rate)
+        // rubato 0.15+: SincFixedIn::new(output_sample_rate, input_sample_rate, params, n_channels, backend_buffer_size)
         let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
@@ -98,15 +99,14 @@ impl AudioResampler {
             input_sample_rate,
             params,
             num_channels,
-            input_frames,
-            8, // grid_mode
+            512, // backend_buffer_size
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
         // Deinterleave the input samples (rubato expects Vec<Vec<f32>>)
         let deinterleaved = Self::deinterleave(&samples.samples, num_channels);
         
-        // Process samples
-        let resampled = resampler.process(&deinterleaved, false)
+        // Process samples - rubato 0.15+ expects Option<&[bool]> for second param
+        let resampled = resampler.process(&deinterleaved, None)
             .context("Failed to resample audio")?;
 
         // Reinterleave the output channels
@@ -115,7 +115,7 @@ impl AudioResampler {
         let output_frames = interleaved.len() / num_channels;
         info!(
             "Resampling complete: {} frames -> {} frames",
-            input_frames, output_frames
+            _input_frames, output_frames
         );
 
         Ok(SampleData {
@@ -126,6 +126,7 @@ impl AudioResampler {
     }
 
     /// Resample with fixed output length
+    #[allow(clippy::similar_names)]
     pub fn resample_to_length(
         &mut self, 
         samples: &SampleData, 
@@ -136,7 +137,7 @@ impl AudioResampler {
 
         let num_channels = samples.channels as usize;
         
-        // rubato 0.15+ uses (output_sample_rate, input_sample_rate)
+        // rubato 0.15+: SincFixedIn::new(output_sample_rate, input_sample_rate, params, n_channels, backend_buffer_size)
         let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
@@ -150,15 +151,14 @@ impl AudioResampler {
             input_sample_rate,
             params,
             num_channels,
-            target_frames,
-            8, // grid_mode
+            512, // backend_buffer_size
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
         // Deinterleave the input samples
         let deinterleaved = Self::deinterleave(&samples.samples, num_channels);
         
-        // Process using the deinterleaved data
-        let resampled = resampler.process(&deinterleaved, false)
+        // Process using the deinterleaved data - rubato 0.15+ expects Option<&[bool]>
+        let resampled = resampler.process(&deinterleaved, None)
             .context("Failed to resample audio")?;
 
         // Reinterleave channels

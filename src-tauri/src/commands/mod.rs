@@ -10,6 +10,7 @@ use tracing::info;
 pub use audio::*;
 pub use db::*;
 pub use models::*;
+pub use separation::*;
 pub use sidecar::*;
 
 /// Check if Python and required AI libraries are available

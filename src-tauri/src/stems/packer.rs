@@ -8,7 +8,7 @@ use std::process::Command;
 use tracing::{debug, info, warn};
 
 use super::metadata::{NIStemMetadata, StemData, StemType};
-use super::presets::{DJSoftware, ExportSettings, OutputFormat};
+use super::presets::ExportSettings;
 
 /// NI Stem Packer
 /// 
