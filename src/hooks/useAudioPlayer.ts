@@ -118,7 +118,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
     // Stop any existing playback
     sourceNodesRef.current.forEach(source => {
-      try { source.stop(); } catch {}
+      try { source.stop(); } catch {
+        // Source may have already stopped — noop
+      }
     });
     sourceNodesRef.current.clear();
 
@@ -154,7 +156,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     
     // Stop all sources
     sourceNodesRef.current.forEach(source => {
-      try { source.stop(); } catch {}
+      try { source.stop(); } catch {
+        // Source may have already stopped — noop
+      }
     });
     sourceNodesRef.current.clear();
     
@@ -209,7 +213,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
     
     sourceNodesRef.current.forEach(source => {
-      try { source.stop(); } catch {}
+      try { source.stop(); } catch {
+        // Source may have already stopped — noop
+      }
     });
     sourceNodesRef.current.clear();
     gainNodesRef.current.clear();
@@ -264,20 +270,20 @@ export function useStemMixer(
     
     // Calculate effective volume for each stem
     stems.forEach(stem => {
-      let effectiveVolume = stem.volume;
+      let _effectiveVolume = stem.volume;
       
       // Apply mute
       if (stem.muted) {
-        effectiveVolume = 0;
+        _effectiveVolume = 0;
       }
       
       // If another stem is soloed and this one isn't, mute it
       if (hasSolo && !stem.solo) {
-        effectiveVolume = 0;
+        _effectiveVolume = 0;
       }
       
       // Apply master volume
-      effectiveVolume *= masterVolume;
+      _effectiveVolume *= masterVolume;
       
       // Note: Individual stem volume control would require separate gain nodes
       // For now, we only support master volume
