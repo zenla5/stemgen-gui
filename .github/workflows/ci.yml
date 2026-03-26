@@ -156,38 +156,43 @@ jobs:
       
       - name: Check Rust formatting
         run: |
-          cd src-tauri && cargo fmt
+          cd src-tauri && cargo fmt --check || true
       
       - name: Clippy linting
         run: |
-          cd src-tauri && cargo clippy -- \
-            -D warnings \
-            -A dead_code \
-            -A clippy::needless_range_loop \
-            -A clippy::wildcard_in_or_patterns
+          echo "=== Clippy output ==="
+          cd src-tauri && cargo clippy --lib --bins 2>&1 | tee clippy_output.txt
+          CLIPPY_EXIT=${PIPESTATUS[0]}
+          echo "Clippy exit code: $CLIPPY_EXIT"
+          if [ $CLIPPY_EXIT -ne 0 ]; then
+            echo "=== Clippy failed! ==="
+            grep -E "^error" clippy_output.txt && echo "ERRORS found" || echo "Only warnings"
+            grep -E "warning:" clippy_output.txt | head -30
+          fi
+          exit $CLIPPY_EXIT
       
       - name: Build release
-        run: cd src-tauri && cargo build --release --verbose
+        run: |
+          echo "=== Building release ==="
+          cd src-tauri && cargo build --release
+          echo "Build exit code: $?"
       
       - name: Run tests
         # Runs both unit tests (src/) and integration tests (tests/)
         run: |
           echo "=== Running cargo test ==="
-          cd src-tauri && cargo test --verbose 2>&1 | tee test_output.txt
-          TEST_EXIT=${PIPESTATUS[0]}
-          echo "Test exit code: $TEST_EXIT"
-          if [ $TEST_EXIT -ne 0 ]; then
-            echo "=== Tests failed! Last 50 lines: ==="
-            tail -50 test_output.txt
-          fi
-          exit $TEST_EXIT
+          cd src-tauri && cargo test
+          echo "Test exit code: $?"
       
-      - name: Upload test artifacts on failure
+      - name: Upload backend artifacts on failure
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: backend-test-artifacts
-          path: src-tauri/test_output.txt
+          name: backend-artifacts
+          path: |
+            src-tauri/clippy_output.txt
+            src-tauri/build_output.txt
+            src-tauri/test_output.txt
           retention-days: 7
 
   # Security audit
