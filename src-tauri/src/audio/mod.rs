@@ -9,3 +9,4 @@ pub mod waveform;
 
 pub use decoder::*;
 pub use resampler::*;
+pub use waveform::*;

@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, Resampler};
 use tracing::{debug, info};
 
-use crate::audio::decoder::AudioSamples;
+use crate::audio::decoder::SampleData;
 
 /// Target sample rate for NI stem format
 pub const TARGET_SAMPLE_RATE: u32 = 44100;
@@ -65,7 +65,7 @@ impl AudioResampler {
     }
 
     /// Resample audio to target sample rate
-    pub fn resample(&mut self, samples: &AudioSamples) -> Result<AudioSamples> {
+    pub fn resample(&mut self, samples: &SampleData) -> Result<SampleData> {
         let input_sample_rate = samples.sample_rate as f64;
         let output_sample_rate = self.target_sample_rate as f64;
 
@@ -122,7 +122,7 @@ impl AudioResampler {
             input_frames, output_frames
         );
 
-        Ok(AudioSamples {
+        Ok(SampleData {
             samples: interleaved,
             sample_rate: self.target_sample_rate,
             channels: samples.channels,
@@ -132,9 +132,9 @@ impl AudioResampler {
     /// Resample with fixed output length
     pub fn resample_to_length(
         &mut self, 
-        samples: &AudioSamples, 
+        samples: &SampleData, 
         target_frames: usize
-    ) -> Result<AudioSamples> {
+    ) -> Result<SampleData> {
         let input_sample_rate = samples.sample_rate as f64;
         let output_sample_rate = self.target_sample_rate as f64;
 
@@ -169,7 +169,7 @@ impl AudioResampler {
         // Reinterleave channels
         let interleaved = Self::interleave(&resampled);
 
-        Ok(AudioSamples {
+        Ok(SampleData {
             samples: interleaved,
             sample_rate: self.target_sample_rate,
             channels: samples.channels,

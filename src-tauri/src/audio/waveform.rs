@@ -3,7 +3,7 @@
 //! Generates waveform data for visualization.
 
 use serde::{Deserialize, Serialize};
-use crate::audio::decoder::AudioSamples;
+use crate::audio::decoder::SampleData;
 
 /// Waveform data point
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +23,7 @@ pub struct WaveformData {
 
 impl WaveformData {
     /// Generate waveform from audio samples
-    pub fn from_samples(samples: &AudioSamples, points_per_second: u32) -> Self {
+    pub fn from_samples(samples: &SampleData, points_per_second: u32) -> Self {
         let frames = samples.samples.len() / samples.channels as usize;
         let duration_secs = frames as f64 / samples.sample_rate as f64;
         let total_points = (duration_secs * points_per_second as f64).ceil() as usize;
@@ -93,7 +93,7 @@ impl WaveformData {
     }
 }
 
-impl AudioSamples {
+impl SampleData {
     /// Generate waveform data
     pub fn generate_waveform(&self, points_per_second: u32) -> WaveformData {
         WaveformData::from_samples(self, points_per_second)
