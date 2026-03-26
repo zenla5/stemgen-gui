@@ -8,6 +8,8 @@ import type {
   CheckDependenciesResult,
   ProcessingSettings,
   Stem,
+  StemInfo,
+  PackStemsResponse,
 } from '@/lib/types';
 import { DEFAULT_PROCESSING_SETTINGS, STEM_COLORS, STEM_DEFAULT_NAMES } from '@/lib/constants';
 
@@ -152,13 +154,13 @@ export const useAppStore = create<AppState>()(
       
       // Start processing - creates jobs for selected files
       startProcessing: async (files: AudioFileMetadata[]) => {
-        const { settings, addJob, setCurrentJob, setIsProcessing } = get();
+        const { settings, addJob, setCurrentJob, setIsProcessing, setActiveView } = get();
         
         if (files.length === 0) return;
         
         setIsProcessing(true);
         
-        // Create jobs for each file
+        // Create and process jobs for each file sequentially
         for (const file of files) {
           const job: ProcessingJob = {
             id: generateId(),
@@ -172,41 +174,91 @@ export const useAppStore = create<AppState>()(
           };
           
           addJob(job);
+          setCurrentJob(job.id);
           
-          // Start the first job immediately
-          if (!get().currentJobId) {
-            setCurrentJob(job.id);
+          // Update job status to processing
+          get().updateJob(job.id, { status: 'processing' });
+          
+          try {
+            // Call the Tauri backend for stem separation
+            const stems = await invoke<StemInfo[]>('start_separation', {
+              sourcePath: file.path,
+              outputPath: job.output_path,
+              settings: {
+                model: settings.model,
+                device: settings.device,
+                output_format: settings.outputFormat,
+                quality_preset: settings.qualityPreset,
+                dj_preset: settings.djPreset,
+              },
+            });
             
-            // Update job status to processing
-            get().updateJob(job.id, { status: 'processing' });
+            // Update currentStems with the real file paths from the backend
+            if (stems && stems.length > 0) {
+              const stemMap = new Map(stems.map(s => [s.stem_type.toLowerCase(), s]));
+              const updatedStems = get().currentStems.map(stem => {
+                const stemInfo = stemMap.get(stem.type);
+                return stemInfo?.file_path
+                  ? { ...stem, file_path: stemInfo.file_path }
+                  : stem;
+              });
+              set({ currentStems: updatedStems });
+              
+              // Navigate to mixer for preview
+              setActiveView('mixer');
+            }
             
-            // Call the Tauri backend
-            try {
-              await invoke('start_separation', {
-                sourcePath: file.path,
-                outputPath: job.output_path,
-                settings: {
-                  model: settings.model,
-                  device: settings.device,
+            // Pack stems into .stem.mp4
+            const masterPath = file.path;
+            const stemPaths = stems.map(s => ({
+              stem_type: s.stem_type,
+              path: s.file_path || '',
+            })).filter(s => s.path);
+            
+            if (stemPaths.length > 0) {
+              get().updateJob(job.id, { progress: 0.8 });
+              
+              await invoke<PackStemsResponse>('pack_stems', {
+                request: {
+                  master_path: masterPath,
+                  stem_paths: stemPaths,
+                  output_path: job.output_path,
+                  dj_software: settings.djPreset,
                   output_format: settings.outputFormat,
-                  quality_preset: settings.qualityPreset,
-                  dj_preset: settings.djPreset,
                 },
               });
-              
-              // Job completed successfully
-              get().updateJob(job.id, {
-                status: 'completed',
-                progress: 1,
-                completed_at: new Date().toISOString(),
-              });
-            } catch (error) {
-              // Job failed
-              get().updateJob(job.id, {
-                status: 'failed',
-                error: error instanceof Error ? error.message : String(error),
-              });
             }
+            
+            // Add to processing history
+            try {
+              await invoke('add_to_history', {
+                entry: {
+                  id: job.id,
+                  source_path: file.path,
+                  output_path: job.output_path,
+                  model: settings.model,
+                  dj_preset: settings.djPreset,
+                  processed_at: new Date().toISOString(),
+                  duration_ms: 0,
+                  file_size: file.size,
+                },
+              });
+            } catch (historyError) {
+              console.warn('Failed to add to history:', historyError);
+            }
+            
+            // Job completed successfully
+            get().updateJob(job.id, {
+              status: 'completed',
+              progress: 1,
+              completed_at: new Date().toISOString(),
+            });
+          } catch (error) {
+            // Job failed
+            get().updateJob(job.id, {
+              status: 'failed',
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         }
         

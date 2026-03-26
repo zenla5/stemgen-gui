@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import type { Stem } from '@/lib/types';
 
 interface AudioPlayerState {
@@ -55,8 +56,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     const ctx = initAudioContext();
     
     try {
-      // Convert file path to URL for fetch
-      const response = await fetch(`asset://localhost/${encodeURIComponent(filePath)}`);
+      // Convert file path to URL using Tauri's asset protocol
+      const assetUrl = convertFileSrc(filePath);
+      const response = await fetch(assetUrl);
       const arrayBuffer = await response.arrayBuffer();
       
       // Decode audio data

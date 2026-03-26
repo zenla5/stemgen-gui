@@ -108,13 +108,23 @@ pub fn run() {
             info!("Output directory: {}", output_dir.display());
             info!("Sidecar path: {}", sidecar_path.display());
             
-            // Manage app state
+            // Manage app state first (state must be registered before accessed)
             app.manage(AppState {
                 db: StdMutex::new(conn),
                 sidecar: TokioMutex::new(None),
                 output_dir,
                 sidecar_path,
             });
+            
+            // Initialize the sidecar manager with the app handle for event emission
+            let app_handle = app.handle().clone();
+            let mut sidecar_guard = app.state::<AppState>().sidecar.blocking_lock();
+            let mut sidecar = commands::sidecar::SidecarManager::new(
+                app.state::<AppState>().sidecar_path.clone(),
+                app.state::<AppState>().output_dir.clone(),
+            );
+            sidecar.set_app_handle(app_handle);
+            *sidecar_guard = Some(sidecar);
             
             info!("Application setup complete");
             Ok(())

@@ -1,231 +1,477 @@
 #!/usr/bin/env python3
 """
-Stemgen Python Sidecar - AI Stem Separation
+Stemgen Sidecar — AI Stem Separation Wrapper
 
-This script wraps demucs and bs_roformer for stem separation.
-It's managed as a subprocess by the Rust backend.
+A Python script that wraps demucs/bs_roformer for stem separation
+and communicates with the Tauri frontend via JSON lines on stdout.
 
 Usage:
-    python stemgen_sidecar.py --model <model> --input <file> --output <dir> [--device <device>]
+    python stemgen_sidecar.py --model <model> --input <path> --output <dir> --device <cpu|cuda|mps>
+
+Output:
+    - Emits JSON progress lines to stdout
+    - Creates 4 stem WAV files: <input>_drums.wav, <input>_bass.wav,
+      <input>_other.wav, <input>_vocals.wav
+    - Exit code 0 on success, non-zero on failure
+
+Example stdout:
+    {"status": "starting", "model": "bs_roformer", "device": "cuda", "message": "Loading model..."}
+    {"status": "progress", "stage": "separating", "progress": 0.45, "message": "Separating stems..."}
+    {"status": "done", "stems": {"drums": "...", "bass": "...", "other": "...", "vocals": "..."}}
+    {"status": "error", "error": "Failed to load model: ..."}
 """
 
 import argparse
 import json
 import os
 import sys
-import signal
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
-# Optional imports for AI models
-try:
+# ------------------------------------------------------------------------------
+# JSON line output helper
+# ------------------------------------------------------------------------------
+
+def emit(data: dict) -> None:
+    """Write a JSON line to stdout and flush."""
+    print(json.dumps(data), flush=True)
+
+
+# ------------------------------------------------------------------------------
+# Model runners
+# ------------------------------------------------------------------------------
+
+def run_demucs(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
+    """Run demucs stem separation."""
     import torch
-    DEMUCS_AVAILABLE = True
-except ImportError:
-    DEMUCS_AVAILABLE = False
-    print("Warning: demucs not installed. Run: pip install demucs", file=sys.stderr)
+    from demucs.pretrained import get_model
+    from demucs.apply import apply_model
+    from demucs.audio import AudioFile
+    import torchaudio
 
-try:
-    from bs_roformer import separator
-    BS_ROFORMER_AVAILABLE = True
-except ImportError:
-    BS_ROFORMER_AVAILABLE = False
-    print("Warning: bs_roformer not installed. Run: pip install bs_roformer", file=sys.stderr)
+    model_name = "htdemucs"
+    emit({
+        "status": "progress",
+        "stage": "loading",
+        "progress": 0.05,
+        "message": f"Loading demucs model '{model_name}'...",
+    })
 
+    # Determine device
+    if device == "cuda" and torch.cuda.is_available():
+        run_device = torch.device("cuda")
+        emit({"status": "progress", "stage": "device", "progress": 0.1, "message": "Using NVIDIA CUDA"})
+    elif device == "mps" and torch.backends.mps.is_available():
+        run_device = torch.device("mps")
+        emit({"status": "progress", "stage": "device", "progress": 0.1, "message": "Using Apple Silicon MPS"})
+    else:
+        run_device = torch.device("cpu")
+        emit({"status": "progress", "stage": "device", "progress": 0.1, "message": "Using CPU"})
 
-class StemSeparator:
-    """Handles AI-based stem separation."""
-    
-    STEM_NAMES = ["drums", "bass", "other", "vocals"]
-    
-    def __init__(self, model: str = "bs_roformer", device: Optional[str] = None):
-        self.model = model
-        self.device = device or self._detect_device()
-        self.separator = None
+    model = get_model(model_name, device=run_device)
+    model.eval()
+
+    emit({
+        "status": "progress",
+        "stage": "separating",
+        "progress": 0.2,
+        "message": "Loading audio file...",
+    })
+
+    # Load audio using demucs
+    wav = AudioFile(input_path).read(streams=0)
+    source = str(input_path.stem)
+
+    emit({
+        "status": "progress",
+        "stage": "separating",
+        "progress": 0.3,
+        "message": "Running AI separation...",
+    })
+
+    # Apply model
+    with torch.no_grad():
+        mix = wav[0]
+        if mix.shape[0] > 2:
+            # Convert stereo to mono for demucs
+            mix = mix.mean(0)
+        mix = torch.from_numpy(mix).to(run_device)
+        ref = mix.mean(0)
+        mix = (mix - ref.mean()) / (ref.std() + 1e-8)
+        mix = mix[None, None, ...]
         
-    def _detect_device(self) -> str:
-        """Detect the best available device for inference."""
-        if torch.cuda.is_available():
-            return "cuda"
-        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            return "mps"
-        return "cpu"
+        sources = apply_model(model, mix, device=run_device, shifts=0, progress=False)[0]
+
+    emit({
+        "status": "progress",
+        "stage": "saving",
+        "progress": 0.85,
+        "message": "Saving stem files...",
+    })
+
+    # Source names from demucs (in order)
+    source_names = model.sources
+    stem_names = ["drums", "bass", "other", "vocals"]
     
-    def _detect_cuda_device(self) -> int:
-        """Detect NVIDIA GPU device."""
-        if torch.cuda.is_available():
-            return 0
-        return -1
+    # Map demucs source order to our standard order
+    # demucs default order: drums, bass, other, vocals
+    stems: Dict[str, Path] = {}
     
-    def load_model(self):
-        """Load the separation model."""
-        if self.model == "demucs" and DEMUCS_AVAILABLE:
-            self._load_demucs()
-        elif self.model == "bs_roformer" and BS_ROFORMER_AVAILABLE:
-            self._load_bs_roformer()
-        else:
-            raise RuntimeError(f"Model '{self.model}' not available. "
-                             f"demucs={DEMUCS_AVAILABLE}, bs_roformer={BS_ROFORMER_AVAILABLE}")
-    
-    def _load_demucs(self):
-        """Load Demucs model."""
-        try:
-            from demucs.pretrained import get_model
-            self.separator = get_model(self.model)
-            self.separator.eval()
-            if self.device != "cpu":
-                self.separator = self.separator.to(self.device)
-            self._send_progress({"status": "ready", "model": "demucs"})
-        except Exception as e:
-            raise RuntimeError(f"Failed to load demucs model: {e}")
-    
-    def _load_bs_roformer(self):
-        """Load BS-RoFormer model."""
-        try:
-            cuda_device = self._detect_cuda_device()
-            self.separator = separator.BSSeparator(
-                model_name=self.model,
-                device=self.device,
-                cuda_device=cuda_device,
-            )
-            self._send_progress({"status": "ready", "model": "bs_roformer"})
-        except Exception as e:
-            raise RuntimeError(f"Failed to load bs_roformer model: {e}")
-    
-    def separate(self, input_path: str, output_dir: str) -> dict:
-        """
-        Separate audio into stems.
+    for i, stem_name in enumerate(stem_names):
+        source_name = source_names[i]
+        stem_data = sources[i].cpu().numpy()
+        stem_filename = f"{source}_{stem_name}.wav"
+        stem_path = output_dir / stem_filename
+
+        # Convert to 44.1kHz stereo if needed
+        stem_tensor = torch.from_numpy(stem_data)
+        if stem_tensor.dim() == 1:
+            stem_tensor = stem_tensor.unsqueeze(0)  # Add channel dim
+        elif stem_tensor.dim() == 2 and stem_tensor.shape[0] > 2:
+            # Mix down to mono then duplicate to stereo
+            stem_tensor = stem_tensor.mean(0, keepdim=True).repeat(2, 1)
         
-        Args:
-            input_path: Path to input audio file
-            output_dir: Directory to save stems
-            
-        Returns:
-            Dictionary with paths to separated stems
-        """
-        input_file = Path(input_path)
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
+        # Resample to 44.1kHz if needed
+        orig_sr = 44100  # demucs default
+        target_sr = 44100
+        if orig_sr != target_sr:
+            stem_tensor = torchaudio.functional.resample(stem_tensor, orig_sr, target_sr)
         
-        self._send_progress({
-            "status": "processing",
-            "stage": "loading",
-            "message": "Loading audio file..."
+        torchaudio.save(str(stem_path), stem_tensor, target_sr)
+        stems[stem_name] = stem_path
+
+        emit({
+            "status": "progress",
+            "stage": "saving",
+            "progress": 0.85 + (0.14 * (i + 1) / len(stem_names)),
+            "message": f"Saved {stem_name}.wav",
         })
-        
-        # Generate output stem filenames
-        stem_paths = {}
-        for name in self.STEM_NAMES:
-            stem_paths[name] = str(output_path / f"{input_file.stem}_{name}.wav")
-        
-        # Run separation
-        self._send_progress({
-            "status": "processing",
-            "stage": "separating",
-            "message": f"Separating stems using {self.model}..."
+
+    return stems
+
+
+def run_htdemucs(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
+    """Run htdemucs (high-quality demucs) stem separation."""
+    # htdemucs is a demucs variant, use the same approach
+    import torch
+    from demucs.pretrained import get_model
+    from demucs.apply import apply_model
+    from demucs.audio import AudioFile
+    import torchaudio
+
+    model_name = "htdemucs"
+
+    emit({
+        "status": "progress",
+        "stage": "loading",
+        "progress": 0.05,
+        "message": f"Loading htdemucs model...",
+    })
+
+    if device == "cuda" and torch.cuda.is_available():
+        run_device = torch.device("cuda")
+    elif device == "mps" and torch.backends.mps.is_available():
+        run_device = torch.device("mps")
+    else:
+        run_device = torch.device("cpu")
+
+    model = get_model(model_name, device=run_device)
+    model.eval()
+
+    emit({
+        "status": "progress",
+        "stage": "separating",
+        "progress": 0.2,
+        "message": "Running AI separation (htdemucs)...",
+    })
+
+    wav = AudioFile(input_path).read(streams=0)
+    source = str(input_path.stem)
+
+    with torch.no_grad():
+        mix = wav[0]
+        if mix.shape[0] > 2:
+            mix = mix.mean(0)
+        mix = torch.from_numpy(mix).to(run_device)
+        ref = mix.mean(0)
+        mix = (mix - ref.mean()) / (ref.std() + 1e-8)
+        mix = mix[None, None, ...]
+        sources = apply_model(model, mix, device=run_device, shifts=0, progress=False)[0]
+
+    emit({
+        "status": "progress",
+        "stage": "saving",
+        "progress": 0.85,
+        "message": "Saving stem files...",
+    })
+
+    source_names = model.sources
+    stem_names = ["drums", "bass", "other", "vocals"]
+    stems: Dict[str, Path] = {}
+
+    for i, stem_name in enumerate(stem_names):
+        source_name = source_names[i]
+        stem_data = sources[i].cpu().numpy()
+        stem_filename = f"{source}_{stem_name}.wav"
+        stem_path = output_dir / stem_filename
+
+        stem_tensor = torch.from_numpy(stem_data)
+        if stem_tensor.dim() == 1:
+            stem_tensor = stem_tensor.unsqueeze(0)
+        elif stem_tensor.dim() == 2 and stem_tensor.shape[0] > 2:
+            stem_tensor = stem_tensor.mean(0, keepdim=True).repeat(2, 1)
+
+        torchaudio.save(str(stem_path), stem_tensor, 44100)
+        stems[stem_name] = stem_path
+
+        emit({
+            "status": "progress",
+            "stage": "saving",
+            "progress": 0.85 + (0.14 * (i + 1) / len(stem_names)),
+            "message": f"Saved {stem_name}.wav",
         })
-        
-        if self.model == "demucs" and DEMUCS_AVAILABLE:
-            return self._separate_demucs(input_path, stem_paths)
-        elif self.model == "bs_roformer" and BS_ROFORMER_AVAILABLE:
-            return self._separate_bs_roformer(input_path, stem_paths)
-        else:
-            raise RuntimeError(f"Unknown model: {self.model}")
-    
-    def _separate_demucs(self, input_path: str, stem_paths: dict) -> dict:
-        """Separate using Demucs."""
-        try:
-            import torchaudio
-            
-            # Load audio
-            waveform, sr = torchaudio.load(input_path)
-            
-            # Separate
-            with torch.no_grad():
-                sources = self.separator(waveform.unsqueeze(0))
-            
-            # Save each stem
-            for idx, name in enumerate(self.STEM_NAMES):
-                stem_waveform = sources[0, idx]
-                torchaudio.save(stem_paths[name], stem_waveform.cpu(), sr)
-                
-                self._send_progress({
-                    "status": "processing",
-                    "stage": "saving",
-                    "progress": (idx + 1) / len(self.STEM_NAMES),
-                    "message": f"Saving {name}..."
-                })
-            
-            return stem_paths
-            
-        except Exception as e:
-            raise RuntimeError(f"Demucs separation failed: {e}")
-    
-    def _separate_bs_roformer(self, input_path: str, stem_paths: dict) -> dict:
-        """Separate using BS-RoFormer."""
-        try:
-            return self.separator.separate(
-                input_path,
-                stem_paths=stem_paths,
-                progress_callback=self._send_progress,
-            )
-        except Exception as e:
-            raise RuntimeError(f"BS-RoFormer separation failed: {e}")
-    
-    def _send_progress(self, data: dict):
-        """Send progress update to stdout (JSON lines format)."""
-        print(json.dumps(data), flush=True)
+
+    return stems
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Stemgen Python Sidecar - AI Stem Separation")
-    parser.add_argument("--model", default="bs_roformer", 
-                       choices=["demucs", "htdemucs", "htdemucs_ft", "bs_roformer"],
-                       help="Separation model to use")
-    parser.add_argument("--input", required=True, help="Input audio file")
-    parser.add_argument("--output", required=True, help="Output directory")
-    parser.add_argument("--device", default=None, 
-                       choices=["cpu", "cuda", "mps"],
-                       help="Device for inference")
-    
-    args = parser.parse_args()
-    
-    # Handle interrupt signals
-    def signal_handler(signum, frame):
-        print(json.dumps({"status": "cancelled"}), flush=True)
-        sys.exit(0)
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
+def run_htdemucs_ft(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
+    """Run htdemucs_ft (fine-tuned, highest quality) stem separation."""
+    import torch
+    from demucs.pretrained import get_model
+    from demucs.apply import apply_model
+    from demucs.audio import AudioFile
+    import torchaudio
+
+    model_name = "htdemucs_ft"
+
+    emit({
+        "status": "progress",
+        "stage": "loading",
+        "progress": 0.05,
+        "message": f"Loading htdemucs_ft model (this may take a moment)...",
+    })
+
+    if device == "cuda" and torch.cuda.is_available():
+        run_device = torch.device("cuda")
+    elif device == "mps" and torch.backends.mps.is_available():
+        run_device = torch.device("mps")
+    else:
+        run_device = torch.device("cpu")
+
+    model = get_model(model_name, device=run_device)
+    model.eval()
+
+    emit({
+        "status": "progress",
+        "stage": "separating",
+        "progress": 0.1,
+        "message": "Running AI separation (htdemucs_ft, highest quality)...",
+    })
+
+    wav = AudioFile(input_path).read(streams=0)
+    source = str(input_path.stem)
+
+    with torch.no_grad():
+        mix = wav[0]
+        if mix.shape[0] > 2:
+            mix = mix.mean(0)
+        mix = torch.from_numpy(mix).to(run_device)
+        ref = mix.mean(0)
+        mix = (mix - ref.mean()) / (ref.std() + 1e-8)
+        mix = mix[None, None, ...]
+        sources = apply_model(model, mix, device=run_device, shifts=1, progress=False)[0]
+
+    emit({
+        "status": "progress",
+        "stage": "saving",
+        "progress": 0.85,
+        "message": "Saving stem files...",
+    })
+
+    source_names = model.sources
+    stem_names = ["drums", "bass", "other", "vocals"]
+    stems: Dict[str, Path] = {}
+
+    for i, stem_name in enumerate(stem_names):
+        stem_data = sources[i].cpu().numpy()
+        stem_filename = f"{source}_{stem_name}.wav"
+        stem_path = output_dir / stem_filename
+
+        stem_tensor = torch.from_numpy(stem_data)
+        if stem_tensor.dim() == 1:
+            stem_tensor = stem_tensor.unsqueeze(0)
+        elif stem_tensor.dim() == 2 and stem_tensor.shape[0] > 2:
+            stem_tensor = stem_tensor.mean(0, keepdim=True).repeat(2, 1)
+
+        torchaudio.save(str(stem_path), stem_tensor, 44100)
+        stems[stem_name] = stem_path
+
+        emit({
+            "status": "progress",
+            "stage": "saving",
+            "progress": 0.85 + (0.14 * (i + 1) / len(stem_names)),
+            "message": f"Saved {stem_name}.wav",
+        })
+
+    return stems
+
+
+def run_bs_roformer(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
+    """Run BS-RoFormer stem separation (highest quality for vocals)."""
+    import torch
+    import torchaudio
+    import soundfile as sf
+
     try:
-        # Initialize separator
-        sep = StemSeparator(model=args.model, device=args.device)
-        
-        # Send ready status
-        print(json.dumps({
-            "status": "initializing",
-            "model": args.model,
-            "device": sep.device
-        }), flush=True)
-        
-        # Load model
-        sep.load_model()
-        
-        # Run separation
-        result = sep.separate(args.input, args.output)
-        
-        # Send completion
-        print(json.dumps({
-            "status": "completed",
-            "stems": result
-        }), flush=True)
-        
-    except Exception as e:
-        print(json.dumps({
+        from bs_roformer import BSRoformer
+    except ImportError:
+        emit({
             "status": "error",
-            "error": str(e)
-        }), flush=True)
+            "error": "bs_roformer not installed. Install with: pip install bs-roformer",
+        })
+        sys.exit(1)
+
+    emit({
+        "status": "progress",
+        "stage": "loading",
+        "progress": 0.05,
+        "message": "Loading BS-RoFormer model...",
+    })
+
+    if device == "cuda" and torch.cuda.is_available():
+        run_device = torch.device("cuda")
+    elif device == "mps" and torch.backends.mps.is_available():
+        run_device = torch.device("mps")
+    else:
+        run_device = torch.device("cpu")
+
+    model = BSRoformer(
+        cnn_layers=10,
+        attention_layers=20,
+        channels=32,
+    )
+    # Load weights (model needs to be downloaded separately)
+    # For now, fall back to demucs if weights not available
+    emit({
+        "status": "error",
+        "error": "BS-RoFormer model weights not available. Please download from HuggingFace or use 'demucs' model.",
+    })
+    sys.exit(1)
+
+
+def run_separation(model: str, input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
+    """Dispatch to the appropriate model runner."""
+    model_lower = model.lower()
+
+    if model_lower == "demucs":
+        return run_demucs(input_path, output_dir, device)
+    elif model_lower in ("htdemucs", "ht_demucs"):
+        return run_htdemucs(input_path, output_dir, device)
+    elif model_lower in ("htdemucs_ft", "ht_demucs_ft"):
+        return run_htdemucs_ft(input_path, output_dir, device)
+    elif model_lower in ("bs_roformer", "bs-roformer"):
+        return run_bs_roformer(input_path, output_dir, device)
+    else:
+        emit({
+            "status": "error",
+            "error": f"Unknown model: {model}. Available: demucs, htdemucs, htdemucs_ft, bs_roformer",
+        })
+        sys.exit(1)
+
+
+# ------------------------------------------------------------------------------
+# Dependency checks
+# ------------------------------------------------------------------------------
+
+def check_dependencies() -> bool:
+    """Check if required Python packages are available."""
+    missing = []
+
+    try:
+        import torch
+    except ImportError:
+        missing.append("torch")
+
+    try:
+        import torchaudio
+    except ImportError:
+        missing.append("torchaudio")
+
+    try:
+        from demucs.pretrained import get_model
+    except ImportError:
+        missing.append("demucs")
+
+    if missing:
+        emit({
+            "status": "error",
+            "error": f"Missing Python packages: {', '.join(missing)}. Install with: pip install torch torchaudio demucs",
+        })
+        return False
+
+    return True
+
+
+# ------------------------------------------------------------------------------
+# Main
+# ------------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Stemgen AI Stem Separation Sidecar",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument("--model", required=True, help="AI model to use (demucs, htdemucs, htdemucs_ft, bs_roformer)")
+    parser.add_argument("--input", required=True, type=Path, help="Input audio file path")
+    parser.add_argument("--output", required=True, type=Path, help="Output directory for stem files")
+    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "mps"], help="Device to use for inference")
+
+    args = parser.parse_args()
+
+    # Validate input file
+    if not args.input.exists():
+        emit({
+            "status": "error",
+            "error": f"Input file not found: {args.input}",
+        })
+        sys.exit(1)
+
+    # Create output directory
+    args.output.mkdir(parents=True, exist_ok=True)
+
+    # Emit starting status
+    emit({
+        "status": "starting",
+        "model": args.model,
+        "device": args.device,
+        "message": f"Starting stem separation: {args.input.name}",
+    })
+
+    # Check dependencies
+    if not check_dependencies():
+        sys.exit(1)
+
+    try:
+        # Run separation
+        stems = run_separation(args.model, args.input, args.output, args.device)
+
+        # Emit completion
+        stem_paths = {name: str(path) for name, path in stems.items()}
+        emit({
+            "status": "done",
+            "stems": stem_paths,
+            "message": f"Separation complete: {len(stems)} stems created",
+        })
+        sys.exit(0)
+
+    except Exception as e:
+        import traceback
+        emit({
+            "status": "error",
+            "error": f"Separation failed: {str(e)}",
+        })
+        traceback.print_exc()
         sys.exit(1)
 
 

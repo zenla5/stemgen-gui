@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import { formatTime } from '@/hooks/useAudioPlayer';
 
@@ -34,8 +35,8 @@ export function WaveformDisplay({
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   
-  // Build audio URL
-  const audioSourceUrl = audioUrl || (audioPath ? `asset://localhost/${encodeURIComponent(audioPath)}` : undefined);
+  // Build audio URL using Tauri's convertFileSrc for proper asset serving
+  const audioSourceUrl = audioUrl || (audioPath ? convertFileSrc(audioPath) : undefined);
 
   // Initialize WaveSurfer
   useEffect(() => {

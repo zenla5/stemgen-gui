@@ -23,9 +23,9 @@
         "center": true
       }
     ],
-    "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ipc: http://ipc.localhost https://github.com https://fonts.googleapis.com https://fonts.gstatic.com"
-    },
+  "security": {
+    "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ipc: http://ipc.localhost https://github.com https://fonts.googleapis.com https://fonts.gstatic.com asset: http://asset.localhost https://asset.localhost; media-src 'self' asset: http://asset.localhost https://asset.localhost blob:"
+  },
     "trayIcon": {
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true

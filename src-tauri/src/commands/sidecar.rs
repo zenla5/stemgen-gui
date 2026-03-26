@@ -1,4 +1,4 @@
-//! Python sidecar process management for AI stem separation
+///! Python sidecar process management for AI stem separation
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
+use tauri::AppHandle;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, RwLock};
@@ -17,7 +18,7 @@ pub struct SeparationProcess {
     child: Child,
     /// Job ID for tracking
     job_id: String,
-    /// The model being used
+    /// The model being using
     model: String,
 }
 
@@ -31,6 +32,8 @@ pub struct SidecarManager {
     pub sidecar_path: PathBuf,
     /// Output directory for stems
     output_dir: PathBuf,
+    /// Tauri app handle for emitting events to frontend
+    app_handle: Option<AppHandle>,
 }
 
 impl SidecarManager {
@@ -41,7 +44,13 @@ impl SidecarManager {
             python_path: None,
             sidecar_path,
             output_dir,
+            app_handle: None,
         }
+    }
+
+    /// Set the Tauri app handle for event emission
+    pub fn set_app_handle(&mut self, handle: AppHandle) {
+        self.app_handle = Some(handle);
     }
 
     /// Detect Python executable
@@ -144,7 +153,9 @@ impl SidecarManager {
             .context("Failed to spawn Python sidecar")?;
 
         let stdout = child.stdout.take();
-        let _stderr = child.stderr.take();
+        let stderr = child.stderr.take();
+        let app_handle_clone = self.app_handle.clone();
+        let job_id_for_emit = job_id.clone();
 
         // Create the process wrapper
         let process = SeparationProcess {
@@ -156,22 +167,58 @@ impl SidecarManager {
         let process_arc = Arc::new(RwLock::new(process));
         self.current_process = Some(process_arc.clone());
 
-        // Read output in a separate task
-        let progress_tx = Arc::new(Mutex::new(Vec::<ProgressUpdate>::new()));
-        
+        // Read stdout and emit progress events to frontend
         if let Some(stdout) = stdout {
-            let progress_tx_clone = progress_tx.clone();
-            let job_id_clone = job_id.clone();
-            
             tokio::spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 
                 while let Ok(Some(line)) = lines.next_line().await {
-                    if let Ok(progress) = serde_json::from_str::<ProgressUpdate>(&line) {
-                        let mut updates = progress_tx_clone.lock().await;
-                        updates.push(progress);
-                        info!("[{}] Progress update received", job_id_clone);
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    
+                    if let Ok(progress) = serde_json::from_str::<ProgressUpdate>(trimmed) {
+                        info!(
+                            "[{}] Progress: {} (stage={:?}, progress={:?})",
+                            job_id_for_emit,
+                            progress.status,
+                            progress.stage,
+                            progress.progress
+                        );
+                        
+                        // Emit event to frontend if we have an app handle
+                        if let Some(ref handle) = app_handle_clone {
+                            let _ = handle.emit_all(
+                                "separation-progress",
+                                serde_json::json!({
+                                    "job_id": job_id_for_emit,
+                                    "status": progress.status,
+                                    "stage": progress.stage,
+                                    "message": progress.message,
+                                    "progress": progress.progress,
+                                    "error": progress.error,
+                                }),
+                            );
+                        }
+                    } else {
+                        debug!("[{}] Non-JSON stdout: {}", job_id_for_emit, trimmed);
+                    }
+                }
+            });
+        }
+
+        // Also log stderr
+        if let Some(stderr) = stderr {
+            let job_id_for_stderr = job_id.clone();
+            tokio::spawn(async move {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        warn!("[{}] stderr: {}", job_id_for_stderr, trimmed);
                     }
                 }
             });

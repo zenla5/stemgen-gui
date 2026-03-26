@@ -139,7 +139,13 @@ impl StemPacker {
     }
 
     /// Create a multi-track stem.mp4 with all stems
-    #[allow(clippy::similar_names, unused_variables)]
+    /// 
+    /// Uses FFmpeg's -map to create separate audio streams for each track:
+    /// Track 1: Master (full mix)
+    /// Track 2-5: Individual stems (drums, bass, other, vocals)
+    /// 
+    /// This produces a proper .stem.mp4 that NI Traktor can read.
+    #[allow(clippy::similar_names)]
     async fn create_multi_track_stem(
         &self,
         master_path: &Path,
@@ -149,12 +155,17 @@ impl StemPacker {
         info!("Creating multi-track stem file with {} stems", stems.len());
 
         let codec = self.settings.output_format.codec_name();
+        let codec_args = match self.settings.output_format {
+            super::presets::OutputFormat::Alac => vec!["-acodec", "alac"],
+            super::presets::OutputFormat::Aac => vec!["-acodec", "aac", "-b:a", "256k"],
+        };
 
         // Build FFmpeg command with multiple inputs
         let mut cmd = Command::new("ffmpeg");
         cmd.arg("-y"); // Overwrite output
+        cmd.arg("-hide_banner");
         
-        // Add master as first input
+        // Add master as first input (index 0)
         cmd.arg("-i").arg(master_path);
         
         // Add each stem as additional inputs
@@ -162,72 +173,55 @@ impl StemPacker {
             cmd.arg("-i").arg(stem_path);
         }
 
-        // Build filter complex for multi-track output
+        // Build -map arguments: one per input stream
         let num_inputs = 1 + stems.len(); // master + stems
-        
-        // Create filter complex to map each input to its own channel
-        let mut filter_parts = Vec::new();
         for i in 0..num_inputs {
-            filter_parts.push(format!("[{}:a]", i));
+            cmd.arg("-map").arg(format!("{}:a", i));
         }
-        let _filter_complex = filter_parts.join("");
 
-        // Simple approach: mix all inputs into a single stereo output with proper labeling
-        // For true multi-track, we'd need MP4 muxing with separate audio streams
-        let mut filter = String::new();
-        for i in 0..num_inputs {
-            if i > 0 {
-                filter.push_str(&format!("[{}:a]", i));
-            }
+        // Set audio properties for all streams
+        cmd.args(["-ar", "44100"]);
+        cmd.arg("-c:a").arg(codec);
+        
+        // Apply per-stream codec settings
+        // Stream 0 (master) gets ALAC/AAC, same for all others
+        for codec_arg in codec_args {
+            cmd.arg(codec_arg);
         }
         
-        // Use complex filter to create multiple output streams
-        cmd.args([
-            "-filter_complex", &format!(
-                "{}[out]",
-                stems.iter()
-                    .enumerate()
-                    .fold(String::new(), |acc, (i, _)| {
-                        if acc.is_empty() {
-                            format!("[{}:a]", i + 1)
-                        } else {
-                            acc
-                        }
-                    })
-            ),
-        ]);
+        // Set metadata for each stream (track name)
+        // Track 0 = Master
+        cmd.args(["-metadata:s:a:0", &format!("title={}", "Master")]);
+        
+        // Tracks 1-4 = Stems (in order of stems vec, which is DJ-software-specific)
+        for (i, (stem_type, _)) in stems.iter().enumerate() {
+            cmd.arg("-metadata:s:a".to_owned() + &format(":{}", i + 1))
+               .arg(format!("title={}", stem_type.name()));
+        }
 
-        // Actually, let's use a simpler approach for now:
-        // Create a 2-channel stereo mix with proper metadata
-        let mut simple_cmd = Command::new("ffmpeg");
-        simple_cmd.arg("-y");
-        simple_cmd.arg("-i").arg(master_path);
+        // Output path
+        cmd.arg(output_path);
         
-        // Add stem inputs
-        for (_, stem_path) in stems {
-            simple_cmd.arg("-i").arg(stem_path);
-        }
+        debug!("FFmpeg multi-track command: {:?}", cmd);
         
-        // Create a simple stereo mix
-        // The master becomes the main output, stems are informational
-        simple_cmd.args([
-            "-acodec", codec,
-            "-ar", "44100",
-            "-ac", "2",
-            output_path.to_str().unwrap(),
-        ]);
-        
-        let output = simple_cmd.output()
-            .context("Failed to execute FFmpeg")?;
+        let output = cmd.output()
+            .context("Failed to execute FFmpeg for multi-track stem")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            warn!("FFmpeg multi-track creation failed: {}, falling back to single track", stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            warn!(
+                "FFmpeg multi-track creation failed (exit {}):\nSTDOUT: {}\nSTDERR: {}",
+                output.status.code().unwrap_or(-1),
+                stdout,
+                stderr
+            );
             
             // Fallback to single track
             return self.create_single_track_stem(master_path, output_path).await;
         }
 
+        info!("Multi-track stem file created: {:?}", output_path);
         Ok(())
     }
 

@@ -218,3 +218,28 @@ export interface HistoryEntry {
 
 // Theme type
 export type Theme = 'light' | 'dark' | 'system';
+
+// Stem separation types (mirrors Rust backend)
+export interface StemInfo {
+  stem_type: string;
+  file_path?: string;
+}
+
+export interface PackStemsRequest {
+  master_path: string;
+  stem_paths: StemPath[];
+  output_path: string;
+  dj_software: string;
+  output_format: string;
+}
+
+export interface StemPath {
+  stem_type: string;
+  path: string;
+}
+
+export interface PackStemsResponse {
+  success: boolean;
+  output_path: string;
+  metadata_path?: string;
+}

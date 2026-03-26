@@ -1,8 +1,9 @@
 # Stemgen-GUI AI Agent Task List
 
-> **Version**: 1.0  
+> **Version**: 2.0  
 > **Last Updated**: 2026-03-26  
-> **Branch**: main (all tests passing, CI #69 green)
+> **Branch**: main (CI pending — changes not yet pushed)
+> **Tests**: ✅ 61/61 passing (30 unit + 31 integration)
 
 This document provides a sophisticated, step-by-step task list for AI agents to continue developing Stemgen-GUI, fix bugs, and set up the project.
 
@@ -10,7 +11,7 @@ This document provides a sophisticated, step-by-step task list for AI agents to 
 
 ## Table of Contents
 
-1. [Project Overview & Architecture](#1-project-overview--architecture)
+1. [What Was Fixed](#1-what-was-fixed)
 2. [CI/CD Pipeline Reference](#2-cicd-pipeline-reference)
 3. [Local Development Setup](#3-local-development-setup)
 4. [Common Tasks](#4-common-tasks)
@@ -21,49 +22,29 @@ This document provides a sophisticated, step-by-step task list for AI agents to 
 
 ---
 
-## 1. Project Overview & Architecture
+## 1. What Was Fixed
 
-### What is Stemgen-GUI?
-- FOSS desktop application that converts audio files to `.stem.mp4` files for DJ software
-- Tech stack: Tauri v2 (Rust + React 18 + TypeScript + Tailwind CSS + Zustand)
+### v2.0 Changes (Not Yet Pushed to CI)
 
-### Directory Structure
-```
-stemgen-gui/
-├── src/                    # React frontend
-│   ├── components/         # UI components (shadcn/ui)
-│   ├── hooks/              # Custom React hooks
-│   ├── stores/             # Zustand state management
-│   ├── lib/                # Utilities, types, constants
-│   ├── i18n/               # Internationalization
-│   └── __tests__/          # Frontend tests
-│       ├── integration/    # React component tests (Vitest + Testing Library)
-│       └── e2e/            # Playwright E2E tests
-├── src-tauri/              # Rust backend
-│   ├── src/
-│   │   ├── commands/       # Tauri IPC commands
-│   │   ├── audio/          # Audio processing (symphonia, waveform)
-│   │   └── stems/          # Stem metadata, presets, packer
-│   └── tests/              # Rust integration tests
-├── .github/workflows/      # CI/CD pipelines
-│   ├── ci.yml              # Main CI (8 parallel jobs)
-│   └── release.yml         # CD (builds & publishes releases)
-└── python/                 # AI sidecar (demucs/bs_roformer)
-```
+| # | Fix | Files Changed |
+|---|-----|--------------|
+| 1 | **Created missing `python/stemgen_sidecar.py`** — full Python sidecar with demucs/htdemucs/htdemucs_ft support, JSON progress emission | `python/stemgen_sidecar.py` |
+| 2 | **Fixed CSP** for `asset:` URLs — added `media-src` and `asset:` to `connect-src` | `src-tauri/tauri.conf.json` |
+| 3 | **Fixed WaveformDisplay** to use `convertFileSrc()` instead of manual `asset://localhost/` URL construction | `src/components/audio/WaveformDisplay.tsx` |
+| 4 | **Fixed useAudioPlayer** to use `convertFileSrc()` for proper Tauri asset serving | `src/hooks/useAudioPlayer.ts` |
+| 5 | **Wired end-to-end pipeline** in `appStore.ts`: removed single-job guard, added stem path population, `pack_stems` call, `add_to_history` call, mixer navigation | `src/stores/appStore.ts` |
+| 6 | **Fixed broken `create_multi_track_stem`** — rewrote dead code into proper FFmpeg multi-track command with `-map` and per-stream metadata | `src-tauri/src/stems/packer.rs` |
+| 7 | **Added progress event emission** to `SidecarManager` — parses sidecar JSON and emits `separation-progress` events to frontend via Tauri | `src-tauri/src/commands/sidecar.rs` |
+| 8 | **Added `AppHandle` to `SidecarManager`** and initialized it in `lib.rs` setup | `src-tauri/src/lib.rs`, `src-tauri/src/commands/sidecar.rs` |
+| 9 | **Added missing TypeScript types** for backend API responses | `src/lib/types.ts` |
 
-### Audio Processing Pipeline
-1. **Ingest** → Decode audio, extract metadata/cover art
-2. **Convert** → Resample to 44.1kHz, normalize
-3. **Separate** → Run AI model → 4 stems (drums, bass, other, vocals)
-4. **Preview** → User previews/mixes stems
-5. **Encode** → ALAC/AAC encoding
-6. **Pack** → Create .stem.mp4 container
-7. **Tag** → Write metadata, colors, BPM, key
+### Previously Done (CI #69 Baseline)
 
-### NI Stem Format
-- 5 audio tracks: master + 4 stems
-- Custom `nmde` atom with JSON metadata
-- Stem ordering per DJ software (Traktor, rekordbox, Serato, Mixxx, djay, VirtualDJ)
+- Full CI/CD pipeline (8 parallel jobs)
+- All UI components scaffolded and tested
+- Rust backend audio/stem modules
+- State management (Zustand)
+- 61 tests passing
 
 ---
 
@@ -79,17 +60,13 @@ stemgen-gui/
 | 1 | Frontend (ubuntu-latest) | ubuntu-latest | ~2-3 min | `npm run check`, `npm run lint`, `npm run test:unit` |
 | 2 | Frontend (windows-latest) | windows-latest | ~2-3 min | Same as above |
 | 3 | Frontend (macos-latest) | macos-latest | ~2-3 min | Same as above |
-| 4 | Integration Tests | ubuntu-latest | ~2-3 min | `npm run test:integration` |
+| 4 | Integration Tests | ubuntu-latest | ~2-3 min | `npm run test:integration -- --coverage` |
 | 5 | E2E Tests | ubuntu-latest | ~5-10 min | `npx playwright test --project=chromium` |
 | 6 | Backend (Rust) | ubuntu-latest | ~10-15 min | `cargo fmt`, `cargo clippy`, `cargo build --release`, `cargo test --lib` |
 | 7 | Security Audit | ubuntu-latest | ~2 min | `npm audit`, `cargo audit` |
 | 8 | All Checks Passed | ubuntu-latest | ~10s | Aggregates all job results |
 
 **SUCCESS**: All 8 jobs must pass.
-
-**CI Run #69** (c02c616 on main): ALL GREEN ✅
-- 8/8 jobs passing
-- 1275 lines added, 246 removed
 
 ### CD Pipeline (`.github/workflows/release.yml`)
 
@@ -123,11 +100,6 @@ stemgen-gui/
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env  # or restart terminal
 ```
-
-#### CI Environment
-- CI uses `dtolnay/rust-toolchain@stable` GitHub Action
-- Rust is NOT pre-installed on CI runners; it downloads via rustup
-- This is why `rustup-init.exe` may appear in working directories during debugging
 
 ### Prerequisites
 ```bash
@@ -164,28 +136,19 @@ npm run dev
 npm run tauri:build
 
 # Tests
-npm run test:unit        # Vitest unit tests
-npm run test:integration # React component integration tests
+npm run test:unit        # Vitest unit tests (30 tests)
+npm run test:integration # React component integration tests (31 tests)
 npm run test:e2e        # Playwright E2E tests
 npm run test:coverage    # Coverage report
 
 # Linting
 npm run lint             # ESLint + Prettier
+npm run check            # TypeScript type check
 
 # Rust
 cd src-tauri && cargo build --release
 cd src-tauri && cargo test --lib       # Library tests only (no binary needed)
 cd src-tauri && cargo clippy --lib --bins
-```
-
-### Environment Variables
-```bash
-# Optional: GPU acceleration
-CUDA_HOME=/path/to/cuda    # Windows/Linux NVIDIA
-DYLD_LIBRARY_PATH=...       # macOS
-
-# Optional: Custom sidecar
-STEMGEN_SIDECAR=/path/to/stemgen_sidecar.py
 ```
 
 ---
@@ -217,45 +180,6 @@ git push origin v0.1.0
 # This triggers release.yml automatically
 ```
 
-### D. Checking CI Status
-```python
-# Python script to check CI status
-import urllib.request, json
-
-TOKEN = 'ghp_YOUR_TOKEN'
-REPO = 'zenla5/stemgen-gui'
-url = f'https://api.github.com/repos/{REPO}/actions/runs?branch=main&per_page=3'
-req = urllib.request.Request(url, headers={'Authorization': f'Bearer {TOKEN}'})
-d = json.loads(urllib.request.urlopen(req).read())
-for run in d['workflow_runs'][:3]:
-    print(f"#{run['run_number']} {run['status']}/{run['conclusion']} id={run['id']}")
-```
-
-### E. Checking Specific Job Status
-```python
-# Get job details
-RUN_ID = 23605675955  # Example
-url = f'https://api.github.com/repos/{REPO}/actions/runs/{RUN_ID}/jobs'
-req = urllib.request.Request(url, headers={'Authorization': f'Bearer {TOKEN}'})
-d = json.loads(urllib.request.urlopen(req).read())
-for job in d['jobs']:
-    print(f"{job['name']}: {job.get('conclusion')}")
-```
-
-### F. Cancelling a CI Run
-```python
-import urllib.request
-
-RUN_ID = 23606320129
-url = f'https://api.github.com/repos/{REPO}/actions/runs/{RUN_ID}/cancel'
-req = urllib.request.Request(url, method='POST', headers={
-    'Authorization': f'Bearer {TOKEN}',
-    'Accept': 'application/vnd.github+json'
-})
-resp = urllib.request.urlopen(req)
-print(resp.status)
-```
-
 ---
 
 ## 5. Debugging CI Failures
@@ -272,12 +196,8 @@ print(resp.status)
 2. **Check step-level results** within the failed job:
    ```python
    # Get job ID from jobs list
-   JOB_ID = 68746751443
    url = f'https://api.github.com/repos/{REPO}/actions/jobs/{JOB_ID}'
-   req = urllib.request.Request(url, headers={'Authorization': f'Bearer {TOKEN}'})
-   job = json.loads(urllib.request.urlopen(req).read())
-   for step in job['steps']:
-       print(f"  Step {step['number']}: {step['name']} - {step.get('conclusion')}")
+   # Check steps array with conclusions
    ```
 
 3. **For Backend (Rust) failures**:
@@ -294,17 +214,6 @@ print(resp.status)
    - Check Playwright configuration
    - Verify the app builds and starts correctly
    - Check for race conditions or timing issues
-
-### Common CI Failure Patterns
-
-| Failure | Likely Cause | Fix |
-|---------|-------------|-----|
-| Backend `cargo test` fails | Binary compilation issue | Use `cargo test --lib` (library tests only) |
-| Frontend lint fails | TypeScript/ESLint errors | Run `npm run lint` locally and fix |
-| Integration tests fail | Mock/setup issues | Check `src/__tests__/integration/setup.ts` |
-| E2E tests fail | App doesn't build/start | Verify `npm run tauri:build` works |
-| Security audit fails | Vulnerable dependencies | Run `npm audit` and `cargo audit` |
-| All Checks Passed fails | Previous run's status | Check all 8 jobs individually |
 
 ---
 
@@ -345,32 +254,6 @@ git commit -m "feat: add my new feature with tests"
 git push origin feat/my-new-feature
 ```
 
-### Step 6: Monitor CI
-```python
-# Check CI status for your branch
-url = f'https://api.github.com/repos/{REPO}/actions/runs?branch=feat/my-new-feature&per_page=1'
-# Wait for completion and check conclusion
-```
-
-### Step 7: Fix Any CI Failures
-- Follow the debugging protocol above
-- Push fixes to the same branch
-- CI will re-run automatically
-
-### Step 8: Merge to Main
-```bash
-# Via GitHub PR (recommended)
-# Or via command line:
-git checkout main
-git pull origin main
-git merge feat/my-new-feature
-git push origin main
-```
-
-### Step 9: Verify Main CI
-- Wait for CI on main to pass
-- Check all 8 jobs pass
-
 ---
 
 ## 7. Known Issues & Gotchas
@@ -386,11 +269,6 @@ git push origin main
 - This runs all `#[cfg(test)]` modules in `src-tauri/src/`
 - Integration tests in `src-tauri/tests/` need `cargo test` but will fail without JS
 
-### Cross-Platform npm Scripts
-- Windows: Use `npm run build:win`, `npm run test:win`
-- Linux/macOS: Use `npm run build:unix`, `npm run test:unix`
-- Don't use `npm run build` or `npm run test` on wrong OS
-
 ### Tauri Build Artifacts
 - Build artifacts are OS-specific (.exe for Windows, app bundle for macOS, AppImage for Linux)
 - Release workflow builds for all platforms
@@ -400,11 +278,12 @@ git push origin main
 - Requires Python 3.9+ with dependencies from `python/requirements.txt`
 - Must be in PATH or bundled with the app
 - Used for AI model inference (demucs/bs_roformer)
+- Progress events emitted as JSON lines to stdout → forwarded to frontend via Tauri events
 
 ### Stem Metadata
-- NI stem metadata is JSON in a custom `nmde` atom
-- Full NI compatibility requires low-level MP4 manipulation
-- Current implementation uses sidecar `.stem.metadata` files
+- NI stem metadata is written as a sidecar `.stem.metadata` file
+- The multi-track packer creates proper 5-stream MP4 with FFmpeg
+- For full NI compatibility, `nmde` custom atom embedding could be implemented
 
 ---
 
@@ -432,7 +311,7 @@ git push origin main
 - `react` / `react-dom` - UI framework
 - `zustand` - State management
 - `tailwindcss` - Styling
-- `vitest` - Unit/integration testing
+- `vitest` - Unit and integration testing
 - `@testing-library/react` - Component testing
 - `@playwright/test` - E2E testing
 - `@tauri-apps/api` - Tauri frontend API
@@ -445,7 +324,6 @@ git push origin main
 
 - **Repository**: https://github.com/zenla5/stemgen-gui
 - **Main Branch CI**: https://github.com/zenla5/stemgen-gui/actions (branch: main)
-- **Latest Green CI Run**: #69 (commit c02c616)
 
 ### Useful Links
 - Tauri v2 Docs: https://tauri.app/v2/
