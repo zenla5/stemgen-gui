@@ -118,10 +118,11 @@ pub fn run() {
             
             // Initialize the sidecar manager with the app handle for event emission
             let app_handle = app.handle().clone();
-            let mut sidecar_guard = app.state::<AppState>().sidecar.blocking_lock();
+            let app_state = app.state::<AppState>();
+            let mut sidecar_guard = app_state.sidecar.blocking_lock();
             let mut sidecar = commands::sidecar::SidecarManager::new(
-                app.state::<AppState>().sidecar_path.clone(),
-                app.state::<AppState>().output_dir.clone(),
+                app_state.sidecar_path.clone(),
+                app_state.output_dir.clone(),
             );
             sidecar.set_app_handle(app_handle);
             *sidecar_guard = Some(sidecar);
