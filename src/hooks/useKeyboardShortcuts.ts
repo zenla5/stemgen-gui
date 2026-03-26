@@ -6,13 +6,36 @@ export function useKeyboardShortcuts() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Navigation shortcuts
-      if (e.key === '1') setActiveView('files');
-      if (e.key === '2') setActiveView('queue');
-      if (e.key === '3') setActiveView('mixer');
-      if (e.key === '4') setActiveView('settings');
+      // Ignore shortcuts when typing in form elements
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || 
+                      target.tagName === 'TEXTAREA' || 
+                      target.tagName === 'SELECT' ||
+                      target.isContentEditable;
+      
+      if (isInput) {
+        return;
+      }
 
-      // Toggle sidebar
+      // Navigation shortcuts (1-4)
+      if (e.key === '1') {
+        e.preventDefault();
+        setActiveView('files');
+      }
+      if (e.key === '2') {
+        e.preventDefault();
+        setActiveView('queue');
+      }
+      if (e.key === '3') {
+        e.preventDefault();
+        setActiveView('mixer');
+      }
+      if (e.key === '4') {
+        e.preventDefault();
+        setActiveView('settings');
+      }
+
+      // Toggle sidebar (Ctrl+B)
       if (e.ctrlKey && e.key === 'b') {
         e.preventDefault();
         toggleSidebar();

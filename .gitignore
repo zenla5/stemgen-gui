@@ -49,3 +49,5 @@ coverage.lcov
 *.env
 .env.local
 .env.*.local
+"src-tauri/gen/"  
+"*.tsbuildinfo"  

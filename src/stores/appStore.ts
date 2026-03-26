@@ -11,6 +11,9 @@ import type {
 } from '@/lib/types';
 import { DEFAULT_PROCESSING_SETTINGS, STEM_COLORS, STEM_DEFAULT_NAMES } from '@/lib/constants';
 
+// Helper to generate unique IDs
+const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
 interface AppState {
   // Audio files
   audioFiles: AudioFileMetadata[];
@@ -48,6 +51,8 @@ interface AppState {
   clearJobs: () => void;
   setCurrentJob: (id: string | null) => void;
   setIsProcessing: (processing: boolean) => void;
+  startProcessing: (files: AudioFileMetadata[]) => Promise<void>;
+  cancelProcessing: (jobId: string) => Promise<void>;
   
   // Stem actions
   setCurrentStems: (stems: Stem[]) => void;
@@ -144,6 +149,79 @@ export const useAppStore = create<AppState>()(
       setCurrentJob: (id) => set({ currentJobId: id }),
       
       setIsProcessing: (processing) => set({ isProcessing: processing }),
+      
+      // Start processing - creates jobs for selected files
+      startProcessing: async (files: AudioFileMetadata[]) => {
+        const { settings, addJob, setCurrentJob, setIsProcessing } = get();
+        
+        if (files.length === 0) return;
+        
+        setIsProcessing(true);
+        
+        // Create jobs for each file
+        for (const file of files) {
+          const job: ProcessingJob = {
+            id: generateId(),
+            input_path: file.path,
+            output_path: file.path.replace(/\.[^.]+$/, '.stem.mp4'),
+            status: 'pending',
+            progress: 0,
+            model: settings.model,
+            dj_software: settings.djPreset,
+            started_at: new Date().toISOString(),
+          };
+          
+          addJob(job);
+          
+          // Start the first job immediately
+          if (!get().currentJobId) {
+            setCurrentJob(job.id);
+            
+            // Update job status to processing
+            get().updateJob(job.id, { status: 'processing' });
+            
+            // Call the Tauri backend
+            try {
+              await invoke('start_separation', {
+                sourcePath: file.path,
+                outputPath: job.output_path,
+                settings: {
+                  model: settings.model,
+                  device: settings.device,
+                  output_format: settings.outputFormat,
+                  quality_preset: settings.qualityPreset,
+                  dj_preset: settings.djPreset,
+                },
+              });
+              
+              // Job completed successfully
+              get().updateJob(job.id, {
+                status: 'completed',
+                progress: 1,
+                completed_at: new Date().toISOString(),
+              });
+            } catch (error) {
+              // Job failed
+              get().updateJob(job.id, {
+                status: 'failed',
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+        }
+        
+        setIsProcessing(false);
+      },
+      
+      // Cancel a processing job
+      cancelProcessing: async (jobId: string) => {
+        try {
+          await invoke('cancel_separation', { jobId });
+          get().updateJob(jobId, { status: 'cancelled' });
+        } catch (error) {
+          console.error('Failed to cancel job:', error);
+        }
+      },
       
       // Stem actions
       setCurrentStems: (stems) => set({ currentStems: stems }),

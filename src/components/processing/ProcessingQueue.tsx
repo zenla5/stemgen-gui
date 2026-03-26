@@ -1,17 +1,35 @@
-import { Play, Trash2, Music, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import type { ProcessingJob, ProcessingStatus } from '@/lib/types';
 
 export function ProcessingQueue() {
-  const { jobs, removeJob, clearJobs, selectedFile } = useAppStore();
+  const { jobs, audioFiles, removeJob, clearJobs, startProcessing, cancelProcessing, isProcessing } = useAppStore();
+
+  const handleStartProcessing = () => {
+    // Process all audio files
+    if (audioFiles.length > 0) {
+      startProcessing(audioFiles);
+    }
+  };
+
+  const handleCancelProcessing = () => {
+    const currentJob = jobs.find((j) => j.status === 'processing');
+    if (currentJob) {
+      cancelProcessing(currentJob.id);
+    }
+  };
+
+  const hasJobs = jobs.length > 0;
+  const hasFiles = audioFiles.length > 0;
+  const currentJob = jobs.find((j) => j.status === 'processing');
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Processing Queue</h2>
         <div className="flex gap-2">
-          {jobs.length > 0 && (
+          {hasJobs && (
             <button
               onClick={clearJobs}
               className="flex items-center gap-2 rounded-md border border-destructive/50 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10"
@@ -23,7 +41,7 @@ export function ProcessingQueue() {
         </div>
       </div>
 
-      {jobs.length === 0 ? (
+      {!hasJobs ? (
         <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground">
           <Music className="mb-4 h-16 w-16 opacity-50" />
           <p className="text-lg font-medium">No jobs in queue</p>
@@ -37,22 +55,37 @@ export function ProcessingQueue() {
                 key={job.id}
                 job={job}
                 onRemove={() => removeJob(job.id)}
+                onCancel={() => cancelProcessing(job.id)}
               />
             ))}
           </div>
         </div>
       )}
 
-      {selectedFile && jobs.length > 0 && (
-        <div className="mt-auto border-t pt-4">
+      {/* Action buttons */}
+      <div className="mt-auto border-t pt-4">
+        {isProcessing && currentJob ? (
           <button
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 font-medium text-primary-foreground hover:bg-primary/90"
+            onClick={handleCancelProcessing}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-destructive px-4 py-3 font-medium text-destructive-foreground hover:bg-destructive/90"
+          >
+            <StopCircle className="h-5 w-5" />
+            Cancel Processing
+          </button>
+        ) : (
+          <button
+            onClick={handleStartProcessing}
+            disabled={!hasFiles}
+            className={cn(
+              'flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 font-medium text-primary-foreground hover:bg-primary/90',
+              !hasFiles && 'cursor-not-allowed opacity-50'
+            )}
           >
             <Play className="h-5 w-5" />
-            Start Processing
+            Start Processing {hasFiles && `(${audioFiles.length} file${audioFiles.length !== 1 ? 's' : ''})`}
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -60,9 +93,11 @@ export function ProcessingQueue() {
 function JobItem({
   job,
   onRemove,
+  onCancel,
 }: {
   job: ProcessingJob;
   onRemove: () => void;
+  onCancel: () => void;
 }) {
   const getStatusIcon = (status: ProcessingStatus) => {
     switch (status) {
@@ -111,6 +146,11 @@ function JobItem({
           )}>
             {getStatusText(job.status)}
           </span>
+          {job.status === 'failed' && job.error && (
+            <span className="truncate text-red-400" title={job.error}>
+              • {job.error.substring(0, 30)}...
+            </span>
+          )}
         </div>
       </div>
 
@@ -128,9 +168,20 @@ function JobItem({
         </div>
       )}
 
+      {job.status === 'processing' && (
+        <button
+          onClick={onCancel}
+          className="flex-shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
+          title="Cancel"
+        >
+          <StopCircle className="h-4 w-4" />
+        </button>
+      )}
+
       <button
         onClick={onRemove}
         className="flex-shrink-0 rounded-md p-1 hover:bg-muted"
+        title="Remove"
       >
         <Trash2 className="h-4 w-4" />
       </button>

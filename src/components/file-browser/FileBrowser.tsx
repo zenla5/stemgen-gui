@@ -1,6 +1,6 @@
-import { useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useEffect, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { FolderOpen, Upload, Music, X } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
@@ -8,42 +8,58 @@ import { SUPPORTED_AUDIO_FORMATS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import type { AudioFileMetadata } from '@/lib/types';
 
+interface DragDropPayload {
+  paths: string[];
+}
+
 export function FileBrowser() {
   const { audioFiles, addFiles, removeFile, selectFile, selectedFile } = useAppStore();
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
-  const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      const newFiles: AudioFileMetadata[] = [];
+  // Listen for Tauri's native drag-drop events
+  useEffect(() => {
+    const unlistenDrop = listen<DragDropPayload>('tauri://drag-drop', async (event) => {
+      setIsDraggingOver(false);
+      const paths = event.payload.paths;
       
-      for (const file of acceptedFiles) {
-        try {
-          // In Tauri, we can get the path from the File object
-          const filePath = (file as File & { path?: string }).path || file.name;
-          const info = await invoke<AudioFileMetadata>('get_audio_info', {
-            path: filePath,
-          });
-          newFiles.push(info);
-        } catch (error) {
-          console.error('Failed to get audio info:', error);
+      if (paths && paths.length > 0) {
+        const newFiles: AudioFileMetadata[] = [];
+        
+        for (const path of paths) {
+          // Check if it's an audio file
+          const ext = path.split('.').pop()?.toLowerCase();
+          if (ext && SUPPORTED_AUDIO_FORMATS.includes(ext)) {
+            try {
+              const info = await invoke<AudioFileMetadata>('get_audio_info', { path });
+              newFiles.push(info);
+            } catch (error) {
+              console.error('Failed to get audio info:', error);
+            }
+          }
+        }
+        
+        if (newFiles.length > 0) {
+          addFiles(newFiles);
         }
       }
-      
-      if (newFiles.length > 0) {
-        addFiles(newFiles);
-      }
-    },
-    [addFiles]
-  );
+    });
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'audio/*': SUPPORTED_AUDIO_FORMATS.map((ext) => `.${ext}`),
-    },
-    multiple: true,
-  });
+    const unlistenDragEnter = listen('tauri://drag-enter', () => {
+      setIsDraggingOver(true);
+    });
 
-  const handleOpenFolder = async () => {
+    const unlistenDragLeave = listen('tauri://drag-leave', () => {
+      setIsDraggingOver(false);
+    });
+
+    return () => {
+      unlistenDrop.then((fn) => fn());
+      unlistenDragEnter.then((fn) => fn());
+      unlistenDragLeave.then((fn) => fn());
+    };
+  }, [addFiles]);
+
+  const handleOpenFiles = async () => {
     try {
       const selected = await open({
         multiple: true,
@@ -73,7 +89,7 @@ export function FileBrowser() {
         }
       }
     } catch (error) {
-      console.error('Failed to open folder:', error);
+      console.error('Failed to open files:', error);
     }
   };
 
@@ -93,29 +109,36 @@ export function FileBrowser() {
     <div className="flex h-full flex-col gap-4 p-4">
       {/* Drop zone */}
       <div
-        {...getRootProps()}
         className={cn(
           'flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors',
-          isDragActive
+          isDraggingOver
             ? 'border-primary bg-primary/10'
             : 'border-muted hover:border-primary/50 hover:bg-muted/50'
         )}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDraggingOver(true);
+        }}
+        onDragLeave={() => setIsDraggingOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDraggingOver(false);
+        }}
       >
-        <input {...getInputProps()} />
         <Upload className="mb-4 h-12 w-12 text-muted-foreground" />
         <p className="mb-2 text-lg font-medium">
-          {isDragActive ? 'Drop audio files here' : 'Drag & drop audio files'}
+          {isDraggingOver ? 'Drop audio files here' : 'Drag & drop audio files'}
         </p>
         <p className="mb-4 text-sm text-muted-foreground">
           or click to browse
         </p>
         <button
           type="button"
-          onClick={handleOpenFolder}
+          onClick={handleOpenFiles}
           className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <FolderOpen className="h-4 w-4" />
-          Open Folder
+          Open Files
         </button>
       </div>
 
@@ -126,6 +149,12 @@ export function FileBrowser() {
             <h3 className="text-sm font-medium">
               {audioFiles.length} file{audioFiles.length !== 1 ? 's' : ''} selected
             </h3>
+            <button
+              onClick={() => audioFiles.forEach((f) => removeFile(f.path))}
+              className="text-xs text-muted-foreground hover:text-destructive"
+            >
+              Clear all
+            </button>
           </div>
           <div className="space-y-2">
             {audioFiles.map((file) => (
