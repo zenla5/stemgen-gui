@@ -1,4 +1,4 @@
-///! Python sidecar process management for AI stem separation
+//! Python sidecar process management for AI stem separation
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -9,8 +9,8 @@ use std::sync::Arc;
 use tauri::AppHandle;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{Mutex, RwLock};
-use tracing::{info, warn};
+use tokio::sync::RwLock;
+use tracing::{debug, info, warn};
 
 /// Represents a running separation process
 pub struct SeparationProcess {
@@ -190,7 +190,7 @@ impl SidecarManager {
                         
                         // Emit event to frontend if we have an app handle
                         if let Some(ref handle) = app_handle_clone {
-                            let _ = handle.emit_all(
+                            let _ = handle.emit(
                                 "separation-progress",
                                 serde_json::json!({
                                     "job_id": job_id_for_emit,

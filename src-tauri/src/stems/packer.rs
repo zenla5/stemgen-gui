@@ -195,7 +195,7 @@ impl StemPacker {
         
         // Tracks 1-4 = Stems (in order of stems vec, which is DJ-software-specific)
         for (i, (stem_type, _)) in stems.iter().enumerate() {
-            cmd.arg("-metadata:s:a".to_owned() + &format(":{}", i + 1))
+            cmd.arg(format!("-metadata:s:a:{}", i + 1))
                .arg(format!("title={}", stem_type.name()));
         }
 
