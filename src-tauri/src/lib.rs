@@ -2,7 +2,7 @@
 //! 
 //! A free and open source (FOSS) stem file generator for DJ software.
 
-mod audio;
+pub mod audio;
 pub mod commands;
 pub mod stems;
 
