@@ -3,7 +3,7 @@
 //! Resamples audio to 44.1kHz (NI stem standard).
 
 use anyhow::{Context, Result};
-use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, Resampler};
+use rubato::{Resampler, SincFixedIn2, SincInterpolationParameters, SincInterpolationType};
 use tracing::{debug, info};
 
 use crate::audio::decoder::SampleData;
@@ -85,7 +85,7 @@ impl AudioResampler {
         let num_channels = samples.channels as usize;
         let input_frames = samples.samples.len() / num_channels;
         
-        // rubato v1: SincFixedIn::new(output_sample_rate, input_sample_rate, params, n_channels, n_frames)
+        // rubato v1: SincFixedIn2::new(output_sample_rate, input_sample_rate, params, n_channels, n_frames)
         let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
@@ -94,7 +94,7 @@ impl AudioResampler {
             window: rubato::WindowFunction::BlackmanHarris2,
         };
 
-        let mut resampler = SincFixedIn::<f32>::new(
+        let mut resampler = SincFixedIn2::<f32>::new(
             output_sample_rate,
             input_sample_rate,
             params,
@@ -148,7 +148,7 @@ impl AudioResampler {
             window: rubato::WindowFunction::BlackmanHarris2,
         };
 
-        let mut resampler = SincFixedIn::<f32>::new(
+        let mut resampler = SincFixedIn2::<f32>::new(
             output_sample_rate,
             input_sample_rate,
             params,
