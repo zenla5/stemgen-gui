@@ -27,6 +27,8 @@
     "fs:allow-remove",
     "fs:allow-rename",
     "fs:allow-stat",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
     {
       "identifier": "fs:scope",
       "allow": [
@@ -36,7 +38,15 @@
         { "path": "$AUDIO/**" },
         { "path": "$APPDATA/**" },
         { "path": "$LOCALAPPDATA/**" },
-        { "path": "$TEMP/**" }
+        { "path": "$TEMP/**" },
+        { "path": "**/*.mp3" },
+        { "path": "**/*.flac" },
+        { "path": "**/*.wav" },
+        { "path": "**/*.ogg" },
+        { "path": "**/*.m4a" },
+        { "path": "**/*.aac" },
+        { "path": "**/*.stem.mp4" },
+        { "path": "**/*.mp4" }
       ]
     },
     "notification:default",

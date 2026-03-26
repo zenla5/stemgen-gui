@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tracing::info;
+use tauri::Emitter;
+use tokio::sync::Mutex;
+use tracing::{error, info};
 use crate::audio::{AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
 use crate::audio::waveform::WaveformPoint;
+use crate::commands::sidecar::SidecarManager;
 use crate::stems::{StemPacker, StemType, DJSoftware, OutputFormat};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -49,59 +52,165 @@ pub struct PackStemsResponse {
     pub metadata_path: Option<String>,
 }
 
+/// Separation response with stem paths
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SeparationResponse {
+    pub success: bool,
+    pub stems: Vec<StemInfo>,
+    pub output_dir: String,
+}
+
+/// Start stem separation using the Python sidecar
 #[tauri::command]
 pub async fn start_separation(
     source_path: String,
     output_path: String,
     settings: SeparationSettings,
+    state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<StemInfo>, String> {
     info!(
         "Starting separation: {} -> {} (model: {}, device: {})",
         source_path, output_path, settings.model, settings.device
     );
     
-    // This is a placeholder - actual implementation would:
-    // 1. Convert audio to 44.1kHz WAV using FFmpeg/SoX
-    // 2. Run AI model (bs_roformer or demucs) via Python sidecar
-    // 3. Create .stem.mp4 using ni-stem format
-    // 4. Return stem file paths
+    // Get or create sidecar manager
+    let mut sidecar_guard = state.sidecar.lock().await;
     
-    Err("Separation not yet implemented - use pack_stems for existing stems".to_string())
+    if sidecar_guard.is_none() {
+        // Initialize sidecar manager with paths from app state
+        let sidecar = SidecarManager::new(
+            state.sidecar_path.clone(),
+            state.output_dir.clone(),
+        );
+        *sidecar_guard = Some(sidecar);
+    }
+    
+    let sidecar = sidecar_guard.as_mut().ok_or("Sidecar not initialized")?;
+    
+    // Run the separation
+    let source = Path::new(&source_path);
+    
+    // Generate a job ID
+    let job_id = format!("job_{}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis());
+    
+    let result = sidecar.run_separation(
+        job_id,
+        source,
+        &settings.model,
+        &settings.device,
+    ).await;
+    
+    match result {
+        Ok(result) => {
+            info!("Separation completed successfully with {} stems", result.stems.len());
+            
+            // Convert to StemInfo
+            let stems: Vec<StemInfo> = result.stems.iter().map(|s| StemInfo {
+                stem_type: s.stem_type.clone(),
+                file_path: Some(s.path.to_string_lossy().to_string()),
+            }).collect();
+            
+            Ok(stems)
+        }
+        Err(e) => {
+            error!("Separation failed: {}", e);
+            Err(e.to_string())
+        }
+    }
 }
 
+/// Cancel the current separation process
 #[tauri::command]
-pub async fn cancel_separation(job_id: String) -> Result<(), String> {
-    info!("Cancelling separation job: {}", job_id);
-    // Cancel the running separation process
+pub async fn cancel_separation(
+    _job_id: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    info!("Cancelling separation job");
+    
+    let mut sidecar_guard = state.sidecar.lock().await;
+    
+    if let Some(sidecar) = sidecar_guard.as_mut() {
+        sidecar.cancel().await.map_err(|e| e.to_string())?;
+    }
+    
     Ok(())
 }
 
+/// Get list of available separation models
 #[tauri::command]
-pub async fn get_models() -> Result<Vec<String>, String> {
+pub async fn get_models() -> Result<Vec<ModelInfo>, String> {
     info!("Getting available models");
     
-    // Return list of available models
+    // Return list of available models with metadata
     Ok(vec![
-        "bs_roformer".to_string(),
-        "htdemucs".to_string(),
-        "htdemucs_ft".to_string(),
-        "demucs".to_string(),
+        ModelInfo {
+            id: "bs_roformer".to_string(),
+            name: "BS-RoFormer".to_string(),
+            description: "High quality, medium speed. Best for vocals separation.".to_string(),
+            quality: "high".to_string(),
+            speed: "medium".to_string(),
+            gpu_required: true,
+        },
+        ModelInfo {
+            id: "htdemucs".to_string(),
+            name: "HTDemucs".to_string(),
+            description: "High quality, slower. Good all-around performer.".to_string(),
+            quality: "high".to_string(),
+            speed: "slow".to_string(),
+            gpu_required: true,
+        },
+        ModelInfo {
+            id: "htdemucs_ft".to_string(),
+            name: "HTDemucs FT".to_string(),
+            description: "Highest quality, slowest. Fine-tuned for best results.".to_string(),
+            quality: "highest".to_string(),
+            speed: "very_slow".to_string(),
+            gpu_required: true,
+        },
+        ModelInfo {
+            id: "demucs".to_string(),
+            name: "Demucs".to_string(),
+            description: "Medium quality, faster. Good for CPU inference.".to_string(),
+            quality: "medium".to_string(),
+            speed: "fast".to_string(),
+            gpu_required: false,
+        },
     ])
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub quality: String,
+    pub speed: String,
+    pub gpu_required: bool,
+}
+
+/// Download a model from HuggingFace
 #[tauri::command]
 pub async fn download_model(
     model_id: String,
-    _window: tauri::Window,
+    window: tauri::Window,
 ) -> Result<(), String> {
     info!("Downloading model: {}", model_id);
     
     // This would download the model from HuggingFace
-    // and emit progress events to the window
+    // For now, just emit a simple progress event
     
-    Ok(())
+    window.emit("model-download-progress", serde_json::json!({
+        "status": "not_implemented",
+        "model": model_id,
+    })).map_err(|e| e.to_string())?;
+    
+    Err("Model download not yet implemented. Please install models manually.".to_string())
 }
 
+/// Get waveform data for audio file
 #[tauri::command]
 pub async fn get_waveform_data(
     path: String,
@@ -144,6 +253,7 @@ pub async fn get_waveform_data(
     })
 }
 
+/// Pack multiple audio files into a .stem.mp4 file
 #[tauri::command]
 pub async fn pack_stems(
     request: PackStemsRequest,

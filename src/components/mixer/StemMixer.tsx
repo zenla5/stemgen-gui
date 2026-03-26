@@ -1,9 +1,52 @@
+import { useState, useEffect, useCallback } from 'react';
 import { Volume2, VolumeX, Headphones, RefreshCw } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
+import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { WaveformDisplay } from '@/components/audio';
 import { cn } from '@/lib/utils';
 
 export function StemMixer() {
-  const { currentStems, updateStem, resetStemMixer } = useAppStore();
+  const { 
+    currentStems, 
+    updateStem, 
+    resetStemMixer, 
+    selectedFile,
+  } = useAppStore();
+  
+  // Audio player state
+  const player = useAudioPlayer();
+  const [masterVolume, setMasterVolume] = useState(1);
+
+  // Load audio when selected file changes
+  useEffect(() => {
+    if (selectedFile?.path) {
+      player.loadAudio(selectedFile.path).catch(console.error);
+    }
+  }, [selectedFile?.path, player]);
+
+  // Apply stem mixer settings
+  useEffect(() => {
+    // Apply master volume
+    player.setVolume(masterVolume);
+  }, [masterVolume, player]);
+
+  // When stems change (from processing), update the current stems
+  useEffect(() => {
+    if (currentStems.some(s => s.file_path)) {
+      // Stems have been processed, could switch to multi-track playback here
+      console.log('Stems processed:', currentStems.filter(s => s.file_path).length);
+    }
+  }, [currentStems]);
+
+  // Handle seek
+  const handleSeek = useCallback((time: number) => {
+    player.seek(time);
+  }, [player]);
+
+  // Handle play/pause
+  const handlePlayPause = useCallback(() => {
+    player.togglePlay();
+  }, [player]);
 
   return (
     <div className="flex h-full flex-col gap-6 p-4">
@@ -18,12 +61,13 @@ export function StemMixer() {
         </button>
       </div>
 
+      {/* Stem Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {currentStems.map((stem) => (
           <div
             key={stem.id}
-            className="flex flex-col gap-3 rounded-lg border p-4"
-            style={{ borderColor: `${stem.color}40` }}
+            className="flex flex-col gap-3 rounded-lg border p-4 transition-all"
+            style={{ borderColor: `${stem.color}40`, backgroundColor: `${stem.color}08` }}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -94,15 +138,45 @@ export function StemMixer() {
         ))}
       </div>
 
-      <div className="mt-auto rounded-lg border bg-muted/50 p-4">
-        <h3 className="mb-2 text-sm font-medium">Preview</h3>
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div className="h-full w-1/3 animate-pulse bg-primary" />
-            </div>
-          </div>
-          <span className="text-sm text-muted-foreground">0:00 / 3:45</span>
+      {/* Preview Section */}
+      <div className="mt-auto rounded-lg border bg-card p-4">
+        <h3 className="mb-3 text-sm font-medium">Preview</h3>
+        
+        {/* Master Volume */}
+        <div className="mb-4 flex items-center gap-3">
+          <Volume2 className="h-4 w-4 text-muted-foreground" />
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={masterVolume * 100}
+            onChange={(e) => setMasterVolume(parseInt(e.target.value) / 100)}
+            className="flex-1 accent-primary"
+          />
+          <span className="w-12 text-right text-sm">{Math.round(masterVolume * 100)}%</span>
+        </div>
+        
+        {/* Waveform Display */}
+        <WaveformDisplay
+          audioPath={selectedFile?.path}
+          isPlaying={player.state.isPlaying}
+          currentTime={player.state.currentTime}
+          duration={player.state.duration}
+          onPlayPause={handlePlayPause}
+          onSeek={handleSeek}
+          height={60}
+        />
+        
+        {/* Playback Status */}
+        <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            {player.state.isLoaded ? 'Ready' : 'Loading...'}
+          </span>
+          {selectedFile && (
+            <span className="truncate max-w-[200px]" title={selectedFile.name}>
+              {selectedFile.name}
+            </span>
+          )}
         </div>
       </div>
     </div>

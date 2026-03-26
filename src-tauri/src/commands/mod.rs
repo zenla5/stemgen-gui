@@ -1,14 +1,84 @@
 pub mod db;
 pub mod audio;
 pub mod separation;
+pub mod sidecar;
 
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-// Re-export commands
 pub use audio::*;
 pub use separation::*;
 pub use db::*;
+pub use sidecar::*;
+
+/// Check if Python and required AI libraries are available
+#[tauri::command]
+pub async fn check_python_deps() -> Result<PythonDepsResult, String> {
+    info!("Checking Python dependencies");
+    
+    // Try to find Python
+    let python_path = which::which("python")
+        .or_else(|_| which::which("python3"))
+        .or_else(|_| which::which("py"));
+    
+    let (python_available, python_version) = if let Ok(path) = &python_path {
+        let output = std::process::Command::new(path)
+            .args(["--version"])
+            .output();
+        
+        match output {
+            Ok(o) => {
+                let version = if o.status.success() {
+                    String::from_utf8_lossy(&o.stdout).trim().to_string()
+                } else {
+                    String::from_utf8_lossy(&o.stderr).trim().to_string()
+                };
+                (true, Some(version))
+            }
+            Err(_) => (false, None),
+        }
+    } else {
+        (false, None)
+    };
+    
+    // Try to import required packages
+    let demucs_available = if python_path.is_ok() {
+        std::process::Command::new(python_path.as_ref().unwrap())
+            .args(["-c", "import torch; import torchaudio"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+    
+    let bs_roformer_available = if python_path.is_ok() {
+        std::process::Command::new(python_path.as_ref().unwrap())
+            .args(["-c", "from bs_roformer import separator"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+    
+    Ok(PythonDepsResult {
+        python_available,
+        python_version,
+        demucs_available,
+        bs_roformer_available,
+        cuda_available: demucs_available, // If demucs works, CUDA likely works too
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PythonDepsResult {
+    pub python_available: bool,
+    pub python_version: Option<String>,
+    pub demucs_available: bool,
+    pub bs_roformer_available: bool,
+    pub cuda_available: bool,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CheckDependenciesResult {

@@ -3,16 +3,25 @@
 //! A free and open source (FOSS) stem file generator for DJ software.
 
 mod audio;
-mod commands;
+pub mod commands;
 mod stems;
 
-use std::sync::Mutex;
+use tokio::sync::Mutex as TokioMutex;
+use std::sync::Mutex as StdMutex;
 use tauri::Manager;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+/// Application state shared across commands
 pub struct AppState {
-    pub db: Mutex<rusqlite::Connection>,
+    /// SQLite database connection
+    pub db: StdMutex<rusqlite::Connection>,
+    /// Sidecar manager for Python process handling
+    pub sidecar: TokioMutex<Option<commands::sidecar::SidecarManager>>,
+    /// Default output directory for stems
+    pub output_dir: std::path::PathBuf,
+    /// Sidecar script path
+    pub sidecar_path: std::path::PathBuf,
 }
 
 pub fn run() {
@@ -80,8 +89,31 @@ pub fn run() {
             // Run migrations
             commands::db::run_migrations(&conn).expect("Failed to run migrations");
             
+            // Set up sidecar paths
+            let project_dirs = directories::ProjectDirs::from("dev", "stemgen", "stemgen-gui")
+                .expect("Failed to get project directories");
+            
+            let data_dir = project_dirs.data_dir();
+            let output_dir = data_dir.join("stems");
+            let sidecar_path = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+                .unwrap_or_else(|| data_dir.to_path_buf())
+                .join("python")
+                .join("stemgen_sidecar.py");
+            
+            // Create directories
+            std::fs::create_dir_all(&output_dir).ok();
+            
+            info!("Output directory: {}", output_dir.display());
+            info!("Sidecar path: {}", sidecar_path.display());
+            
+            // Manage app state
             app.manage(AppState {
-                db: Mutex::new(conn),
+                db: StdMutex::new(conn),
+                sidecar: TokioMutex::new(None),
+                output_dir,
+                sidecar_path,
             });
             
             info!("Application setup complete");
@@ -89,6 +121,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::check_dependencies,
+            commands::check_python_deps,
             commands::get_audio_info,
             commands::start_separation,
             commands::cancel_separation,

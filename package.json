@@ -18,8 +18,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:dev": "powershell -Command \"$env:PATH = 'C:\\\\Users\\\\penze\\\\.cargo\\\\bin;' + $env:PATH; npx tauri dev\"",
+    "tauri:build": "powershell -Command \"$env:PATH = 'C:\\\\Users\\\\penze\\\\.cargo\\\\bin;' + $env:PATH; npx tauri build\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
