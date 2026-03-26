@@ -92,10 +92,3 @@ impl WaveformData {
         }
     }
 }
-
-impl SampleData {
-    /// Generate waveform data
-    pub fn generate_waveform(&self, points_per_second: u32) -> WaveformData {
-        WaveformData::from_samples(self, points_per_second)
-    }
-}
