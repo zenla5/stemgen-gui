@@ -36,7 +36,7 @@ tokio = { version = "1", features = ["full"] }
 # Audio processing
 symphonia = { version = "0.5", features = ["all"] }
 hound = "3.5"
-rubato = "0.15"
+rubato = "1"
 
 # MP4/Stem format
 mp4 = "0.14"

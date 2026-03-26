@@ -83,9 +83,9 @@ impl AudioResampler {
 
         // Number of input frames
         let num_channels = samples.channels as usize;
-        let _input_frames = samples.samples.len() / num_channels;
+        let input_frames = samples.samples.len() / num_channels;
         
-        // rubato 0.15+: SincFixedIn::new(output_sample_rate, input_sample_rate, params, n_channels, backend_buffer_size)
+        // rubato v1: SincFixedIn::new(output_sample_rate, input_sample_rate, params, n_channels, n_frames)
         let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
@@ -99,14 +99,14 @@ impl AudioResampler {
             input_sample_rate,
             params,
             num_channels,
-            512, // backend_buffer_size
+            input_frames,
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
         // Deinterleave the input samples (rubato expects Vec<Vec<f32>>)
         let deinterleaved = Self::deinterleave(&samples.samples, num_channels);
         
-        // Process samples - rubato 0.15+ expects Option<&[bool]> for second param
-        let resampled = resampler.process(&deinterleaved, None)
+        // Process samples
+        let resampled = resampler.process(&deinterleaved, false)
             .context("Failed to resample audio")?;
 
         // Reinterleave the output channels
@@ -115,7 +115,7 @@ impl AudioResampler {
         let output_frames = interleaved.len() / num_channels;
         info!(
             "Resampling complete: {} frames -> {} frames",
-            _input_frames, output_frames
+            input_frames, output_frames
         );
 
         Ok(SampleData {
@@ -130,14 +130,16 @@ impl AudioResampler {
     pub fn resample_to_length(
         &mut self, 
         samples: &SampleData, 
-        target_frames: usize
+        _target_frames: usize
     ) -> Result<SampleData> {
         let input_sample_rate = samples.sample_rate as f64;
         let output_sample_rate = self.target_sample_rate as f64;
 
         let num_channels = samples.channels as usize;
         
-        // rubato 0.15+: SincFixedIn::new(output_sample_rate, input_sample_rate, params, n_channels, backend_buffer_size)
+        // rubato v1: Use input frames
+        let input_frames = samples.samples.len() / num_channels;
+        
         let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
@@ -151,14 +153,14 @@ impl AudioResampler {
             input_sample_rate,
             params,
             num_channels,
-            512, // backend_buffer_size
+            input_frames,
         ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
 
         // Deinterleave the input samples
         let deinterleaved = Self::deinterleave(&samples.samples, num_channels);
         
-        // Process using the deinterleaved data - rubato 0.15+ expects Option<&[bool]>
-        let resampled = resampler.process(&deinterleaved, None)
+        // Process using the deinterleaved data
+        let resampled = resampler.process(&deinterleaved, false)
             .context("Failed to resample audio")?;
 
         // Reinterleave channels

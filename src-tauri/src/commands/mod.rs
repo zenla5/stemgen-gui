@@ -44,8 +44,8 @@ pub async fn check_python_deps() -> Result<PythonDepsResult, String> {
     };
     
     // Try to import required packages
-    let demucs_available = if python_path.is_ok() {
-        std::process::Command::new(python_path.as_ref().unwrap())
+    let demucs_available = if let Ok(path) = &python_path {
+        std::process::Command::new(path)
             .args(["-c", "import torch; import torchaudio"])
             .output()
             .map(|o| o.status.success())
@@ -54,8 +54,8 @@ pub async fn check_python_deps() -> Result<PythonDepsResult, String> {
         false
     };
     
-    let bs_roformer_available = if python_path.is_ok() {
-        std::process::Command::new(python_path.as_ref().unwrap())
+    let bs_roformer_available = if let Ok(path) = &python_path {
+        std::process::Command::new(path)
             .args(["-c", "from bs_roformer import separator"])
             .output()
             .map(|o| o.status.success())
