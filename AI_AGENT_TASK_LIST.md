@@ -155,7 +155,39 @@ cd src-tauri && cargo clippy --lib --bins
 
 ## 4. Common Tasks
 
+### ⚠️ CRITICAL: Always Run Clippy Before Committing Rust Code
+
+**AI agents MUST run clippy linting locally and verify it passes BEFORE committing or pushing any Rust code changes.**
+
+```bash
+cd src-tauri && cargo clippy --lib --bins -- -D warnings
+```
+
+**Why this is mandatory:**
+- CI uses `cargo clippy` with `-D warnings` (treats warnings as errors)
+- Running clippy locally catches issues that `cargo build` misses
+- The `-D warnings` flag ensures ALL warnings are treated as errors, matching CI behavior
+- This prevents wasted CI cycles and repeated fix-push-fix cycles
+- **ALWAYS wait for the command to finish and confirm `Finished` with 0 warnings before proceeding**
+
+**Common clippy errors to watch for:**
+- `dead_code` — unused fields/functions (add `#[allow(dead_code)]` or remove dead code)
+- `unused_imports` — import not used (remove the import)
+- `wildcard_in_or_patterns` — `_` makes other patterns redundant (use just `_`)
+- `temporary_value_dropped_while_borrowed` — lifetime issues (bind to `let` first)
+- Missing trait imports (e.g., `use tauri::Emitter` for `emit()` method)
+
+**Workflow for any Rust change:**
+```
+1. Make your code changes
+2. Run: cd src-tauri && cargo clippy --lib --bins -- -D warnings
+3. Wait for "Finished" output (no errors/warnings)
+4. If errors → fix them and re-run clippy
+5. Only then: git add . && git commit && git push
+```
+
 ### A. Running the Application
+
 ```bash
 npm run tauri:dev
 ```
