@@ -1,10 +1,12 @@
 //! Audio resampler using rubato
 //! 
 //! Resamples audio to 44.1kHz (NI stem standard).
+//! 
+//! Note: Uses rubato v1 API with InterleavedOwned buffer type.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rubato::{Fft, Resampler};
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::audio::decoder::SampleData;
 
@@ -30,7 +32,8 @@ impl AudioResampler {
     }
 
     /// Resample audio to target sample rate
-    #[allow(clippy::similar_names)]
+    /// 
+    /// Uses rubato v1 Fft resampler with InterleavedOwned buffer type.
     pub fn resample(&mut self, samples: &SampleData) -> Result<SampleData> {
         let input_sample_rate = samples.sample_rate as f64;
         let output_sample_rate = self.target_sample_rate as f64;
@@ -41,62 +44,54 @@ impl AudioResampler {
             return Ok(samples.clone());
         }
 
-        info!(
-            "Resampling from {} Hz to {} Hz",
-            input_sample_rate, output_sample_rate
-        );
-
+        // Calculate the ratio for resampling
+        let ratio = output_sample_rate / input_sample_rate;
+        
+        // Calculate number of frames needed
         let num_channels = samples.channels as usize;
-        let input_frames = samples.len() / num_channels;
+        let input_frames = samples.samples.len() / num_channels;
+        let output_frames = (input_frames as f64 * ratio) as usize;
 
-        // rubato v1: Use Fft resampler for synchronous resampling
-        // Fft::new(target_rate, input_rate, channels) creates a resampler
+        // rubato v1: Fft::new requires:
+        // - number of input samples per channel
+        // - number of output samples per channel  
+        // - number of channels
+        // - something else
         let mut resampler = Fft::new(
-            output_sample_rate,
-            input_sample_rate,
-            num_channels,
-        ).map_err(|e| anyhow::anyhow!("Failed to create resampler: {}", e))?;
+            input_frames,  // n_in
+            output_frames, // n_out
+            num_channels,  // n_channels
+            512,           // chunk size
+            512,           // delay compensation
+            rubato::FixedSync::Proceed, // fixed sync mode
+        )?;
 
-        // Process samples - rubato v1 expects Vec<Vec<f32>>
-        let mut channels: Vec<Vec<f32>> = vec![Vec::with_capacity(input_frames); num_channels];
-        for (i, sample) in samples.samples.iter().enumerate() {
-            channels[i % num_channels].push(*sample);
-        }
+        // rubato v1 process takes: (input: impl Adapter, n_out: usize, reverse: bool) -> InterleavedOwned
+        let resampled = resampler.process(&samples.samples, output_frames, false)?;
 
-        let resampled = resampler.process(&channels)
-            .context("Failed to resample audio")?;
+        // InterleavedOwned has samples(), channels(), frame_count() methods
+        let resampled_samples = resampled.samples().to_vec();
+        let resampled_channels = resampled.channels() as u16;
 
-        // Interleave channels back
-        let num_output_channels = resampled.len();
-        let output_frames = if num_output_channels > 0 { resampled[0].len() } else { 0 };
-        let mut interleaved = Vec::with_capacity(output_frames * num_output_channels);
-
-        for frame in 0..output_frames {
-            for ch in 0..num_output_channels {
-                interleaved.push(resampled[ch][frame]);
-            }
-        }
-
-        info!(
-            "Resampling complete: {} frames -> {} frames",
-            input_frames, output_frames
+        debug!(
+            "Resampling complete: {} Hz -> {} Hz ({} frames -> {} frames)",
+            input_sample_rate, output_sample_rate, input_frames, output_frames
         );
 
         Ok(SampleData {
-            samples: interleaved,
+            samples: resampled_samples,
             sample_rate: self.target_sample_rate,
-            channels: num_output_channels as u16,
+            channels: resampled_channels,
         })
     }
 
     /// Resample with fixed output length
-    #[allow(clippy::similar_names)]
     pub fn resample_to_length(
         &mut self, 
         samples: &SampleData, 
         _target_frames: usize
     ) -> Result<SampleData> {
-        // Fft resampler doesn't support fixed output length, use regular resample
+        // Delegate to regular resample
         self.resample(samples)
     }
 }
