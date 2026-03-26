@@ -1,8 +1,7 @@
 # Stemgen-GUI Agent Task List
 
-## Current CI Runs
-- **CI #53** (fix: rewrite resampler for rubato v1.0.1 API) — IN PROGRESS
-- **CI #54** (feat: enable E2E tests in CI pipeline) — TRIGGERED
+## Current CI Run
+- **CI #55** (fix: improve E2E tests with proper selectors and wait conditions) — IN PROGRESS
 - URL: https://github.com/zenla5/stemgen-gui/actions/runs
 
 ## All Fixes Applied
@@ -29,6 +28,9 @@
 - ✅ Reviewed E2E tests and Playwright config
 - ✅ Enabled E2E in ci.yml (removed `if: false`)
 - ✅ Added e2e to check job's needs array
+- ✅ Fixed playwright.config.ts to reuse existing server
+- ✅ Fixed E2E test selectors with proper h3 selectors
+- ✅ Added networkidle wait to all page.goto calls
 
 ### Results
 - E2E tests run against `npm run dev` frontend only (no Tauri required)
@@ -40,7 +42,6 @@
 ## PHASE D: Post-CI Cleanup
 
 ### Pending Tasks
-1. Check CI #53 and CI #54 results
-2. Fix any issues found in CI runs
+1. Check CI #55 results
+2. Fix any issues if found
 3. Update TASKS.md with final status
-4. Clean up old branches if needed

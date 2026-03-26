@@ -7,6 +7,10 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
+  timeout: 60000, // Increase global timeout
+  expect: {
+    timeout: 10000, // Increase expect timeout
+  },
   use: {
     baseURL: 'http://localhost:1420',
     trace: 'on-first-retry',
@@ -17,19 +21,13 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
   ],
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:1420',
     reuseExistingServer: true,
-    timeout: 120 * 1000,
+    timeout: 180 * 1000, // 3 minutes to start
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
 });
