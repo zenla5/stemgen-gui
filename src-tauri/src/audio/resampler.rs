@@ -6,6 +6,7 @@
 
 use anyhow::Result;
 use rubato::{Fft, Resampler};
+use rubato::audioadapter::Adapter;
 use tracing::debug;
 
 use crate::audio::decoder::SampleData;
@@ -52,25 +53,20 @@ impl AudioResampler {
         let input_frames = samples.samples.len() / num_channels;
         let output_frames = (input_frames as f64 * ratio) as usize;
 
-        // rubato v1: Fft::new requires:
-        // - number of input samples per channel
-        // - number of output samples per channel  
-        // - number of channels
-        // - something else
+        // rubato v1: Fft::new requires usize parameters
         let mut resampler = Fft::new(
             input_frames,  // n_in
             output_frames, // n_out
-            num_channels,  // n_channels
+            num_channels, // n_channels
             512,           // chunk size
             512,           // delay compensation
-            rubato::FixedSync::Proceed, // fixed sync mode
         )?;
 
-        // rubato v1 process takes: (input: impl Adapter, n_out: usize, reverse: bool) -> InterleavedOwned
-        let resampled = resampler.process(&samples.samples, output_frames, false)?;
+        // rubato v1 process takes: (input: impl Adapter, n_out: usize, trim: Option<&[bool]>) -> InterleavedOwned
+        let resampled = resampler.process(&samples.samples, output_frames, None)?;
 
-        // InterleavedOwned has samples(), channels(), frame_count() methods
-        let resampled_samples = resampled.samples().to_vec();
+        // Use Adapter trait methods to get data from InterleavedOwned
+        let resampled_samples = resampled.get_audio();
         let resampled_channels = resampled.channels() as u16;
 
         debug!(
@@ -79,7 +75,7 @@ impl AudioResampler {
         );
 
         Ok(SampleData {
-            samples: resampled_samples,
+            samples: resampled_samples.to_vec(),
             sample_rate: self.target_sample_rate,
             channels: resampled_channels,
         })
