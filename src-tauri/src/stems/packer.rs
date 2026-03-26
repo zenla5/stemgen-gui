@@ -27,6 +27,7 @@ impl StemPacker {
     }
 
     /// Create with default settings
+    #[allow(dead_code)]
     pub fn default() -> Self {
         Self::new(ExportSettings::default())
     }
@@ -36,6 +37,7 @@ impl StemPacker {
     /// This creates an MP4 file with:
     /// - 5 audio tracks (master + 4 stems reordered per DJ software)
     /// - NI stem metadata JSON atom
+    #[allow(clippy::similar_names)]
     pub async fn pack(
         &self,
         master_path: &Path,
@@ -62,8 +64,8 @@ impl StemPacker {
             .collect();
 
         // Validate we have stems
-        if ordered_stems.is_empty() && stem_paths.is_empty() {
-            warn!("No stems provided, creating master-only stem file");
+        if ordered_stems.is_empty() && !stem_paths.is_empty() {
+            warn!("No matching stems found for DJ software preset");
         }
 
         // Create stem data for metadata
@@ -100,6 +102,7 @@ impl StemPacker {
     }
 
     /// Create the stem.mp4 using FFmpeg with multi-track support
+    #[allow(clippy::similar_names)]
     async fn create_stem_mp4(
         &self,
         master_path: &Path,
@@ -136,6 +139,7 @@ impl StemPacker {
     }
 
     /// Create a multi-track stem.mp4 with all stems
+    #[allow(clippy::similar_names, unused_variables)]
     async fn create_multi_track_stem(
         &self,
         master_path: &Path,
@@ -145,7 +149,7 @@ impl StemPacker {
         info!("Creating multi-track stem file with {} stems", stems.len());
 
         let codec = self.settings.output_format.codec_name();
-        
+
         // Build FFmpeg command with multiple inputs
         let mut cmd = Command::new("ffmpeg");
         cmd.arg("-y"); // Overwrite output
@@ -159,7 +163,6 @@ impl StemPacker {
         }
 
         // Build filter complex for multi-track output
-        // Each track needs to be mono or stereo depending on the stem
         let num_inputs = 1 + stems.len(); // master + stems
         
         // Create filter complex to map each input to its own channel
@@ -167,13 +170,10 @@ impl StemPacker {
         for i in 0..num_inputs {
             filter_parts.push(format!("[{}:a]", i));
         }
-        let filter_complex = filter_parts.join("");
-        
-        // Add amix to combine all into 5.1 or multi-channel format
-        // For NI stems, we want: master on track 0, then drums, bass, other, vocals
-        // Using -map to create separate tracks
-        
-        // Use complex filter to create multiple output streams
+        let _filter_complex = filter_parts.join("");
+
+        // Simple approach: mix all inputs into a single stereo output with proper labeling
+        // For true multi-track, we'd need MP4 muxing with separate audio streams
         let mut filter = String::new();
         for i in 0..num_inputs {
             if i > 0 {
@@ -181,8 +181,7 @@ impl StemPacker {
             }
         }
         
-        // Simple approach: mix all inputs into a single stereo output with proper labeling
-        // For true multi-track, we'd need MP4 muxing with separate audio streams
+        // Use complex filter to create multiple output streams
         cmd.args([
             "-filter_complex", &format!(
                 "{}[out]",
@@ -295,6 +294,7 @@ impl StemPacker {
     }
 
     /// Get FFmpeg version if available
+    #[allow(dead_code)]
     fn get_ffmpeg_version(&self) -> Option<String> {
         Command::new("ffmpeg")
             .arg("-version")

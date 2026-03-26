@@ -80,8 +80,9 @@ impl DJSoftware {
     }
 
     /// Get the recommended audio codec
+    #[allow(clippy::unneeded_struct_pattern)]
     pub fn codec(&self) -> &'static str {
-        match self {
+        match *self {
             Self::Traktor => "alac",      // Native Instruments prefers ALAC
             Self::Rekordbox => "aac",     // Pioneer uses AAC
             Self::Serato => "aac",        // Serato uses AAC
@@ -125,8 +126,9 @@ impl OutputFormat {
         }
     }
 
+    #[allow(clippy::unneeded_struct_pattern)]
     pub fn codec_name(&self) -> &'static str {
-        match self {
+        match *self {
             Self::Alac => "alac",
             Self::Aac => "aac",
         }
@@ -143,8 +145,9 @@ pub enum QualityPreset {
 
 impl QualityPreset {
     /// Get bitrate for AAC encoding
+    #[allow(clippy::unneeded_struct_pattern)]
     pub fn aac_bitrate(&self) -> u32 {
-        match self {
+        match *self {
             Self::Draft => 128,
             Self::Standard => 256,
             Self::Master => 320,
@@ -152,8 +155,9 @@ impl QualityPreset {
     }
 
     /// Get model to use for this quality
+    #[allow(clippy::unneeded_struct_pattern)]
     pub fn model(&self) -> &'static str {
-        match self {
+        match *self {
             Self::Draft => "demucs",
             Self::Standard => "bs_roformer",
             Self::Master => "htdemucs_ft",
@@ -182,6 +186,7 @@ impl Default for ExportSettings {
 }
 
 /// Get all supported DJ software
+#[must_use]
 pub fn all_dj_software() -> Vec<DJSoftware> {
     vec![
         DJSoftware::Traktor,
