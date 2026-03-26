@@ -39,8 +39,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build frontend
+        run: npm run build
+
       - name: Build Tauri app
-        run: npm run tauri:build
+        run: npx tauri build
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -75,8 +78,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build frontend
+        run: npm run build
+
       - name: Build Tauri app
-        run: npm run tauri:build
+        run: npx tauri build
 
       - name: Upload macOS Intel artifacts
         uses: actions/upload-artifact@v4
@@ -110,8 +116,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build frontend
+        run: npm run build
+
       - name: Build Tauri app
-        run: npm run tauri:build
+        run: npx tauri build
 
       - name: Upload macOS ARM artifacts
         uses: actions/upload-artifact@v4
@@ -159,8 +168,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build frontend
+        run: npm run build
+
       - name: Build Tauri app
-        run: npm run tauri:build
+        run: npx tauri build
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4

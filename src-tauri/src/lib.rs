@@ -4,7 +4,7 @@
 
 mod audio;
 pub mod commands;
-mod stems;
+pub mod stems;
 
 use tokio::sync::Mutex as TokioMutex;
 use std::sync::Mutex as StdMutex;

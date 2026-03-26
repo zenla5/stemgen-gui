@@ -14,6 +14,7 @@
 - **Tailwind CSS** - Styling
 - **Zustand** - State management
 - **Playwright** - E2E testing
+- **Vitest** - Unit and integration testing
 
 ## Implemented Features
 
@@ -78,14 +79,29 @@
 
 ### ✅ Phase 3: Testing & CI/CD
 
+**Unit Tests (`src/lib/__tests__/`)**
+- `utils.test.ts` - Utility function tests
+
+**Integration Tests (`src/__tests__/integration/`)**
+- `setup.ts` - Shared Tauri API mocks (`invoke`, `listen`, `open` dialog)
+- `FileBrowser.test.tsx` - FileBrowser component tests (7 tests)
+- `ProcessingQueue.test.tsx` - ProcessingQueue component tests (8 tests)
+- `StemMixer.test.tsx` - StemMixer component tests (6 tests)
+- `SettingsPanel.test.tsx` - SettingsPanel component tests (11 tests)
+
 **E2E Tests (`src/__tests__/e2e/`)**
-- `app.spec.ts` - Complete Playwright test suite
+- `app.spec.ts` - Complete Playwright test suite (6 smoke tests)
 - `helpers.ts` - Test utility functions
-- `playwright.config.ts` - Multi-browser config
+- `playwright.config.ts` - Multi-browser config with 60s timeouts
+
+**Rust Integration Tests (`src-tauri/tests/`)**
+- `stem_metadata.rs` - NI metadata structure tests (7 tests)
+- `presets.rs` - DJ software preset tests (10 tests)
+- `audio_utils.rs` - Waveform generation tests (7 tests)
 
 **GitHub Actions (`.github/workflows/`)**
-- `ci.yml` - Full CI pipeline with 80% coverage threshold
-- `release.yml` - Release workflow
+- `ci.yml` - Full CI pipeline: Frontend (×3 OS), Integration, Backend (Rust), E2E, Security, Check gate
+- `release.yml` - Cross-platform CD pipeline: Windows, macOS (Intel), macOS (ARM), Linux
 
 ### ✅ Phase 4: Configuration
 
@@ -94,27 +110,44 @@
 - `src-tauri/capabilities/default.json` - Plugin permissions
 - `Cargo.toml` - Rust dependencies
 
+## Testing Matrix
+
+| Test Type | Framework | Coverage Threshold | Location |
+|-----------|-----------|-------------------|----------|
+| Unit Tests | Vitest | — | `src/lib/__tests__/` |
+| Integration Tests (React) | Vitest + RTL | Counted in 60% line threshold | `src/__tests__/integration/` |
+| Integration Tests (Rust) | cargo test | Included in backend job | `src-tauri/tests/` |
+| E2E Tests | Playwright | Smoke-level (no threshold) | `src/__tests__/e2e/` |
+
+**Coverage thresholds (vitest.config.ts):**
+```typescript
+thresholds: {
+  lines: 60,
+  functions: 60,
+  branches: 50,
+  statements: 60,
+}
+```
+
 ## DJ Software Presets
 
-| Software | Stem Order | Codec |
-|----------|-----------|-------|
-| Traktor | drums, bass, other, vocals | ALAC |
-| Rekordbox | drums, bass, other, vocals | AAC |
-| Serato | vocals, drums, bass, other | AAC |
-| Mixxx | drums, bass, other, vocals | ALAC |
-| djay | drums, bass, other, vocals | AAC |
-| VirtualDJ | vocals, drums, bass, other | AAC |
+| Software | Stem Order | Codec | Notes |
+|----------|-----------|-------|-------|
+| Traktor | Drums, Bass, Other, Vocals | ALAC | Native NI format |
+| Rekordbox | Drums, Bass, Other, Vocals | AAC | Pioneer format |
+| Serato | Vocals, Drums, Bass, Other | AAC | Different order |
+| Mixxx | Drums, Bass, Other, Vocals | ALAC | Open source |
+| djay | Drums, Bass, Other, Vocals | AAC | Algoriddim |
+| VirtualDJ | Vocals, Drums, Bass, Other | AAC | Atomix |
 
 ## Stem Colors (NI-Compatible)
 
-```typescript
-const STEM_COLORS = {
-  drums: '#FF6B6B',  // Red
-  bass: '#4ECDC4',     // Teal
-  other: '#FFE66D',   // Yellow
-  vocals: '#95E1D3',  // Mint green
-};
-```
+| Stem | Color |
+|------|-------|
+| Drums | `#FF6B6B` |
+| Bass | `#4ECDC4` |
+| Other | `#FFE66D` |
+| Vocals | `#95E1D3` |
 
 ## AI Models
 
@@ -129,165 +162,34 @@ const STEM_COLORS = {
 
 ```
 stemgen-gui/
-├── src/                          # React frontend
-│   ├── components/               # React components
-│   │   ├── ui/                  # shadcn/ui components
-│   │   ├── layout/              # AppShell, Sidebar, Header, StatusBar
-│   │   ├── file-browser/        # File selection & drag-drop
-│   │   ├── processing/           # Processing queue
-│   │   ├── mixer/               # Stem mixer
-│   │   └── settings/            # Settings panel
-│   ├── hooks/                   # Custom React hooks
-│   ├── stores/                  # Zustand stores
-│   ├── lib/                     # Utilities and types
-│   └── i18n/                   # Internationalization
-├── src-tauri/                   # Rust backend
+├── src/                              # React frontend
+│   ├── components/                   # React components
+│   │   ├── ui/                      # shadcn/ui components
+│   │   ├── layout/                  # AppShell, Sidebar, Header, StatusBar
+│   │   ├── file-browser/            # File selection & drag-drop
+│   │   ├── processing/              # Processing queue
+│   │   ├── mixer/                   # Stem mixer
+│   │   └── settings/                # Settings panel
+│   ├── hooks/                       # Custom React hooks
+│   ├── stores/                      # Zustand stores
+│   ├── lib/                         # Utilities and types
+│   ├── __tests__/
+│   │   ├── integration/             # Component integration tests
+│   │   └── e2e/                    # Playwright E2E tests
+│   └── i18n/                        # Internationalization
+├── src-tauri/                        # Rust backend
 │   ├── src/
-│   │   ├── audio/               # Audio processing
-│   │   ├── stems/              # NI stem packing
-│   │   └── commands/            # Tauri IPC commands
-│   └── capabilities/            # Plugin permissions
-├── python/                       # Python sidecar
-├── .github/workflows/           # CI/CD pipelines
+│   │   ├── audio/                   # Audio processing
+│   │   ├── stems/                   # NI stem packing
+│   │   └── commands/                # Tauri IPC commands
+│   ├── tests/                       # Rust integration tests
+│   └── capabilities/                # Plugin permissions
+├── python/                           # Python sidecar
+├── .github/workflows/                # CI/CD pipelines
+│   ├── ci.yml                       # CI (Frontend, Integration, Backend, E2E, Security)
+│   └── release.yml                  # CD (Windows, macOS, Linux)
 └── package.json
 ```
-
-## CI/CD Issues & Fixes
-
-The CI pipeline requires fixes for the following issues. Create a dedicated branch `fix/rust-backend` to address these:
-
-### 🔴 Critical: Rust Backend Compilation (58 errors)
-
-**Create a new branch:** `fix/rust-backend`
-
-**Issues to fix:**
-
-#### 1. Frontend Dist Missing
-```
-The `frontendDist` configuration is set to `"../dist"` but this path doesn't exist
-```
-**Fix:** Add `npm run build` step before `cargo build` in CI, or update `tauri.conf.json` to disable frontend validation.
-
-#### 2. Rubato API Changes
-```
-error[E0432]: unresolved import `rubato::InterpolationParameters`, `rubato::InterpolationType`
-```
-**Fix:** Update `src-tauri/src/audio/resampler.rs` to use new rubato API:
-- `InterpolationParameters` → `SincInterpolationParameters`
-- `InterpolationType` → `SincInterpolationType`
-- `SincFixedIn::new()` takes different arguments in newer versions
-
-#### 3. Lofty API Changes
-```
-error[E0432]: could not find `prelude` in `lofty`
-error[E0599]: no method named `properties` found
-error[E0599]: no method named `primary_tag` found
-```
-**Fix:** Update `src-tauri/src/commands/audio.rs`:
-- Add `use lofty::AudioFile;`
-- Add `use lofty::TaggedFileExt;`
-- Update method calls to match lofty v0.18 API
-
-#### 4. Symphonia API Changes
-```
-error[E0277]: trait `MediaSource` is not implemented for `BufReader<File>`
-error[E0599]: no method named `iter` found for `AudioPlanes`
-```
-**Fix:** Update `src-tauri/src/audio/decoder.rs`:
-- Use `File` directly instead of `BufReader<File>`
-- Fix `planes()` method calls for symphonia v0.5
-
-#### 5. Missing DB Commands
-```
-error[E0433]: could not find `get_processing_history` in `commands`
-error[E0433]: could not find `add_to_history` in `commands`
-```
-**Fix:** Implement missing commands in `src-tauri/src/commands/db.rs`:
-- `get_processing_history`
-- `add_to_history`
-- `get_settings`
-- `save_settings`
-
-#### 6. Missing Tracing Import
-```
-error: cannot find macro `info` in this scope
-```
-**Fix:** Add `use tracing::info;` to `src-tauri/src/commands/db.rs`
-
-#### 7. Private Module Exports
-```
-error[E0603]: module `waveform` is private
-error[E0603]: trait `Resampler` is private
-```
-**Fix:** Update visibility in `src-tauri/src/audio/mod.rs`:
-- Make `waveform` module public
-- Export `Resampler` trait properly
-
-#### 8. Various Unused Imports
-**Fix:** Remove unused imports across files:
-- `converter::*`, `waveform::*` in mod.rs
-- `error` in commands
-- `AppState`, `State` in mod.rs
-- `TrackInfo` in packer.rs
-- `mut` on `ordered_stems` variable
-
-#### 9. Variable Move Error
-```
-error[E0382]: borrow of moved value: `request.output_path`
-```
-**Fix:** Clone or borrow properly in `src-tauri/src/commands/separation.rs`
-
-#### 10. Build Step
-```
-frontendDist path doesn't exist
-```
-**Fix:** Add frontend build step:
-```yaml
-- name: Build frontend
-  run: npm run build
-
-- name: Build Rust backend
-  run: cd src-tauri && cargo build --release
-```
-
-### 🟡 Non-Critical: ESLint Configuration
-
-**Issues:** TypeScript parsing errors due to missing parser
-**Fix:** Already fixed - added `@typescript-eslint/parser` to `eslint.config.js`
-
-### 🟡 Non-Critical: Testing Library Missing
-
-**Issues:** `@testing-library/jest-dom` not in dependencies
-**Fix:** Already fixed - added to `package.json`:
-- `@testing-library/jest-dom`
-- `@testing-library/react`
-
----
-
-## Pending Features
-
-### High Priority (P1)
-
-- [ ] Full AI separation pipeline (connect Python sidecar to Rust)
-- [ ] BPM/key detection
-- [ ] Stem unpacking for existing .stem.mp4 files
-- [ ] Audio preview with waveform visualization
-- [ ] Model download manager
-
-### Medium Priority (P2)
-
-- [ ] Auto-update system (Tauri updater)
-- [ ] Processing history with quick re-process
-- [ ] Export presets management
-- [ ] Individual stem export (WAV/FLAC/MP3)
-- [ ] Desktop notifications
-
-### Lower Priority (P3)
-
-- [ ] CLI mode for scripting
-- [ ] Multi-language support (i18n)
-- [ ] Audio analysis dashboard (LUFS, dynamic range)
-- [ ] Custom stem renaming
 
 ## Common Commands
 
@@ -301,8 +203,9 @@ npm run tauri:build  # Production build
 
 # Testing
 npm run test          # Unit tests
+npm run test:coverage # With coverage thresholds
 npm run test:e2e     # E2E tests
-npm run test:coverage # With coverage
+npm run test:e2e:ui  # E2E tests with UI
 
 # Linting
 npm run lint          # Frontend lint
