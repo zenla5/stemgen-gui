@@ -46,6 +46,8 @@ which.workspace = true
 symphonia.workspace = true
 hound.workspace = true
 rubato.workspace = true
+audioadapter.workspace = true
+audioadapter-buffers.workspace = true
 
 # MP4/Stem format
 mp4.workspace = true
@@ -57,3 +59,10 @@ devtools = ["tauri/devtools"]
 
 [profile.dev]
 incremental = true
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "z"
+strip = true

@@ -3,8 +3,6 @@
     windows_subsystem = "windows"
 )]
 
-use stemgen_gui_lib;
-
 fn main() {
     stemgen_gui_lib::run();
 }
