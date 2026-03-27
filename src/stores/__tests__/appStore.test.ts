@@ -345,4 +345,116 @@ describe('useAppStore — settings', () => {
 
     expect(useAppStore.getState().settings.model).toBe('bs_roformer');
   });
+
+  it('updateSettings can update multiple settings', () => {
+    const store = useAppStore.getState();
+    store.updateSettings({ model: 'htdemucs', device: 'cuda', outputFormat: 'aac' });
+    
+    const settings = useAppStore.getState().settings;
+    expect(settings.model).toBe('htdemucs');
+    expect(settings.device).toBe('cuda');
+    expect(settings.outputFormat).toBe('aac');
+  });
+});
+
+describe('useAppStore — pause/resume processing', () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+  });
+
+  it('resumeProcessing does not set isProcessing when no pending files', () => {
+    const store = useAppStore.getState();
+    store.setIsProcessing(false);
+    
+    store.resumeProcessing();
+    expect(useAppStore.getState().isProcessing).toBe(false);
+  });
+});
+
+describe('useAppStore — additional edge cases', () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+  });
+
+  it('removeFile also clears selectedFile if it matches', () => {
+    const store = useAppStore.getState();
+    const file = fakeFile({ path: '/test-remove.mp3' });
+    store.addFiles([file]);
+    store.selectFile(file);
+    expect(useAppStore.getState().selectedFile?.path).toBe('/test-remove.mp3');
+    
+    store.removeFile('/test-remove.mp3');
+    expect(useAppStore.getState().selectedFile).toBeNull();
+  });
+
+  it('setCurrentStems replaces all stems', () => {
+    const store = useAppStore.getState();
+    const newStems = [
+      { id: 'drums', type: 'drums' as const, name: 'Drums', color: '#FF6B6B', volume: 0.5, muted: true, solo: false },
+      { id: 'bass', type: 'bass' as const, name: 'Bass', color: '#4ECDC4', volume: 1, muted: false, solo: false },
+      { id: 'other', type: 'other' as const, name: 'Other', color: '#FFE66D', volume: 1, muted: false, solo: false },
+      { id: 'vocals', type: 'vocals' as const, name: 'Vocals', color: '#95E1D3', volume: 1, muted: false, solo: false },
+    ];
+    
+    store.setCurrentStems(newStems);
+    expect(useAppStore.getState().currentStems).toEqual(newStems);
+  });
+
+  it('updateStem only modifies specified stem', () => {
+    const store = useAppStore.getState();
+    const originalBass = store.currentStems.find(s => s.id === 'bass');
+    
+    store.updateStem('drums', { volume: 0.3 });
+    const updatedBass = useAppStore.getState().currentStems.find(s => s.id === 'bass');
+    
+    expect(updatedBass?.volume).toBe(originalBass?.volume);
+    expect(updatedBass?.muted).toBe(originalBass?.muted);
+  });
+
+
+  it('checkDependencies handles error gracefully', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('Backend error'));
+    
+    await useAppStore.getState().checkDependencies();
+    
+    expect(useAppStore.getState().dependenciesChecked).toBe(true);
+  });
+
+  it('validateEnvironment handles error gracefully', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('Validation failed'));
+    
+    await useAppStore.getState().validateEnvironment();
+    
+    expect(useAppStore.getState().environmentValidated).toBe(true);
+    expect(useAppStore.getState().environmentValidation?.isReady).toBe(false);
+  });
+
+  it('addJob with duplicate id does not throw', () => {
+    const store = useAppStore.getState();
+    store.addJob(fakeJob({ id: 'unique-job' }));
+    expect(useAppStore.getState().jobs).toHaveLength(1);
+    
+    // Adding another job with same id - Zustand allows it
+    store.addJob(fakeJob({ id: 'unique-job' }));
+    expect(useAppStore.getState().jobs).toHaveLength(2);
+  });
+
+  it('updateJob on non-existent job does not throw', () => {
+    const store = useAppStore.getState();
+    expect(() => store.updateJob('non-existent', { status: 'processing' })).not.toThrow();
+  });
+
+  it('removeJob on non-existent job does not throw', () => {
+    const store = useAppStore.getState();
+    expect(() => store.removeJob('non-existent')).not.toThrow();
+  });
+
+  it('updateStem on non-existent stem does not throw', () => {
+    const store = useAppStore.getState();
+    expect(() => store.updateStem('non-existent', { volume: 0.5 })).not.toThrow();
+  });
 });
