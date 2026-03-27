@@ -53,7 +53,7 @@ jobs:
       - name: Check coverage thresholds
         run: |
           echo "=== Coverage Report Summary ==="
-          echo "Thresholds: lines 40%, functions 80%, branches 55%, statements 40%"
+          echo "Thresholds: lines 39%, functions 58%, branches 55%, statements 39%"
           echo "If thresholds are not met, CI will fail here."
 
   # Frontend integration tests (React component tests)
@@ -79,7 +79,7 @@ jobs:
       - name: Check integration coverage thresholds
         run: |
           echo "=== Integration Test Coverage ==="
-          echo "Thresholds enforced: lines 40%, functions 80%, branches 55%, statements 40%"
+          echo "Thresholds enforced: lines 39%, functions 58%, branches 55%, statements 39%"
       
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
