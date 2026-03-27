@@ -2,6 +2,15 @@
 
 This guide explains how to take screenshots for the Stemgen-GUI README.
 
+## Prerequisites
+
+**IMPORTANT:** Take screenshots only after both CI and CD pipelines succeed:
+1. Check CI status at: https://github.com/zenla5/stemgen-gui/actions
+2. Wait for all checks to show green ✓
+3. Verify a release build was created (CD pipeline)
+
+Once both pipelines pass, proceed with taking screenshots below.
+
 ## Required Screenshots
 
 Create these 4 screenshots and save them to `docs/screenshots/`:
