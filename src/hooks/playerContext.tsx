@@ -10,7 +10,7 @@ export interface PlayerContextType {
 }
 
 // Create context with undefined default
-const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
+export const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
 
 // Provider component
 export function PlayerProvider({ 
@@ -31,5 +31,3 @@ export function PlayerProvider({
 export function usePlayerContext(): PlayerContextType | undefined {
   return useContext(PlayerContext);
 }
-
-export { PlayerContext };

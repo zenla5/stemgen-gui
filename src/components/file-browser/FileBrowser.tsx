@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type KeyboardEvent } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -95,7 +95,7 @@ export function FileBrowser() {
   };
 
   // Keyboard navigation for file list
-  const handleFileKeyDown = useCallback((e: React.KeyboardEvent, index: number) => {
+  const handleFileKeyDown = useCallback((e: KeyboardEvent, index: number) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       const nextIndex = Math.min(index + 1, audioFiles.length - 1);

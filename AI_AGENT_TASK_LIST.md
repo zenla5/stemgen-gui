@@ -1,6 +1,6 @@
 # Stemgen-GUI AI Agent Task List
 
-## Status: 70% Complete (7/10 Phases)
+## Status: 80% Complete (8/10 Phases)
 
 ## Completed Phases
 
@@ -59,11 +59,25 @@
 - Settings integration with i18n
 - Commit: `9af7236`
 
-## Remaining Phases
+### Phase 8: Accessibility (a11y) ✅
+FileBrowser improvements:
+- ARIA roles: region, button, listbox, option
+- Keyboard navigation with arrow keys for file list
+- aria-label on all interactive elements
+- aria-live for status updates
+- Skip links for keyboard users
+- aria-selected and aria-pressed states
 
-### Phase 8: Accessibility (a11y)
-- ARIA labels on all interactive elements
-- Keyboard navigation improvements
+StemMixer improvements:
+- ARIA roles: region, group, progressbar, timer
+- aria-label on all buttons and controls
+- aria-pressed for toggle buttons (mute/solo)
+- aria-valuemin/max/now for progress bars
+- Associated labels for volume sliders
+- Screen reader accessible names
+- Commit: `5fd64ac`
+
+## Remaining Phases
 
 ### Phase 9: Plugin Architecture
 - Plugin system for custom DJ formats
@@ -79,7 +93,7 @@
 |-------|--------|
 | TypeScript (`tsc --noEmit`) | ✅ 0 errors |
 | ESLint | ✅ 0 warnings |
-| Frontend Tests (vitest) | ✅ 65/65 passed |
+| Frontend Tests (vitest) | ✅ 63/63 passed |
 | Backend Tests (cargo test) | ✅ 20/20 passed |
 | Rust Clippy | ✅ 0 warnings |
 | Git commits pushed | ✅ |
@@ -93,3 +107,5 @@
 - Processing queue tests use `getAllByText` for status strings that may appear multiple times
 - i18n uses `supportedLanguages` array from `@/stores/settingsStore`
 - `SupportedLanguageCode` = `'en' | 'de'`
+- For a11y: keep both `title` AND `aria-label` on buttons for tooltips AND screen readers
+- Tests use `getByRole('button', { name: /text/i })` for buttons with aria-label
