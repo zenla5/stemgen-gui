@@ -117,6 +117,15 @@ Audio File (MP3/FLAC/WAV/OGG)
 
 ## 📥 Downloads (Latest Release)
 
+> **⚠️ Important Notice - Unsigned Code:**
+> 
+> This project does **not** use paid code signing certificates for Windows (.exe/.msi) or macOS (.dmg) applications. This means:
+> - **Windows SmartScreen** may show a warning: *"Windows protected your PC"*. Click "More info" → "Run anyway" to proceed.
+> - **macOS Gatekeeper** may block the app on first launch. To allow: System Settings → Privacy & Security → scroll down → click "Open Anyway".
+> - Linux AppImages may require `chmod +x` before execution.
+>
+> The binaries are built via GitHub Actions and are cryptographically signed with the repository's commit hash. SHA256 checksums are provided for verification.
+
 > **Note:** After your first release tag (`v1.0.0`), installers for all platforms will be available here. Once published, the links below will point to the latest GitHub release with ready-to-run installers.
 
 | Platform | Installer | Requirements |
