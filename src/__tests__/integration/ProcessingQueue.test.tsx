@@ -95,7 +95,9 @@ describe('ProcessingQueue', () => {
     render(<ProcessingQueue />);
 
     expect(screen.getByText('test.mp3')).toBeInTheDocument();
-    expect(screen.getByText(/completed/i)).toBeInTheDocument();
+    // Use getAllByText since "completed" might appear in job stats and job item
+    const completedElements = screen.getAllByText(/completed/i);
+    expect(completedElements.length).toBeGreaterThan(0);
   });
 
   it('renders a job with failed status and shows error', async () => {

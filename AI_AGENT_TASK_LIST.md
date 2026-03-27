@@ -1,6 +1,6 @@
 # Stemgen-GUI AI Agent Task List
 
-## Status: 50% Complete
+## Status: 60% Complete
 
 ## Completed Phases
 
@@ -39,11 +39,18 @@
 - Updated ProcessingQueue UI with batch status and Cancel All button
 - Commit: `cefdad6`
 
-## Remaining Phases
+### Phase 6: Keyboard Shortcuts for Playback ✅
+- Create `playerContext` for global player state
+- Update `useKeyboardShortcuts` hook with playback controls:
+  - Space: Toggle play/pause
+  - Arrow Left: Seek backward 5 seconds
+  - Arrow Right: Seek forward 5 seconds
+  - Home: Seek to beginning
+  - End: Seek to end
+- Mac compatibility (Cmd+B for sidebar toggle)
+- Commit: `5d7ebbf`
 
-### Phase 6: Keyboard Shortcuts for Playback
-- Spacebar for play/pause
-- Arrow keys for seeking
+## Remaining Phases
 
 ### Phase 7: i18n Infrastructure
 - i18next setup complete (already in project)
