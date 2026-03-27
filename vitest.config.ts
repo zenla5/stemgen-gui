@@ -17,33 +17,17 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: [
-        // Only measure coverage on source files, not tests
-        'src/lib/constants.ts',
-        'src/lib/utils.ts',
-        'src/lib/plugin.ts',
-        'src/lib/remote.ts',
-      ],
       exclude: [
         'node_modules/**',
         'src/vitest-setup.ts',
-        // Config files
         '*.config.*',
         '*.d.ts',
-        // Exclude test files from coverage
-        '**/*.test.ts',
-        '**/*.test.tsx',
-        '**/*.spec.ts',
-        '**/*.spec.tsx',
       ],
       thresholds: {
-        // Lines and statements are low because constants.ts is mostly
-        // type declarations (not executable code). Focus on functions
-        // and branches which show true test coverage of runtime logic.
-        lines: 45,
+        lines: 85,
         functions: 85,
-        branches: 85,
-        statements: 45,
+        branches: 80,
+        statements: 85,
       },
     },
   },
