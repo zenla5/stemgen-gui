@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { StemWaveformDisplay } from '../StemWaveformDisplay';
 import type { WaveformData } from '@/lib/types';
 
@@ -177,7 +177,7 @@ describe('StemWaveformDisplay', () => {
   });
 
   it('sets up ResizeObserver', () => {
-    const { container } = render(
+    render(
       <StemWaveformDisplay waveformData={mockWaveformData} />
     );
     // ResizeObserver should be set up
