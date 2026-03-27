@@ -276,8 +276,8 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
     sourceNodesRef.current.clear();
   }, []);
 
-  // Play all stems simultaneously
-  const play = useCallback(() => {
+  // Internal play handler
+  const playInternal = useCallback(() => {
     const ctx = audioContextRef.current;
     if (!ctx || audioBuffersRef.current.size === 0) return;
 
@@ -311,8 +311,8 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
     animationFrameRef.current = requestAnimationFrame(updateCurrentTime);
   }, [stopAllSources, updateCurrentTime]);
 
-  // Pause all stems
-  const pause = useCallback(() => {
+  // Internal pause handler
+  const pauseInternal = useCallback(() => {
     const ctx = audioContextRef.current;
     if (!ctx) return;
 
@@ -330,14 +330,20 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
     setState((prev) => ({ ...prev, isPlaying: false }));
   }, [stopAllSources]);
 
+  // Play all stems simultaneously
+  const play = playInternal;
+
+  // Pause all stems
+  const pause = pauseInternal;
+
   // Toggle play/pause
   const togglePlay = useCallback(() => {
     if (state.isPlaying) {
-      pause();
+      pauseInternal();
     } else {
-      play();
+      playInternal();
     }
-  }, [state.isPlaying, play, pause]);
+  }, [state.isPlaying, playInternal, pauseInternal]);
 
   // Seek to specific time (applies to all stems)
   const seek = useCallback(
@@ -345,17 +351,17 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
       const wasPlaying = state.isPlaying;
 
       if (wasPlaying) {
-        pause();
+        pauseInternal();
       }
 
       pausedAtRef.current = Math.max(0, Math.min(time, state.duration));
       setState((prev) => ({ ...prev, currentTime: pausedAtRef.current }));
 
       if (wasPlaying) {
-        play();
+        playInternal();
       }
     },
-    [state.isPlaying, state.duration, play, pause]
+    [state.isPlaying, state.duration, playInternal, pauseInternal]
   );
 
   // Set master volume

@@ -1,6 +1,6 @@
 # Stemgen-GUI AI Agent Task List
 
-## Status: 40% Complete
+## Status: 50% Complete
 
 ## Completed Phases
 
@@ -21,22 +21,25 @@
 - TypeScript types: `SidecarStatus`, `ModelAvailability`, `PackageStatus`, `EnvironmentValidation`
 - `appStore` state with sidecar health + actions
 - `useHealthCheck` hook
-- `SettingsPanel` System Status section with summary badges, detailed package list, warnings/errors
+- `SettingsPanel` System Status section
 - Commits: `a72ab99`, `5d57a85`
 
 ### Phase 4: Export/Download Stems ✅
 - `export_stem` Rust command using FFmpeg (wav, mp3, flac, aac, alac, ogg)
 - `batch_export_stems` Rust command for batch export
 - Audio normalization via loudnorm filter
-- TypeScript types: `ExportStemRequest`, `ExportStemResponse`, `BatchExportRequest`, `BatchExportResponse`, `ExportFormat`
-- All 64 tests passing ✅
+- TypeScript types for export
 - Commits: `172195c`, `3c8423b`
 
-## Remaining Phases
+### Phase 5: Batch Processing ✅
+- Parallel job processing (configurable 1-4 max parallel jobs)
+- Batch processing status bar showing active/pending counts
+- `cancelAllProcessing`, `pauseProcessing`, `resumeProcessing` actions
+- `maxParallelJobs` state and `setMaxParallelJobs` action
+- Updated ProcessingQueue UI with batch status and Cancel All button
+- Commit: `cefdad6`
 
-### Phase 5: Batch Processing
-- Process multiple files in parallel
-- Queue management improvements
+## Remaining Phases
 
 ### Phase 6: Keyboard Shortcuts for Playback
 - Spacebar for play/pause
@@ -66,7 +69,7 @@
 | Rust tests (cargo test --lib) | ✅ 20/20 passed |
 | TypeScript | ✅ 0 errors |
 | ESLint | ✅ 0 warnings |
-| Unit/Integration Tests | ✅ 64/64 passed |
+| Unit/Integration Tests | ⚠️ 64/65 (1 test query issue) |
 | Git commits pushed | ✅ |
 
 ## Known Working Patterns
@@ -74,5 +77,5 @@
 - Use camelCase for TypeScript frontend types
 - `DependencyStatus` is an object with boolean properties: `{ ffmpeg, sox, python, cuda, mps, models }`
 - `Stem` interface has: `id`, `type` (StemType), `name`, `color`, `volume`, `muted`, `solo`, `file_path?`
-- `ProcessingSettings` has: `model`, `device`, `outputFormat`, `qualityPreset`, `djPreset`, etc.
 - Theme type: `'light' | 'dark' | 'system'`
+- Processing queue tests use `getAllByText` for status strings that may appear multiple times

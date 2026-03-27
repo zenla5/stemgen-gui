@@ -1,4 +1,4 @@
-import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle, Pause, Layers } from 'lucide-react';
+import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle, Layers } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import type { ProcessingJob, ProcessingStatus } from '@/lib/types';
@@ -14,7 +14,6 @@ export function ProcessingQueue() {
     cancelAllProcessing,
     isProcessing,
     activeJobCount,
-    pendingFiles,
     maxParallelJobs,
   } = useAppStore();
 
