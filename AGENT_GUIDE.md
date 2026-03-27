@@ -91,8 +91,9 @@ stemgen-gui/
 ## Test Coverage
 
 **Current coverage (2026-03-27):**
-- **Target: lines 40%, functions 80%, branches 55%, statements 40%**
+- **Target: lines 50%, functions 80%, branches 55%, statements 50%**
 - **Rationale**: Line coverage is low due to React component JSX definitions (non-executable). Functions coverage is the primary metric — the 80% threshold is meaningful and enforceable.
+- **Integration tests**: lines 40%, functions 70%, branches 50%, statements 40%
 - **Blocking**: YES — CI enforces thresholds, failed runs block merges
 - **Historical note**: Previous thresholds (85% lines) were unrealistic for JSX-heavy components. Updated to realistic values that still enforce meaningful coverage.
 
@@ -264,3 +265,16 @@ The app requires these system dependencies:
   - `src/components/__tests__/ErrorBoundary.test.tsx`
 - Coverage thresholds raised to 85% lines, 85% functions, 80% branches, 85% statements
 - Coverage enforced as blocking in CI (no override flags)
+
+### Phase F: v1.0.0 Production Release (2026-03-27)
+- **F1**: Version bumped to 1.0.0 across `package.json`, `Cargo.toml`, `tauri.conf.json`
+- **F2**: Tauri updater keypair generated (Ed25519) for update signing
+  - Private key: `C:\Users\penze\.tauri-keys\stemgen_gui_key.pem`
+  - GitHub secret `TAURI_PRIVATE_KEY` and `TAURI_SIGNING_PASSWORD` configured
+- **F3**: Update manifest generation added to release workflow
+  - Endpoint: `https://github.com/zenla5/stemgen-gui/releases/latest/download/latest.json`
+- **F4**: FirstRunWizard component created with dependency checking
+- **F5**: Added `WaveformDisplay` and `StemWaveformDisplay` component tests
+- **F6**: README updated with Downloads section and CI badges
+- **F7**: CHANGELOG.md added with v1.0.0 release notes
+- **F8**: Fixed typo "Drrums" → "Drums" in constants and docs
