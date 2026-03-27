@@ -1,31 +1,73 @@
-// Types for Stemgen-GUI
+// ============================================================================
+// Stem types
+// ============================================================================
 
+export type StemType = 'drums' | 'bass' | 'other' | 'vocals';
+
+export interface StemPath {
+  stem_type: StemType;
+  path: string;
+}
+
+export interface StemInfo {
+  stem_type: string;
+  file_path: string | null;
+}
+
+export interface Stem {
+  stemType: StemType;
+  label: string;
+  color: string;
+  volume: number;
+  muted: boolean;
+  solo: boolean;
+  waveform: WaveformData | null;
+  audio?: HTMLAudioElement;
+}
+
+export interface StemData {
+  stemType: StemType;
+  label: string;
+  color: string;
+  volume: number;
+  muted: boolean;
+  solo: boolean;
+}
+
+// ============================================================================
+// Processing types
+// ============================================================================
+
+export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+
+export interface ProcessingJob {
+  id: string;
+  fileName: string;
+  filePath: string;
+  status: ProcessingStatus;
+  progress: number;
+  error?: string;
+  createdAt: number;
+  completedAt?: number;
+  outputPath?: string;
+  stems?: StemInfo[];
+  input_path?: string;
+  completed_at?: number;
+}
+
+export interface SeparationSettings {
+  model: string;
+  device: string;
+  output_format: string;
+  quality_preset: string;
+  dj_preset: string;
+}
+
+export interface ProcessingSettings extends SeparationSettings {}
+
+// ============================================================================
 // Audio types
-export interface AudioFileMetadata {
-  path: string;
-  name: string;
-  size: number;
-  duration: number;
-  sample_rate: number;
-  bit_depth: number;
-  channels: number;
-  format: string;
-  metadata: Record<string, string>;
-  cover_art_path?: string;
-}
-
-export interface AudioInfo {
-  path: string;
-  name: string;
-  size: number;
-  duration: number;
-  sample_rate: number;
-  bit_depth: number;
-  channels: number;
-  format: string;
-  metadata: Record<string, string>;
-  cover_art_path?: string;
-}
+// ============================================================================
 
 export interface WaveformPoint {
   min: number;
@@ -39,199 +81,161 @@ export interface WaveformData {
   duration_secs: number;
 }
 
-// Stem types
-export type StemType = 'drums' | 'bass' | 'other' | 'vocals';
-
-export const STEM_DEFAULT_NAMES: Record<StemType, string> = {
-  drums: 'Drums',
-  bass: 'Bass',
-  other: 'Other',
-  vocals: 'Vocals',
-};
-
-export const STEM_COLORS: Record<StemType, string> = {
-  drums: '#FF6B6B',
-  bass: '#4ECDC4',
-  other: '#FFE66D',
-  vocals: '#95E1D3',
-};
-
-export interface Stem {
-  id: string;
-  type: StemType;
-  name: string;
-  color: string;
-  volume: number;
-  muted: boolean;
-  solo: boolean;
-  file_path?: string;
-}
-
-export interface NIStemMetadata {
-  version: string;
-  application: {
-    name: string;
-    version: string;
-    build: string;
-  };
-  stems: StemData[];
-  master: MasterData;
-  track?: TrackInfo;
-}
-
-export interface StemData {
-  name: string;
-  color: string;
-  file_path: string;
-}
-
-export interface MasterData {
-  name: string;
-  file_path: string;
-}
-
-export interface TrackInfo {
+export interface AudioMetadata {
   title?: string;
   artist?: string;
   album?: string;
-  year?: number;
-  genre?: string;
-  bpm?: number;
-  key?: string;
-  duration?: number;
-  cover_art?: string;
+  duration_secs: number;
+  sample_rate: number;
+  channels: number;
+  bitrate?: number;
+  format: string;
 }
 
+export interface AudioFileMetadata {
+  audio: AudioMetadata;
+  stems: AudioMetadata[];
+}
+
+// ============================================================================
+// NI Stem metadata
+// ============================================================================
+
+export interface NIStemMetadata {
+  version: string;
+  stem_count: number;
+  stems: NIStem[];
+  master?: {
+    name: string;
+    file_path: string;
+  };
+}
+
+export interface NIStem {
+  name: string;
+  color: string;
+  file_path: string;
+}
+
+export interface StemFileMetadata {
+  stem_type: StemType;
+  file_path: string;
+  metadata: NIStemMetadata;
+  audio?: AudioMetadata;
+  dj_software?: string;
+  track_count?: number;
+}
+
+// ============================================================================
+// Pack stems types
+// ============================================================================
+
+export interface PackStemsRequest {
+  master_path: string;
+  stem_paths: StemPath[];
+  output_path: string;
+  dj_software: string;
+  output_format: string;
+}
+
+export interface PackStemsResponse {
+  success: boolean;
+  output_path: string;
+  metadata_path?: string;
+}
+
+// ============================================================================
+// Export types (Phase 4)
+// ============================================================================
+
+export interface ExportStemRequest {
+  stem_path: string;
+  output_path: string;
+  format: ExportFormat;
+  normalize: boolean;
+}
+
+export interface ExportStemResponse {
+  success: boolean;
+  output_path: string;
+}
+
+export interface BatchExportRequest {
+  stem_paths: StemPath[];
+  output_dir: string;
+  format: ExportFormat;
+  normalize: boolean;
+}
+
+export interface BatchExportResponse {
+  success: boolean;
+  exported_files: string[];
+}
+
+export type ExportFormat = 'wav' | 'mp3' | 'flac' | 'aac' | 'alac' | 'ogg';
+
+// ============================================================================
 // DJ Software presets
+// ============================================================================
+
 export type DJSoftware = 'traktor' | 'rekordbox' | 'serato' | 'mixxx' | 'djay' | 'virtualdj';
 
-export interface DJSoftwareInfo {
+export interface DJSoftwarePreset {
   id: DJSoftware;
   name: string;
-  codec: string;
+  codec: 'alac' | 'aac';
   stem_order: StemType[];
+  notes?: string;
 }
 
-// AI Models
-export type AIModel = 'bs_roformer' | 'htdemucs' | 'htdemucs_ft' | 'demucs';
+// ============================================================================
+// Settings types
+// ============================================================================
 
-export interface ModelInfo {
-  id: AIModel;
+export interface AppSettings {
+  model: string;
+  device: 'cpu' | 'cuda' | 'mps';
+  outputFormat: 'alac' | 'aac';
+  qualityPreset: 'draft' | 'standard' | 'high';
+  djPreset: DJSoftware;
+  outputDirectory: string;
+}
+
+export interface Theme {
+  id: 'light' | 'dark' | 'system';
+  name: string;
+}
+
+export interface AIModel {
+  id: string;
   name: string;
   description: string;
   quality: 'draft' | 'standard' | 'master';
   speed: 'fast' | 'medium' | 'slow';
 }
 
-// Inference Provider
-export type InferenceProvider = 'local' | 'replicate' | 'magnetic' | 'argilla';
-
-// Processing types
-export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-
-export interface ProcessingJob {
-  id: string;
-  input_path: string;
-  output_path: string;
-  status: ProcessingStatus;
-  progress: number;
-  model: AIModel;
-  dj_software: DJSoftware;
-  error?: string;
-  started_at?: string;
-  completed_at?: string;
-  stems?: Stem[];
+export interface DeviceOption {
+  id: 'cpu' | 'cuda' | 'mps';
+  name: string;
+  description?: string;
 }
 
-export interface ProcessingSettings {
-  model: AIModel;
-  device: 'cpu' | 'cuda' | 'mps';
-  outputFormat: 'alac' | 'aac';
-  qualityPreset: 'draft' | 'standard' | 'master';
-  djPreset: DJSoftware;
-  inferenceProvider: InferenceProvider;
-  customStemColors: boolean;
-  normalizeAudio: boolean;
-  preserveOriginal: boolean;
-  cpuThreads: number;
-  gpuEnabled: boolean;
+export interface QualityPreset {
+  id: 'draft' | 'standard' | 'high';
+  name: string;
+  description: string;
 }
 
-// Dependencies
-export interface DependencyStatus {
-  ffmpeg: boolean;
-  sox: boolean;
-  python: boolean;
-  cuda: boolean;
-  mps: boolean;
-  models: boolean;
+export interface OutputFormatOption {
+  id: 'alac' | 'aac';
+  name: string;
+  description: string;
 }
 
-export interface DependenciesStatus {
-  ffmpeg: boolean;
-  ffmpeg_version?: string;
-  sox: boolean;
-  sox_version?: string;
-  python: boolean;
-  python_version?: string;
-  cuda: boolean;
-  mps: boolean;
-  model_directory: string;
-  model_count: number;
-}
+// ============================================================================
+// Dependency/Environment types (Phase 3)
+// ============================================================================
 
-export interface CheckDependenciesResult {
-  ffmpeg: boolean;
-  ffmpeg_version?: string;
-  sox: boolean;
-  sox_version?: string;
-  python: boolean;
-  python_version?: string;
-  cuda: boolean;
-  mps: boolean;
-  model_directory: string;
-  model_count: number;
-}
-
-// App state
-export interface AppSettings {
-  theme: 'light' | 'dark' | 'system';
-  language: string;
-  default_model: AIModel;
-  default_dj_software: DJSoftware;
-  default_output_format: 'alac' | 'aac';
-  output_directory: string;
-  cpu_threads: number;
-  gpu_enabled: boolean;
-}
-
-// Audio metadata with BPM/key detection (mirrors Rust backend)
-export interface AudioMetadata {
-  path: string;
-  title?: string;
-  artist?: string;
-  album?: string;
-  year?: number;
-  genre?: string;
-  bpm?: number;
-  key?: string;
-  duration: number;
-  sample_rate: number;
-  bit_depth: number;
-  channels: number;
-  cover_art_path?: string;
-}
-
-// NI stem file metadata (mirrors Rust backend)
-export interface StemFileMetadata {
-  path: string;
-  ni_metadata?: NIStemMetadata;
-  track_count: number;
-  dj_software?: string;
-  audio: AudioMetadata;
-}
-
-// Sidecar health status (Phase 3 - mirrors Rust backend)
 export interface SidecarStatus {
   isHealthy: boolean;
   pythonFound: boolean;
@@ -252,7 +256,6 @@ export interface SidecarStatus {
   errors: string[];
 }
 
-// Model availability info
 export interface ModelAvailability {
   model: string;
   available: boolean;
@@ -261,30 +264,12 @@ export interface ModelAvailability {
   path?: string;
 }
 
-// Package validation status (mirrors Rust PackageStatus enum with snake_case)
-export interface PackageStatusAvailable {
-  available: null;
-}
-
-export interface PackageStatusUnavailable {
-  unavailable: string;
-}
-
-export interface PackageStatusWarning {
-  warning: string;
-}
-
-export interface PackageStatusMissing {
-  missing: string;
-}
-
 export type PackageStatus = 
-  | PackageStatusAvailable 
-  | PackageStatusUnavailable 
-  | PackageStatusWarning 
-  | PackageStatusMissing;
+  | { available: null }
+  | { unavailable: string }
+  | { warning: string }
+  | { missing: string };
 
-// Full environment validation result
 export interface EnvironmentValidation {
   isReady: boolean;
   python?: PackageStatus;
@@ -305,41 +290,61 @@ export interface EnvironmentValidation {
   warnings: string[];
 }
 
-// History
-export interface HistoryEntry {
+export type DependencyStatus = 'ok' | 'warning' | 'error';
+
+export interface CheckDependenciesResult {
+  ffmpeg: boolean;
+  ffmpeg_version?: string;
+  sox: boolean;
+  sox_version?: string;
+  python: boolean;
+  python_version?: string;
+  cuda: boolean;
+  mps: boolean;
+  model_directory: string;
+  model_count: number;
+}
+
+// ============================================================================
+// Model types
+// ============================================================================
+
+export interface ModelInfo {
   id: string;
-  input_file: string;
-  output_file: string;
-  model: AIModel;
-  dj_software: DJSoftware;
-  created_at: string;
-  duration: number;
+  name: string;
+  description: string;
+  quality: 'draft' | 'standard' | 'master';
+  speed: 'fast' | 'medium' | 'slow';
+  size_bytes: number;
+  downloaded: boolean;
+  download_url?: string;
 }
 
-// Theme type
-export type Theme = 'light' | 'dark' | 'system';
+// ============================================================================
+// UI State types
+// ============================================================================
 
-// Stem separation types (mirrors Rust backend)
-export interface StemInfo {
-  stem_type: string;
-  file_path?: string;
+export interface AppState {
+  files: string[];
+  jobs: ProcessingJob[];
+  stems: StemData[];
+  dependencies: {
+    ffmpeg: boolean;
+    sox: boolean;
+    python: boolean;
+    cuda: boolean;
+    mps: boolean;
+  };
+  isProcessing: boolean;
+  settings: AppSettings;
+  sidecarHealth?: SidecarStatus;
+  environmentValidation?: EnvironmentValidation;
 }
 
-export interface PackStemsRequest {
-  master_path: string;
-  stem_paths: StemPath[];
-  output_path: string;
-  dj_software: string;
-  output_format: string;
-}
-
-export interface StemPath {
-  stem_type: string;
-  path: string;
-}
-
-export interface PackStemsResponse {
-  success: boolean;
-  output_path: string;
-  metadata_path?: string;
+export interface SettingsState {
+  theme: 'light' | 'dark' | 'system';
+  language: string;
+  gpuEnabled: boolean;
+  cpuThreads: number;
+  maxParallelJobs: number;
 }

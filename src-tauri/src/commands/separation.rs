@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use tracing::{error, info};
 use crate::audio::{AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
 use crate::audio::waveform::WaveformPoint;
@@ -49,6 +50,36 @@ pub struct PackStemsResponse {
     pub success: bool,
     pub output_path: String,
     pub metadata_path: Option<String>,
+}
+
+/// Export individual stem to different format
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportStemRequest {
+    pub stem_path: String,
+    pub output_path: String,
+    pub format: String,  // "wav", "mp3", "flac", "aac", "alac"
+    pub normalize: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportStemResponse {
+    pub success: bool,
+    pub output_path: String,
+}
+
+/// Batch export all stems
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchExportRequest {
+    pub stem_paths: Vec<StemPath>,
+    pub output_dir: String,
+    pub format: String,
+    pub normalize: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchExportResponse {
+    pub success: bool,
+    pub exported_files: Vec<String>,
 }
 
 /// Separation response with stem paths
@@ -244,5 +275,117 @@ pub async fn pack_stems(
         success: true,
         output_path: output_path_clone,
         metadata_path: Some(format!("{}.metadata.json", request.output_path)),
+    })
+}
+
+// ============================================================================
+// Phase 4: Export/Download Stems
+// ============================================================================
+
+/// Export a single stem to a different audio format
+#[tauri::command]
+pub async fn export_stem(
+    request: ExportStemRequest,
+) -> Result<ExportStemResponse, String> {
+    info!("Exporting stem: {} -> {}", request.stem_path, request.output_path);
+    
+    let input_path = Path::new(&request.stem_path);
+    let output_path = Path::new(&request.output_path);
+    
+    // Ensure output directory exists
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    }
+    
+    // Build FFmpeg command
+    let codec = match request.format.to_lowercase().as_str() {
+        "wav" => ("pcm_s16le", "-y"),
+        "flac" => ("flac", "-y"),
+        "mp3" => ("libmp3lame", "-y"),
+        "aac" => ("aac", "-y"),
+        "alac" => ("alac", "-y"),
+        "ogg" => ("libvorbis", "-y"),
+        _ => ("copy", "-y"),
+    };
+    
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-i").arg(input_path);
+    
+    if codec.0 == "copy" {
+        // Just change container
+        cmd.args(["-c", "copy"]);
+    } else {
+        cmd.args(["-c:a", codec.0]);
+    }
+    
+    // Normalize if requested
+    if request.normalize {
+        cmd.args(["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]);
+    }
+    
+    // Audio settings
+    cmd.args(["-ar", "44100", "-ac", "2"]);
+    cmd.arg("-y"); // Overwrite
+    
+    cmd.arg(output_path);
+    
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to execute FFmpeg: {}", e))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Export failed: {}", stderr));
+    }
+    
+    info!("Stem exported successfully: {}", output_path.display());
+    
+    Ok(ExportStemResponse {
+        success: true,
+        output_path: request.output_path,
+    })
+}
+
+/// Batch export multiple stems
+#[tauri::command]
+pub async fn batch_export_stems(
+    request: BatchExportRequest,
+) -> Result<BatchExportResponse, String> {
+    info!("Batch exporting {} stems to {}", request.stem_paths.len(), request.output_dir);
+    
+    // Ensure output directory exists
+    let output_dir = Path::new(&request.output_dir);
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    
+    let mut exported_files = Vec::new();
+    
+    for stem in &request.stem_paths {
+        let input_path = Path::new(&stem.path);
+        let stem_name = input_path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("stem");
+        let output_path = output_dir.join(format!("{}.{}", stem_name, request.format));
+        
+        let export_request = ExportStemRequest {
+            stem_path: stem.path.clone(),
+            output_path: output_path.to_string_lossy().to_string(),
+            format: request.format.clone(),
+            normalize: request.normalize,
+        };
+        
+        match export_stem(export_request).await {
+            Ok(response) => {
+                exported_files.push(response.output_path);
+            }
+            Err(e) => {
+                error!("Failed to export {}: {}", stem.path, e);
+            }
+        }
+    }
+    
+    Ok(BatchExportResponse {
+        success: !exported_files.is_empty(),
+        exported_files,
     })
 }
