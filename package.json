@@ -1,6 +1,6 @@
 {
   "name": "stemgen-gui",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "🎛 A free and open source (FOSS) streamlined end-to-end pipeline to convert audio files into .stem.mp4 files",
   "private": true,
   "type": "module",

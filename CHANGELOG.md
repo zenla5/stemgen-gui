@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] — 2026-XX-XX — First Production Release
+## [1.0.1] — 2026-03-28 — Bugfix Release
+
+### Fixed
+
+- **macOS Intel build** — Removed unsupported macOS Intel target from release workflow (requires Apple Developer certificate for notarization)
+- **README downloads** — Updated download links to reflect v1.0.1 release
+
+### Changed
+
+- **Version bump** — All package versions updated to 1.0.1
+
+## [1.0.0] — 2026-03-27 — First Production Release
 
 ### Added
 

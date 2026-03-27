@@ -130,10 +130,9 @@ Audio File (MP3/FLAC/WAV/OGG)
 
 | Platform | Installer | Requirements |
 |----------|-----------|-------------|
-| **Windows** | [.exe (NSIS)](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_x64-setup.msi) | Windows 10/11 |
-| **macOS Intel** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_x64.dmg) | macOS 10.13+ (Intel) |
-| **macOS Apple Silicon** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_aarch64.dmg) | macOS 10.13+ (Apple Silicon) |
-| **Linux** | [.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_amd64.AppImage) · [.deb](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui_x.x.x_amd64.deb) · [.rpm](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui-x.x.x-1.x86_64.rpm) | Ubuntu 20.04+ / compatible distros |
+| **Windows** | [.exe (NSIS)](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.1_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.1_x64-setup.msi) | Windows 10/11 |
+| **macOS Apple Silicon** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.1_aarch64.dmg) | macOS 11+ (Apple Silicon) |
+| **Linux** | [.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.1_amd64.AppImage) · [.deb](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui_1.0.1_amd64.deb) · [.rpm](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui-1.0.1-1.x86_64.rpm) | Ubuntu 20.04+ / compatible distros |
 
 📌 **All releases:** [github.com/zenla5/stemgen-gui/releases](https://github.com/zenla5/stemgen-gui/releases)
 
