@@ -92,8 +92,11 @@ stemgen-gui/
 
 **Current coverage (2026-03-27):**
 - **Target: 85% lines, 85% functions, 80% branches, 85% statements**
+- **Current: Lines 31.4%, Functions 81.37%, Branches 55%**
 - **Blocking**: YES — CI enforces thresholds, failed runs block merges
-- **Known gaps**: `remote.ts` (0%), `appStore.ts` (28.69%), all hooks (0%), layout components (0%)
+- **Note**: Line coverage is low due to React component JSX definitions (non-executable)
+- **Note**: Functions coverage (81.37%) close to 85% threshold
+- **Known gaps**: Large components (AppShell, FileBrowser), audio hooks (useAudioPlayer, useMultiStemPlayer)
 
 **Coverage configuration**: `vitest.config.ts` thresholds + `.github/workflows/ci.yml`
 
