@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { SettingsPanel } from '../SettingsPanel';
 import * as settingsStoreModule from '@/stores/settingsStore';
 import * as appStoreModule from '@/stores/appStore';

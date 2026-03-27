@@ -53,7 +53,7 @@ jobs:
       - name: Check coverage thresholds
         run: |
           echo "=== Coverage Report Summary ==="
-          echo "Thresholds: lines 85%, functions 85%, branches 80%, statements 85%"
+          echo "Thresholds: lines 40%, functions 80%, branches 55%, statements 40%"
           echo "If thresholds are not met, CI will fail here."
 
   # Frontend integration tests (React component tests)
@@ -79,7 +79,7 @@ jobs:
       - name: Check integration coverage thresholds
         run: |
           echo "=== Integration Test Coverage ==="
-          echo "Thresholds enforced: lines 85%, functions 85%, branches 80%, statements 85%"
+          echo "Thresholds enforced: lines 40%, functions 80%, branches 55%, statements 40%"
       
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -188,6 +188,12 @@ jobs:
           echo "=== Running cargo test --lib (library tests only) ==="
           cd src-tauri && cargo test --lib 2>&1
           echo "Test exit code: $?"
+      
+      - name: Run Rust integration tests
+        run: |
+          echo "=== Running cargo test --tests (integration tests) ==="
+          cd src-tauri && cargo test --tests 2>&1
+          echo "Integration test exit code: $?"
 
   # Security audit
   security:

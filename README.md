@@ -1,6 +1,85 @@
+[![CI](https://github.com/zenla5/stemgen-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/zenla5/stemgen-gui/actions/workflows/ci.yml)
+[![Release](https://github.com/zenla5/stemgen-gui/actions/workflows/release.yml/badge.svg)](https://github.com/zenla5/stemgen-gui/releases/latest)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/zenla5/stemgen-gui?include_prereleases&label=version)](https://github.com/zenla5/stemgen-gui/releases/latest)
+[![GPL-3.0 License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+
 # 🎛 Stemgen GUI
 
 A free and open source (FOSS) streamlined end-to-end pipeline software to convert audio files (MP3, FLAC, WAV, OGG, etc.) into `.stem.mp4` files for use with DJ software like Traktor, rekordbox, Serato DJ, Mixxx, djay, and VirtualDJ.
+
+## Screenshots
+
+> **Screenshots will be added in v1.0.0.** The app features a clean, modern UI with dark/light theme support.
+
+### App Overview
+```
+┌─────────────────────────────────────────────────────────────┐
+│  🎛 Stemgen GUI                              [─] [□] [✕]   │
+├────────────┬────────────────────────────────────────────────┤
+│            │  📁 Drop audio files here or click to browse  │
+│  📁 Files  │                                                │
+│  🎚️ Mixer  │     [drag-drop zone with preview]             │
+│  ⚙️ Settings│                                                │
+│  📜 History│                                                │
+│            │────────────────────────────────────────────────│
+│  ⚡ Status │  Ready                          v0.1.0       │
+└────────────┴────────────────────────────────────────────────┘
+```
+
+### Stem Mixer View
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Stem Mixer                              [▶ Play All]      │
+├─────────────────────────────────────────────────────────────┤
+│  🔴 Drums     ████████████████░░░░░  [🔇] [👁]  100%       │
+│  🩵 Bass      ██████████░░░░░░░░░░░  [🔇] [👁]  80%        │
+│  🟡 Other     ████████████████░░░░░  [🔇] [👁]  100%       │
+│  🩷 Vocals    ████████░░░░░░░░░░░░░  [🔇] [👁]  60%        │
+├─────────────────────────────────────────────────────────────┤
+│  ▶️ 00:45 / 03:22    [═══════════●═══════════]            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Processing Pipeline
+```
+Audio File (MP3/FLAC/WAV/OGG)
+        │
+        ▼
+┌───────────────────┐
+│  ① Decode &      │  ← Rust Symphonia decoder
+│     Resample      │     → 44.1kHz PCM
+└─────────┬─────────┘
+          │
+          ▼
+┌───────────────────┐
+│  ② AI Separation  │  ← Python sidecar
+│                   │     demucs / bs_roformer
+│  Drums / Bass /   │     → 4 mono stems
+│  Other / Vocals   │
+└─────────┬─────────┘
+          │
+          ▼
+┌───────────────────┐
+│  ③ Preview &      │  ← Web Audio API
+│     Mix (opt.)    │     per-stem volume/solo/mute
+└─────────┬─────────┘
+          │
+          ▼
+┌───────────────────┐
+│  ④ Encode Stems  │  ← FFmpeg
+│                   │     ALAC / AAC
+└─────────┬─────────┘
+          │
+          ▼
+┌───────────────────┐
+│  ⑤ Pack NI Atom  │  ← Rust (native)
+│                   │     [moov]→[udta]→[nmde]
+│  .stem.mp4        │     JSON metadata + stem colors
+└─────────┬─────────┘
+          │
+          ▼
+   Ready for DJ Software
+```
 
 ## Features
 
@@ -35,6 +114,33 @@ A free and open source (FOSS) streamlined end-to-end pipeline software to conver
 - **HTDemucs** - High quality, slow
 - **HTDemucs (fine-tuned)** - Highest quality, slow
 - **Demucs v4** - Medium quality, fast
+
+## 📥 Downloads (Latest Release)
+
+> **Note:** After your first release tag (`v1.0.0`), installers for all platforms will be available here. Once published, the links below will point to the latest GitHub release with ready-to-run installers.
+
+| Platform | Installer | Requirements |
+|----------|-----------|-------------|
+| **Windows** | [.exe (NSIS)](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_x64-setup.msi) | Windows 10/11 |
+| **macOS Intel** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_x64.dmg) | macOS 10.13+ (Intel) |
+| **macOS Apple Silicon** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_aarch64.dmg) | macOS 10.13+ (Apple Silicon) |
+| **Linux** | [.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x.x.x_amd64.AppImage) · [.deb](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui_x.x.x_amd64.deb) · [.rpm](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui-x.x.x-1.x86_64.rpm) | Ubuntu 20.04+ / compatible distros |
+
+📌 **All releases:** [github.com/zenla5/stemgen-gui/releases](https://github.com/zenla5/stemgen-gui/releases)
+
+### Verifying Downloads
+
+SHA256 checksums are provided with every release in `SHA256SUMS.txt`. To verify:
+
+```bash
+# Linux/macOS
+shasum -a 256 Stemgen-GUI_x.x.x_amd64.AppImage
+
+# Windows (PowerShell)
+Get-FileHash Stemgen-GUI_x.x.x_x64-setup.exe -Algorithm SHA256
+```
+
+---
 
 ## Installation
 

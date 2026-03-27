@@ -38,6 +38,9 @@ interface SettingsState {
   gpuEnabled: boolean;
   maxParallelJobs: number;
   
+  // First-run wizard
+  hasSeenFirstRun: boolean;
+  
   // Actions
   setTheme: (theme: Theme) => void;
   setLanguage: (language: string) => void;
@@ -53,6 +56,9 @@ interface SettingsState {
   addExportPreset: (preset: ExportPreset) => void;
   removeExportPreset: (id: string) => void;
   updateExportPreset: (id: string, updates: Partial<ExportPreset>) => void;
+  
+  // First-run actions
+  completeFirstRun: () => void;
   
   // Reset
   resetSettings: () => void;
@@ -72,6 +78,7 @@ const DEFAULT_SETTINGS = {
   gpuEnabled: true,
   maxParallelJobs: 1,
   exportPresets: [] as ExportPreset[],
+  hasSeenFirstRun: false,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -111,6 +118,8 @@ export const useSettingsStore = create<SettingsState>()(
             p.id === id ? { ...p, ...updates } : p
           ),
         })),
+      
+      completeFirstRun: () => set({ hasSeenFirstRun: true }),
       
       resetSettings: () => set(DEFAULT_SETTINGS),
     }),

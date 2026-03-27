@@ -75,8 +75,8 @@ describe('Slider', () => {
     });
 
     it('renders with default horizontal orientation', () => {
-      const { container } = render(<Slider />);
-      expect(container.firstChild).toBeInTheDocument();
+      const result = render(<Slider />);
+      expect(result.container.firstChild).toBeInTheDocument();
     });
   });
 
@@ -209,7 +209,7 @@ describe('Slider', () => {
 
   describe('Props passthrough', () => {
     it('passes through additional props', () => {
-      const { container } = render(<Slider data-testid="custom-slider" />);
+      render(<Slider data-testid="custom-slider" />);
       expect(screen.getByTestId('custom-slider')).toBeInTheDocument();
     });
   });

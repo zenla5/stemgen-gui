@@ -25,7 +25,7 @@ jobs:
       
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}">>$GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}">>$GITHUB_OUTPUT
         
       - name: Verify package.json version matches tag
         run: |
@@ -246,6 +246,60 @@ jobs:
           path: artifacts/SHA256SUMS.txt
           retention-days: 30
 
+      # ─── Tauri Update Signing ────────────────────────────────────────────────
+      # NOTE: To enable update signing, you must manually create the following
+      # GitHub Actions secrets at:
+      # https://github.com/zenla5/stemgen-gui/settings/secrets/actions
+      #
+      # 1. TAURI_PRIVATE_KEY — Base64-encoded Ed25519 private key
+      #    (the raw 32-byte key, base64)
+      #    Value: +ymEyzjvqHMaDy40E58SEBfoC1obO+elXQOMEaWMEV8=
+      #
+      # 2. TAURI_SIGNING_PASSWORD — Password for the signing key
+      #    Value: (your chosen passphrase)
+      #
+      # Without these secrets, signing is skipped and update manifests are
+      # generated without signatures (for testing only).
+      # ─────────────────────────────────────────────────────────────────────────
+
+      - name: Generate Tauri update manifests
+        run: |
+          # Extract version from tag
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Generating update manifests for version: $VERSION"
+          
+          # Build the latest.json update manifest
+          # This tells the Tauri updater where to find new versions
+          MANIFEST="{\"name\":\"Stemgen GUI\",\"version\":\"$VERSION\",\"notes\":\"Stemgen GUI v$VERSION\",\"date\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"apple\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_x64.dmg\",\"isDarkModeSupported\":true},\"windows\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_x64-setup.exe\",\"isDarkModeSupported\":true},\"linux\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_amd64.AppImage\"}}"
+          
+          echo "$MANIFEST" > artifacts/latest.json
+          echo "Latest manifest:"
+          cat artifacts/latest.json
+
+      - name: Sign update manifests (if secrets available)
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_PRIVATE_KEY" ] && [ -n "$TAURI_SIGNING_PASSWORD" ]; then
+            echo "Signing update manifests with Tauri..."
+            npx @tauri-apps/cli@latest signer sign \
+              --private-key "$TAURI_PRIVATE_KEY" \
+              --password "$TAURI_SIGNING_PASSWORD" \
+              artifacts/latest.json
+            echo "Manifest signed successfully."
+          else
+            echo "WARNING: TAURI_PRIVATE_KEY or TAURI_SIGNING_PASSWORD not set."
+            echo "Update manifests are unsigned — only for testing."
+          fi
+
+      - name: Upload update manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-manifests
+          path: artifacts/latest.json
+          retention-days: 365
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -260,5 +314,6 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.rpm
             artifacts/**/SHA256SUMS.txt
+            artifacts/**/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

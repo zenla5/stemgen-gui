@@ -1,6 +1,6 @@
 {
   "name": "stemgen-gui",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "🎛 A free and open source (FOSS) streamlined end-to-end pipeline to convert audio files into .stem.mp4 files",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:unit": "vitest run src/lib/__tests__",
+    "test:unit": "vitest run --exclude 'src/__tests__/integration/**' --exclude 'src/__tests__/e2e/**'",
     "test:integration": "vitest run src/__tests__/integration",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

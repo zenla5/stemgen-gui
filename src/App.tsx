@@ -4,11 +4,12 @@ import { useAppStore } from './stores/appStore';
 import { useSettingsStore } from './stores/settingsStore';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { FirstRunWizard } from './components/setup/FirstRunWizard';
 import { useHealthCheck } from './hooks/useHealthCheck';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 function App() {
-  const { theme } = useSettingsStore();
+  const { theme, hasSeenFirstRun, completeFirstRun } = useSettingsStore();
   const { checkDependencies } = useAppStore();
 
   // Health check hook
@@ -35,6 +36,16 @@ function App() {
       root.classList.add(theme);
     }
   }, [theme]);
+
+  // Show first-run wizard on first launch
+  if (!hasSeenFirstRun) {
+    return (
+      <FirstRunWizard
+        onComplete={completeFirstRun}
+        onSkip={completeFirstRun}
+      />
+    );
+  }
 
   return (
     <ErrorBoundary>

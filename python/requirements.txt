@@ -1,23 +1,33 @@
 # Stemgen Python Sidecar Requirements
+# Pinned versions for reproducible AI model inference
+# Install with: pip install -r requirements.txt
 
-# Core dependencies for AI stem separation
-torch>=2.0.0
-torchaudio>=2.0.0
+# Core PyTorch — use CUDA 11.8 for broad GPU compatibility
+# For Apple Silicon MPS: pip install torch torchvision torchaudio
+# For CPU-only: pip install torch torchvision torchaudio
+--index-url https://download.pytorch.org/whl/cu118
+torch==2.2.2
+torchaudio==2.2.2
 
 # Demucs for stem separation
-demucs>=4.0.0
+demucs==4.0.0
 
 # BS-RoFormer for high-quality separation
-bs-roformer @ git+https://github.com/axeldelafosse/BS-RoFormer.git
+bs-roformer @ git+https://github.com/axeldelafosse/BS-RoFormer.git@5b3b5a1
 
 # Audio utilities
-mutagen>=1.47.0
-soundfile>=0.12.0
-librosa>=0.10.0
+mutagen==1.47.0
+soundfile==0.12.1
+librosa==0.10.2.post1
 
-# Optional: GPU acceleration
-# For NVIDIA GPUs (CUDA):
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-# For Apple Silicon (MPS):
-# pip install torch torchvision torchaudio
+# Optional: GPU acceleration notes
+# ──────────────────────────────────────────────────────────────────────────────
+# NVIDIA GPU (CUDA 11.8):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#
+# Apple Silicon (MPS):
+#   pip install torch torchvision torchaudio
+#
+# CPU-only:
+#   pip install torch torchvision torchaudio
+# ──────────────────────────────────────────────────────────────────────────────
