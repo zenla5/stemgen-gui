@@ -1,4 +1,5 @@
-import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles } from 'lucide-react';
+import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles, RefreshCw, CheckCircle, XCircle, AlertCircle, Package } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
 import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
@@ -7,8 +8,30 @@ import { cn } from '@/lib/utils';
 export function SettingsPanel() {
   const settings = useSettingsStore();
   const appSettings = useAppStore();
-  const { updateSettings } = appSettings;
+  const { updateSettings, checkSidecarHealth, validateEnvironment, sidecarHealth, environmentValidation } = appSettings;
   const { dependencies } = appSettings;
+
+  const isPackageAvailable = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null) => {
+    if (!status) return false;
+    return 'available' in status;
+  };
+
+  const getPackageIcon = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null): ReactNode => {
+    if (!status) return <XCircle className="h-4 w-4 text-muted-foreground" />;
+    if (isPackageAvailable(status)) return <CheckCircle className="h-4 w-4 text-green-500" />;
+    if ('warning' in status) return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+    if ('unavailable' in status) return <AlertCircle className="h-4 w-4 text-orange-500" />;
+    return <XCircle className="h-4 w-4 text-red-500" />;
+  };
+
+  const getPackageLabel = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null): string => {
+    if (!status) return 'Not checked';
+    if ('available' in status) return 'Available';
+    if ('warning' in status) return status.warning;
+    if ('unavailable' in status) return status.unavailable;
+    if ('missing' in status) return status.missing;
+    return 'Unknown';
+  };
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-auto p-6">
@@ -16,6 +39,151 @@ export function SettingsPanel() {
         <Settings className="h-6 w-6" />
         <h2 className="text-xl font-semibold">Settings</h2>
       </div>
+
+      {/* System Status (Phase 3) */}
+      <section className="space-y-3 rounded-lg border border-muted p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <Package className="h-4 w-4" />
+            System Status
+          </h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { checkSidecarHealth(); validateEnvironment(); }}
+              className="flex items-center gap-1 rounded-md border border-muted px-2 py-1 text-xs hover:bg-muted"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* Sidecar Health Summary */}
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <StatusBadge
+            label="Python"
+            value={sidecarHealth?.pythonVersion || (sidecarHealth?.pythonFound ? 'Found' : 'Not found')}
+            healthy={sidecarHealth?.pythonFound}
+            icon={getPackageIcon(environmentValidation?.python)}
+          />
+          <StatusBadge
+            label="PyTorch"
+            value={sidecarHealth?.pytorchVersion || getPackageLabel(environmentValidation?.pytorch)}
+            healthy={!!sidecarHealth?.pytorchVersion}
+            icon={getPackageIcon(environmentValidation?.pytorch)}
+          />
+          <StatusBadge
+            label="GPU"
+            value={sidecarHealth?.gpuDevice || (sidecarHealth?.gpuAvailable ? 'CUDA' : 'CPU only')}
+            healthy={sidecarHealth?.gpuAvailable}
+            icon={getPackageIcon(environmentValidation?.cuda)}
+          />
+          <StatusBadge
+            label="Models"
+            value={`${sidecarHealth?.modelCount || 0} downloaded`}
+            healthy={!!sidecarHealth?.modelCount && (sidecarHealth?.modelCount ?? 0) > 0}
+            icon={<CheckCircle className={cn("h-4 w-4", (sidecarHealth?.modelCount ?? 0) > 0 ? "text-green-500" : "text-muted-foreground")} />}
+          />
+        </div>
+
+        {/* Detailed Package List */}
+        <div className="mt-4 space-y-2">
+          <h4 className="text-xs font-medium uppercase text-muted-foreground">Detailed Status</h4>
+          <div className="grid gap-2 text-sm">
+            <PackageRow
+              label="FFmpeg"
+              status={getPackageIcon(environmentValidation?.ffmpeg)}
+              value={getPackageLabel(environmentValidation?.ffmpeg)}
+              healthy={isPackageAvailable(environmentValidation?.ffmpeg)}
+            />
+            <PackageRow
+              label="FFprobe"
+              status={getPackageIcon(environmentValidation?.ffprobe)}
+              value={getPackageLabel(environmentValidation?.ffprobe)}
+              healthy={isPackageAvailable(environmentValidation?.ffprobe)}
+            />
+            <PackageRow
+              label="Python"
+              status={getPackageIcon(environmentValidation?.python)}
+              value={`${environmentValidation?.pythonPath || 'Not found'} (${environmentValidation?.pythonVersion || 'unknown'})`}
+              healthy={isPackageAvailable(environmentValidation?.python)}
+            />
+            <PackageRow
+              label="PyTorch"
+              status={getPackageIcon(environmentValidation?.pytorch)}
+              value={environmentValidation?.pytorchVersion || getPackageLabel(environmentValidation?.pytorch)}
+              healthy={isPackageAvailable(environmentValidation?.pytorch)}
+            />
+            <PackageRow
+              label="torchaudio"
+              status={getPackageIcon(environmentValidation?.torchaudio)}
+              value={environmentValidation?.torchaudioVersion || getPackageLabel(environmentValidation?.torchaudio)}
+              healthy={isPackageAvailable(environmentValidation?.torchaudio)}
+            />
+            <PackageRow
+              label="demucs"
+              status={getPackageIcon(environmentValidation?.demucs)}
+              value={environmentValidation?.demucsVersion || getPackageLabel(environmentValidation?.demucs)}
+              healthy={isPackageAvailable(environmentValidation?.demucs)}
+            />
+            <PackageRow
+              label="CUDA"
+              status={getPackageIcon(environmentValidation?.cuda)}
+              value={environmentValidation?.gpuName || getPackageLabel(environmentValidation?.cuda)}
+              healthy={isPackageAvailable(environmentValidation?.cuda)}
+            />
+            <PackageRow
+              label="Sidecar Script"
+              status={getPackageIcon(environmentValidation?.sidecarScript)}
+              value={environmentValidation?.sidecarScriptPath || getPackageLabel(environmentValidation?.sidecarScript)}
+              healthy={isPackageAvailable(environmentValidation?.sidecarScript)}
+            />
+          </div>
+        </div>
+
+        {/* Warnings */}
+        {environmentValidation?.warnings && environmentValidation.warnings.length > 0 && (
+          <div className="mt-3 rounded-md bg-yellow-500/10 p-3">
+            <div className="flex items-center gap-2 text-yellow-600">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">Warnings</span>
+            </div>
+            <ul className="mt-1 text-xs text-yellow-700">
+              {environmentValidation.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Sidecar Errors */}
+        {sidecarHealth?.errors && sidecarHealth.errors.length > 0 && (
+          <div className="mt-3 rounded-md bg-red-500/10 p-3">
+            <div className="flex items-center gap-2 text-red-600">
+              <XCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">Errors</span>
+            </div>
+            <ul className="mt-1 text-xs text-red-700">
+              {sidecarHealth.errors.map((e, i) => (
+                <li key={i}>{e}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Ready Status */}
+        {environmentValidation?.isReady ? (
+          <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+            <CheckCircle className="h-4 w-4" />
+            <span>Environment ready for stem separation</span>
+          </div>
+        ) : (
+          <div className="mt-2 flex items-center gap-2 text-sm text-orange-600">
+            <AlertCircle className="h-4 w-4" />
+            <span>Environment not ready — some dependencies are missing</span>
+          </div>
+        )}
+      </section>
 
       {/* Theme */}
       <section className="space-y-3">
@@ -251,6 +419,43 @@ export function SettingsPanel() {
           <span className="text-sm">{settings.maxParallelJobs} job(s) at a time</span>
         </div>
       </section>
+    </div>
+  );
+}
+
+// Helper components
+function StatusBadge({ label, value, healthy, icon }: { label: string; value: string; healthy?: boolean; icon: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 rounded-md border p-2">
+      {icon}
+      <div className="flex flex-col">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className={cn(
+          "text-sm font-medium",
+          healthy === undefined ? "text-muted-foreground" :
+          healthy ? "text-green-600" : "text-orange-600"
+        )}>
+          {value}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PackageRow({ label, status, value, healthy }: { label: string; status: ReactNode; value: string; healthy?: boolean }) {
+  return (
+    <div className="flex items-center justify-between rounded px-2 py-1">
+      <div className="flex items-center gap-2">
+        {status}
+        <span className="text-sm">{label}</span>
+      </div>
+      <span className={cn(
+        "text-xs",
+        healthy === undefined ? "text-muted-foreground" :
+        healthy ? "text-green-600" : "text-red-600"
+      )}>
+        {value}
+      </span>
     </div>
   );
 }
