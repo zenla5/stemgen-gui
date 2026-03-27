@@ -205,6 +205,32 @@ export interface AppSettings {
   gpu_enabled: boolean;
 }
 
+// Audio metadata with BPM/key detection (mirrors Rust backend)
+export interface AudioMetadata {
+  path: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  year?: number;
+  genre?: string;
+  bpm?: number;
+  key?: string;
+  duration: number;
+  sample_rate: number;
+  bit_depth: number;
+  channels: number;
+  cover_art_path?: string;
+}
+
+// NI stem file metadata (mirrors Rust backend)
+export interface StemFileMetadata {
+  path: string;
+  ni_metadata?: NIStemMetadata;
+  track_count: number;
+  dj_software?: string;
+  audio: AudioMetadata;
+}
+
 // History
 export interface HistoryEntry {
   id: string;

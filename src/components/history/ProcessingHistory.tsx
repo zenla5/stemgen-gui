@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Clock, FolderOpen, Loader2 } from 'lucide-react';
+import { Clock, FolderOpen, Loader2, Music, Disc } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { StemFileMetadata } from '@/lib/types';
 
 interface HistoryEntry {
   id: string;
@@ -14,8 +15,12 @@ interface HistoryEntry {
   file_size: number;
 }
 
+interface ExtendedHistoryEntry extends HistoryEntry {
+  metadata?: StemFileMetadata;
+}
+
 export function ProcessingHistory() {
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [entries, setEntries] = useState<ExtendedHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +34,25 @@ export function ProcessingHistory() {
     setError(null);
     try {
       const result = await invoke<HistoryEntry[]>('get_processing_history', { limit: 50 });
-      setEntries(result);
+      
+      // Load metadata for each entry with output_path
+      const extendedEntries: ExtendedHistoryEntry[] = await Promise.all(
+        result.map(async (entry) => {
+          if (entry.output_path) {
+            try {
+              const metadata = await invoke<StemFileMetadata>('read_stem_metadata', {
+                path: entry.output_path,
+              });
+              return { ...entry, metadata };
+            } catch {
+              return entry as ExtendedHistoryEntry;
+            }
+          }
+          return entry as ExtendedHistoryEntry;
+        })
+      );
+      
+      setEntries(extendedEntries);
     } catch (err) {
       console.error('Failed to load history:', err);
       setError(err instanceof Error ? err.message : String(err));
@@ -60,6 +83,11 @@ export function ProcessingHistory() {
 
   const getFileName = (path: string) => {
     return path.split(/[/\\]/).pop() || path;
+  };
+
+  const formatBpm = (bpm?: number) => {
+    if (!bpm) return null;
+    return bpm % 1 === 0 ? bpm.toString() : bpm.toFixed(1);
   };
 
   if (loading) {
@@ -114,11 +142,29 @@ export function ProcessingHistory() {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="truncate font-medium">
-                    {getFileName(entry.source_path)}
-                  </span>
+                  {/* Cover art thumbnail */}
+                  {entry.metadata?.audio.cover_art_path && (
+                    <img
+                      src={`asset://localhost/${entry.metadata.audio.cover_art_path}`}
+                      alt="Cover"
+                      className="h-10 w-10 rounded object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  )}
+                  <div className="flex flex-col">
+                    <span className="truncate font-medium">
+                      {entry.metadata?.audio.title || getFileName(entry.source_path)}
+                    </span>
+                    {entry.metadata?.audio.artist && (
+                      <span className="text-sm text-muted-foreground">
+                        {entry.metadata.audio.artist}
+                      </span>
+                    )}
+                  </div>
                   <span className={cn(
-                    'rounded-full px-2 py-0.5 text-xs',
+                    'ml-auto rounded-full px-2 py-0.5 text-xs',
                     entry.output_path ? 
                       'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
                       'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
@@ -127,7 +173,30 @@ export function ProcessingHistory() {
                   </span>
                 </div>
                 
-                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                {/* Metadata row: BPM, key, format */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  {entry.metadata?.audio.bpm && (
+                    <span className="flex items-center gap-1" title="BPM">
+                      <Music className="h-3 w-3" />
+                      {formatBpm(entry.metadata.audio.bpm)} BPM
+                    </span>
+                  )}
+                  {entry.metadata?.audio.key && (
+                    <span className="flex items-center gap-1" title="Key">
+                      <Disc className="h-3 w-3" />
+                      {entry.metadata.audio.key}
+                    </span>
+                  )}
+                  {entry.metadata?.dj_software && (
+                    <span className="flex items-center gap-1">
+                      {entry.metadata.dj_software}
+                    </span>
+                  )}
+                  {entry.metadata?.track_count && entry.metadata.track_count > 1 && (
+                    <span className="flex items-center gap-1">
+                      {entry.metadata.track_count} tracks
+                    </span>
+                  )}
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
                     {formatDate(entry.processed_at)}
@@ -151,7 +220,6 @@ export function ProcessingHistory() {
                 {entry.output_path && (
                   <button
                     onClick={() => {
-                      // Open the output folder
                       invoke('plugin:shell|open', { path: entry.output_path }).catch(console.error);
                     }}
                     className="rounded p-1.5 hover:bg-muted"

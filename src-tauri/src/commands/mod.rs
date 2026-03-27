@@ -1,5 +1,6 @@
 pub mod db;
 pub mod audio;
+pub mod metadata;
 pub mod models;
 pub mod separation;
 pub mod sidecar;
@@ -9,6 +10,7 @@ use tracing::info;
 
 pub use audio::*;
 pub use db::*;
+pub use metadata::*;
 pub use models::*;
 pub use separation::*;
 pub use sidecar::*;
