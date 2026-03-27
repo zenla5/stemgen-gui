@@ -22,11 +22,6 @@ impl StemPacker {
         &self.settings
     }
 
-    #[allow(dead_code, clippy::should_implement_trait)]
-    pub fn default() -> Self {
-        Self::new(ExportSettings::default())
-    }
-
     #[allow(clippy::similar_names)]
     pub async fn pack(
         &self,
@@ -55,7 +50,10 @@ impl StemPacker {
             .map(|(st, path)| StemData {
                 name: st.name().to_string(),
                 color: st.color_hex(),
-                file_path: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                file_path: path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
             })
             .collect();
 
@@ -63,11 +61,15 @@ impl StemPacker {
             stems_data,
             super::metadata::MasterData {
                 name: "Master".to_string(),
-                file_path: master_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "master.m4a".to_string()),
+                file_path: master_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "master.m4a".to_string()),
             },
         );
 
-        self.create_stem_mp4(master_path, &ordered_stems, &metadata, output_path).await?;
+        self.create_stem_mp4(master_path, &ordered_stems, &metadata, output_path)
+            .await?;
         info!("Successfully created: {:?}", output_path);
         Ok(())
     }
@@ -87,15 +89,18 @@ impl StemPacker {
         }
 
         if !stems.is_empty() {
-            self.create_multi_track_stem(master_path, stems, output_path).await?;
+            self.create_multi_track_stem(master_path, stems, output_path)
+                .await?;
         } else {
-            self.create_single_track_stem(master_path, output_path).await?;
+            self.create_single_track_stem(master_path, output_path)
+                .await?;
         }
 
         self.embed_metadata_atom(metadata, output_path)?;
 
         let metadata_path = output_path.with_extension("metadata.json");
-        let metadata_json = serde_json::to_string_pretty(metadata).context("Failed to serialize metadata")?;
+        let metadata_json =
+            serde_json::to_string_pretty(metadata).context("Failed to serialize metadata")?;
         std::fs::write(&metadata_path, metadata_json)?;
 
         debug!("Created metadata file: {:?}", metadata_path);
@@ -103,10 +108,14 @@ impl StemPacker {
     }
 
     #[allow(clippy::similar_names)]
-    async fn create_multi_track_stem(&self, master_path: &Path, stems: &[(StemType, PathBuf)], output_path: &Path) -> Result<()> {
+    async fn create_multi_track_stem(
+        &self,
+        master_path: &Path,
+        stems: &[(StemType, PathBuf)],
+        output_path: &Path,
+    ) -> Result<()> {
         info!("Creating multi-track stem file with {} stems", stems.len());
 
-        let codec = self.settings.output_format.codec_name();
         let codec_args = match self.settings.output_format {
             super::presets::OutputFormat::Alac => vec!["-acodec", "alac"],
             super::presets::OutputFormat::Aac => vec!["-acodec", "aac", "-b:a", "256k"],
@@ -124,7 +133,7 @@ impl StemPacker {
             cmd.arg("-map").arg(format!("{}:a", i));
         }
 
-        cmd.args(["-ar", "44100"]).arg("-c:a").arg(codec);
+        cmd.args(["-ar", "44100"]);
 
         for codec_arg in codec_args {
             cmd.arg(codec_arg);
@@ -133,14 +142,17 @@ impl StemPacker {
         cmd.args(["-metadata:s:a:0", "title=Master"]);
 
         for (i, (stem_type, _)) in stems.iter().enumerate() {
-            cmd.arg(format!("-metadata:s:a:{}", i + 1)).arg(format!("title={}", stem_type.name()));
+            cmd.arg(format!("-metadata:s:a:{}", i + 1))
+                .arg(format!("title={}", stem_type.name()));
         }
 
         cmd.arg(output_path);
 
         debug!("FFmpeg multi-track command: {:?}", cmd);
 
-        let output = cmd.output().context("Failed to execute FFmpeg for multi-track stem")?;
+        let output = cmd
+            .output()
+            .context("Failed to execute FFmpeg for multi-track stem")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -151,7 +163,9 @@ impl StemPacker {
                 stdout,
                 stderr
             );
-            return self.create_single_track_stem(master_path, output_path).await;
+            return self
+                .create_single_track_stem(master_path, output_path)
+                .await;
         }
 
         info!("Multi-track stem file created: {:?}", output_path);
@@ -164,7 +178,18 @@ impl StemPacker {
         let codec = self.settings.output_format.codec_name();
 
         let output = Command::new("ffmpeg")
-            .args(["-y", "-i", master_path.to_str().unwrap(), "-acodec", codec, "-ar", "44100", "-ac", "2", output_path.to_str().unwrap()])
+            .args([
+                "-y",
+                "-i",
+                master_path.to_str().unwrap(),
+                "-acodec",
+                codec,
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
+                output_path.to_str().unwrap(),
+            ])
             .output()
             .context("Failed to execute FFmpeg")?;
 
@@ -177,16 +202,19 @@ impl StemPacker {
     }
 
     pub fn embed_metadata_atom(&self, metadata: &NIStemMetadata, mp4_path: &Path) -> Result<()> {
-        let metadata_json = serde_json::to_string(metadata).context("Failed to serialize NI metadata to JSON")?;
+        let metadata_json =
+            serde_json::to_string(metadata).context("Failed to serialize NI metadata to JSON")?;
 
-        let mut file = std::fs::File::open(mp4_path).with_context(|| format!("Failed to open MP4 file: {:?}", mp4_path))?;
+        let mut file = std::fs::File::open(mp4_path)
+            .with_context(|| format!("Failed to open MP4 file: {:?}", mp4_path))?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;
         drop(file);
 
         match self.inject_nmde_atom(&mut buffer, &metadata_json) {
             Ok(true) => {
-                let mut out = std::fs::File::create(mp4_path).with_context(|| format!("Failed to create MP4 for writing: {:?}", mp4_path))?;
+                let mut out = std::fs::File::create(mp4_path)
+                    .with_context(|| format!("Failed to create MP4 for writing: {:?}", mp4_path))?;
                 use std::io::Write;
                 out.write_all(&buffer)?;
                 info!("NI 'nmde' atom embedded successfully in: {:?}", mp4_path);
@@ -206,7 +234,8 @@ impl StemPacker {
 
     fn write_metadata_sidecar(&self, mp4_path: &Path, json: &str) -> Result<()> {
         let sidecar_path = mp4_path.with_extension("stem.metadata");
-        std::fs::write(&sidecar_path, json).with_context(|| format!("Failed to write sidecar metadata: {:?}", sidecar_path))?;
+        std::fs::write(&sidecar_path, json)
+            .with_context(|| format!("Failed to write sidecar metadata: {:?}", sidecar_path))?;
         debug!("NI metadata sidecar written: {:?}", sidecar_path);
         Ok(())
     }
@@ -231,10 +260,17 @@ impl StemPacker {
         let mut udta_child_end: Option<usize> = None;
 
         while offset + 8 <= buffer.len() {
-            let size = u32::from_be_bytes([buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]]) as usize;
+            let size = u32::from_be_bytes([
+                buffer[offset],
+                buffer[offset + 1],
+                buffer[offset + 2],
+                buffer[offset + 3],
+            ]) as usize;
             let fourcc = &buffer[offset + 4..offset + 8];
 
-            if size < 8 { break; }
+            if size < 8 {
+                break;
+            }
             let box_end = offset + size;
 
             if fourcc == b"moov" {
@@ -243,17 +279,31 @@ impl StemPacker {
 
                 let mut child = offset + 8;
                 while child + 8 <= box_end {
-                    let child_size = u32::from_be_bytes([buffer[child], buffer[child + 1], buffer[child + 2], buffer[child + 3]]) as usize;
+                    let child_size = u32::from_be_bytes([
+                        buffer[child],
+                        buffer[child + 1],
+                        buffer[child + 2],
+                        buffer[child + 3],
+                    ]) as usize;
                     let child_fourcc = &buffer[child + 4..child + 8];
-                    if child_size < 8 { break; }
+                    if child_size < 8 {
+                        break;
+                    }
                     let child_end = child + child_size;
 
                     if child_fourcc == b"udta" {
                         let mut grandchild = child + 8;
                         while grandchild + 8 <= child_end {
-                            let gc_size = u32::from_be_bytes([buffer[grandchild], buffer[grandchild + 1], buffer[grandchild + 2], buffer[grandchild + 3]]) as usize;
+                            let gc_size = u32::from_be_bytes([
+                                buffer[grandchild],
+                                buffer[grandchild + 1],
+                                buffer[grandchild + 2],
+                                buffer[grandchild + 3],
+                            ]) as usize;
                             let gc_fourcc = &buffer[grandchild + 4..grandchild + 8];
-                            if gc_size < 8 { break; }
+                            if gc_size < 8 {
+                                break;
+                            }
                             if gc_fourcc == b"nmde" {
                                 udta_child_start = Some(grandchild);
                                 udta_child_end = Some(grandchild + gc_size);
@@ -280,9 +330,16 @@ impl StemPacker {
         let mut udta_box_end: Option<usize> = None;
 
         while offset + 8 <= moov_e {
-            let size = u32::from_be_bytes([buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]]) as usize;
+            let size = u32::from_be_bytes([
+                buffer[offset],
+                buffer[offset + 1],
+                buffer[offset + 2],
+                buffer[offset + 3],
+            ]) as usize;
             let fourcc = &buffer[offset + 4..offset + 8];
-            if size < 8 { break; }
+            if size < 8 {
+                break;
+            }
             let box_end = offset + size;
             if fourcc == b"udta" {
                 udta_box_start = Some(offset);
@@ -314,8 +371,15 @@ impl StemPacker {
                 let mut child = moov_s + 8;
                 let mut last_child_start = moov_s + 8;
                 while child + 8 <= moov_e {
-                    let child_size = u32::from_be_bytes([buffer[child], buffer[child + 1], buffer[child + 2], buffer[child + 3]]) as usize;
-                    if child_size < 8 { break; }
+                    let child_size = u32::from_be_bytes([
+                        buffer[child],
+                        buffer[child + 1],
+                        buffer[child + 2],
+                        buffer[child + 3],
+                    ]) as usize;
+                    if child_size < 8 {
+                        break;
+                    }
                     last_child_start = child;
                     child += child_size;
                 }
@@ -324,17 +388,35 @@ impl StemPacker {
             }
         }
 
-        let new_len = buffer.len();
-        eprintln!("PACKER: inject_nmde_atom returning Ok(true), buffer len was {} now {}", buffer.len(), new_len);
+        debug!(
+            "nmde atom injected, total buffer size: {} bytes",
+            buffer.len()
+        );
         Ok(true)
     }
 
-    fn splice_replace(&self, buffer: &mut Vec<u8>, old_start: usize, old_end: usize, new_atom: &[u8]) {
+    fn splice_replace(
+        &self,
+        buffer: &mut Vec<u8>,
+        old_start: usize,
+        old_end: usize,
+        new_atom: &[u8],
+    ) {
         buffer.splice(old_start..old_end, new_atom.iter().cloned());
-        debug!("Splice-replaced {} bytes with {} bytes", old_end - old_start, new_atom.len());
+        debug!(
+            "Splice-replaced {} bytes with {} bytes",
+            old_end - old_start,
+            new_atom.len()
+        );
     }
 
-    fn splice_append(&self, buffer: &mut Vec<u8>, udta_start: usize, udta_end: usize, new_child: &[u8]) {
+    fn splice_append(
+        &self,
+        buffer: &mut Vec<u8>,
+        udta_start: usize,
+        udta_end: usize,
+        new_child: &[u8],
+    ) {
         let insert_at = udta_end;
         buffer.splice(insert_at..insert_at, new_child.iter().cloned());
 
@@ -351,13 +433,27 @@ impl StemPacker {
     }
 
     fn is_ffmpeg_available(&self) -> bool {
-        Command::new("ffmpeg").arg("-version").output().map(|o| o.status.success()).unwrap_or(false)
+        Command::new("ffmpeg")
+            .arg("-version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
     }
 
     #[allow(dead_code)]
     fn get_ffmpeg_version(&self) -> Option<String> {
-        Command::new("ffmpeg").arg("-version").output().ok().filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or("unknown").to_string())
+        Command::new("ffmpeg")
+            .arg("-version")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .next()
+                    .unwrap_or("unknown")
+                    .to_string()
+            })
     }
 }
 

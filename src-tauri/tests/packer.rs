@@ -82,9 +82,12 @@ fn count_atoms(buffer: &[u8], fourcc: &[u8; 4]) -> usize {
 fn find_udta_in_moov(buffer: &[u8]) -> Option<(usize, usize)> {
     let mut offset = 0;
     while offset + 8 <= buffer.len() {
-        let size =
-            u32::from_be_bytes([buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]])
-                as usize;
+        let size = u32::from_be_bytes([
+            buffer[offset],
+            buffer[offset + 1],
+            buffer[offset + 2],
+            buffer[offset + 3],
+        ]) as usize;
         let fourcc = &buffer[offset + 4..offset + 8];
         if fourcc == b"moov" {
             // Walk moov children
@@ -314,7 +317,10 @@ fn test_nmde_atom_roundtrip_multiple_injections() {
 
     // Should still have exactly one nmde (replacement, not addition)
     let nmde_count2 = count_atoms(&buf2, b"nmde");
-    assert_eq!(nmde_count2, 1, "exactly one nmde atom after second injection");
+    assert_eq!(
+        nmde_count2, 1,
+        "exactly one nmde atom after second injection"
+    );
 
     // JSON should be the second one (contains "Master2", not the original "Master")
     if let Some((nmde_start, _)) = find_atom(&buf2, b"nmde") {

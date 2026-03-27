@@ -80,7 +80,6 @@ impl DJSoftware {
     }
 
     /// Get the recommended audio codec
-    #[allow(clippy::unneeded_struct_pattern)]
     pub fn codec(&self) -> &'static str {
         match *self {
             Self::Traktor => "alac",  // Native Instruments prefers ALAC
@@ -127,7 +126,6 @@ impl OutputFormat {
         }
     }
 
-    #[allow(clippy::unneeded_struct_pattern)]
     pub fn codec_name(&self) -> &'static str {
         match *self {
             Self::Alac => "alac",
@@ -146,7 +144,6 @@ pub enum QualityPreset {
 
 impl QualityPreset {
     /// Get bitrate for AAC encoding
-    #[allow(clippy::unneeded_struct_pattern)]
     pub fn aac_bitrate(&self) -> u32 {
         match *self {
             Self::Draft => 128,
@@ -156,7 +153,6 @@ impl QualityPreset {
     }
 
     /// Get model to use for this quality
-    #[allow(clippy::unneeded_struct_pattern)]
     pub fn model(&self) -> &'static str {
         match *self {
             Self::Draft => "demucs",
