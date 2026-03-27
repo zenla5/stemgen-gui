@@ -17,6 +17,9 @@ function resetStore() {
     audioFiles: [],
     jobs: [],
     isProcessing: false,
+    activeJobCount: 0,
+    pendingFiles: [],
+    maxParallelJobs: 2,
   });
 }
 
@@ -109,7 +112,9 @@ describe('ProcessingQueue', () => {
 
     render(<ProcessingQueue />);
 
-    expect(screen.getByText(/failed/i)).toBeInTheDocument();
+    // Use getAllByText since "failed" might appear multiple times
+    const failedElements = screen.getAllByText(/failed/i);
+    expect(failedElements.length).toBeGreaterThan(0);
     expect(screen.getByText(/Model not found/i)).toBeInTheDocument();
   });
 
@@ -131,16 +136,34 @@ describe('ProcessingQueue', () => {
     expect(btn).not.toBeDisabled();
   });
 
-  it('Cancel Processing button appears when isProcessing is true', async () => {
+  it('Cancel All Processing button appears when isProcessing is true', async () => {
     await act(async () => {
       useAppStore.setState({
         audioFiles: [{ path: '/fake/test.mp3', name: 'test.mp3', size: 1000, duration: 60, sample_rate: 44100, bit_depth: 16, channels: 2, format: 'mp3', metadata: {} }],
         jobs: [makeJob({ status: 'processing', progress: 0.3 })],
         isProcessing: true,
+        activeJobCount: 1,
+        pendingFiles: [],
       });
     });
 
     render(<ProcessingQueue />);
-    expect(screen.getByRole('button', { name: /cancel processing/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel all processing/i })).toBeInTheDocument();
+  });
+
+  it('shows batch processing status when processing', async () => {
+    await act(async () => {
+      useAppStore.setState({
+        jobs: [makeJob({ status: 'processing', progress: 0.3 })],
+        isProcessing: true,
+        activeJobCount: 1,
+        pendingFiles: [{ path: '/fake/test2.mp3', name: 'test2.mp3', size: 1000, duration: 60, sample_rate: 44100, bit_depth: 16, channels: 2, format: 'mp3', metadata: {} }],
+        maxParallelJobs: 2,
+      });
+    });
+
+    render(<ProcessingQueue />);
+    expect(screen.getByText(/batch processing/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 active/i)).toBeInTheDocument();
   });
 });

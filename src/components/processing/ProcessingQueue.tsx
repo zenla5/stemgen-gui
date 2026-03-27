@@ -1,28 +1,39 @@
-import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle } from 'lucide-react';
+import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle, Pause, Layers } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import type { ProcessingJob, ProcessingStatus } from '@/lib/types';
 
 export function ProcessingQueue() {
-  const { jobs, audioFiles, removeJob, clearJobs, startProcessing, cancelProcessing, isProcessing } = useAppStore();
+  const { 
+    jobs, 
+    audioFiles, 
+    removeJob, 
+    clearJobs, 
+    startProcessing, 
+    cancelProcessing,
+    cancelAllProcessing,
+    isProcessing,
+    activeJobCount,
+    pendingFiles,
+    maxParallelJobs,
+  } = useAppStore();
 
   const handleStartProcessing = () => {
-    // Process all audio files
     if (audioFiles.length > 0) {
       startProcessing(audioFiles);
     }
   };
 
-  const handleCancelProcessing = () => {
-    const currentJob = jobs.find((j) => j.status === 'processing');
-    if (currentJob) {
-      cancelProcessing(currentJob.id);
-    }
+  const handleCancelAll = () => {
+    cancelAllProcessing();
   };
 
   const hasJobs = jobs.length > 0;
   const hasFiles = audioFiles.length > 0;
-  const currentJob = jobs.find((j) => j.status === 'processing');
+  const processingJobs = jobs.filter((j) => j.status === 'processing');
+  const pendingJobs = jobs.filter((j) => j.status === 'pending');
+  const completedJobs = jobs.filter((j) => j.status === 'completed');
+  const failedJobs = jobs.filter((j) => j.status === 'failed');
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -41,6 +52,40 @@ export function ProcessingQueue() {
         </div>
       </div>
 
+      {/* Batch Processing Status (Phase 5) */}
+      {isProcessing && (
+        <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+          <div className="flex items-center gap-2">
+            <Layers className="h-5 w-5 text-primary" />
+            <span className="font-medium">Batch Processing</span>
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-4 text-sm">
+              <span className="flex items-center gap-1">
+                <span className="flex h-2 w-2">
+                  {processingJobs.map((_, i) => (
+                    <span key={i} className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                  ))}
+                </span>
+                <span className="text-muted-foreground">
+                  {activeJobCount} active / {maxParallelJobs} max
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                {pendingJobs.length} pending
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={handleCancelAll}
+            className="flex items-center gap-2 rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+          >
+            <StopCircle className="h-4 w-4" />
+            Cancel All
+          </button>
+        </div>
+      )}
+
       {!hasJobs ? (
         <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground">
           <Music className="mb-4 h-16 w-16 opacity-50" />
@@ -49,6 +94,22 @@ export function ProcessingQueue() {
         </div>
       ) : (
         <div className="flex-1 overflow-auto">
+          {/* Job stats */}
+          <div className="mb-3 flex gap-4 text-sm">
+            {completedJobs.length > 0 && (
+              <span className="flex items-center gap-1 text-green-600">
+                <CheckCircle className="h-4 w-4" />
+                {completedJobs.length} completed
+              </span>
+            )}
+            {failedJobs.length > 0 && (
+              <span className="flex items-center gap-1 text-red-600">
+                <XCircle className="h-4 w-4" />
+                {failedJobs.length} failed
+              </span>
+            )}
+          </div>
+          
           <div className="space-y-2">
             {jobs.map((job) => (
               <JobItem
@@ -64,13 +125,13 @@ export function ProcessingQueue() {
 
       {/* Action buttons */}
       <div className="mt-auto border-t pt-4">
-        {isProcessing && currentJob ? (
+        {isProcessing ? (
           <button
-            onClick={handleCancelProcessing}
+            onClick={handleCancelAll}
             className="flex w-full items-center justify-center gap-2 rounded-md bg-destructive px-4 py-3 font-medium text-destructive-foreground hover:bg-destructive/90"
           >
             <StopCircle className="h-5 w-5" />
-            Cancel Processing
+            Cancel All Processing ({jobs.filter(j => j.status === 'pending' || j.status === 'processing').length} remaining)
           </button>
         ) : (
           <button
@@ -168,7 +229,7 @@ function JobItem({
         </div>
       )}
 
-      {job.status === 'processing' && (
+      {(job.status === 'processing' || job.status === 'pending') && (
         <button
           onClick={onCancel}
           className="flex-shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
@@ -178,13 +239,15 @@ function JobItem({
         </button>
       )}
 
-      <button
-        onClick={onRemove}
-        className="flex-shrink-0 rounded-md p-1 hover:bg-muted"
-        title="Remove"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+      {job.status !== 'processing' && job.status !== 'pending' && (
+        <button
+          onClick={onRemove}
+          className="flex-shrink-0 rounded-md p-1 hover:bg-muted"
+          title="Remove"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }

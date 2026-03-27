@@ -1,6 +1,6 @@
 # Stemgen-GUI AI Agent Task List
 
-## Status: In Progress (40%)
+## Status: 40% Complete
 
 ## Completed Phases
 
@@ -24,14 +24,13 @@
 - `SettingsPanel` System Status section with summary badges, detailed package list, warnings/errors
 - Commits: `a72ab99`, `5d57a85`
 
-## In Progress
-
-### Phase 4: Export/Download Stems ⚠️ (Partial - Backend Only)
+### Phase 4: Export/Download Stems ✅
 - `export_stem` Rust command using FFmpeg (wav, mp3, flac, aac, alac, ogg)
 - `batch_export_stems` Rust command for batch export
 - Audio normalization via loudnorm filter
-- **Frontend integration PENDING**: TypeScript types need alignment
-- Commit: `172195c`
+- TypeScript types: `ExportStemRequest`, `ExportStemResponse`, `BatchExportRequest`, `BatchExportResponse`, `ExportFormat`
+- All 64 tests passing ✅
+- Commits: `172195c`, `3c8423b`
 
 ## Remaining Phases
 
@@ -45,7 +44,7 @@
 
 ### Phase 7: i18n Infrastructure
 - i18next setup complete (already in project)
-- Additional language files needed
+- Additional language files needed (de, fr, es, ja translations)
 
 ### Phase 8: Accessibility (a11y)
 - ARIA labels on all interactive elements
@@ -59,23 +58,21 @@
 - Connect to remote GPU server for inference
 - Authentication and security
 
-## Important Notes for AI Agents
+## Verification Summary
 
-### Current TypeScript Errors
-After Phase 4 changes, there are TypeScript errors in `types.ts` due to type structure conflicts:
-- `DependencyStatus` was changed from object to union type
-- `Stem` interface conflicts with component usage
-- `ProcessingSettings` field naming conflicts
-- `AudioFileMetadata` structure changes
+| Check | Status |
+|-------|--------|
+| Rust clippy | ✅ 0 warnings |
+| Rust tests (cargo test --lib) | ✅ 20/20 passed |
+| TypeScript | ✅ 0 errors |
+| ESLint | ✅ 0 warnings |
+| Unit/Integration Tests | ✅ 64/64 passed |
+| Git commits pushed | ✅ |
 
-### CI Status
-- Rust tests: 20/20 passing ✅
-- Clippy: 0 warnings ✅
-- TypeScript: Needs fixes ⚠️
-- ESLint: Not yet run
-
-### Known Working Patterns
-- Use snake_case for Rust backend types (snake_case)
+## Known Working Patterns
+- Use snake_case for Rust backend types
 - Use camelCase for TypeScript frontend types
-- `DependencyStatus` should be an object with boolean properties
-- `Stem` should have `id` property for component compatibility
+- `DependencyStatus` is an object with boolean properties: `{ ffmpeg, sox, python, cuda, mps, models }`
+- `Stem` interface has: `id`, `type` (StemType), `name`, `color`, `volume`, `muted`, `solo`, `file_path?`
+- `ProcessingSettings` has: `model`, `device`, `outputFormat`, `qualityPreset`, `djPreset`, etc.
+- Theme type: `'light' | 'dark' | 'system'`

@@ -28,6 +28,11 @@ interface AppState {
   currentJobId: string | null;
   isProcessing: boolean;
   
+  // Batch processing (Phase 5)
+  maxParallelJobs: number;
+  activeJobCount: number;
+  pendingFiles: AudioFileMetadata[];
+  
   // Stems
   currentStems: Stem[];
   
@@ -62,6 +67,12 @@ interface AppState {
   setIsProcessing: (processing: boolean) => void;
   startProcessing: (files: AudioFileMetadata[]) => Promise<void>;
   cancelProcessing: (jobId: string) => Promise<void>;
+  cancelAllProcessing: () => Promise<void>;
+  pauseProcessing: () => void;
+  resumeProcessing: () => void;
+  
+  // Batch processing actions (Phase 5)
+  setMaxParallelJobs: (count: number) => void;
   
   // Stem actions
   setCurrentStems: (stems: Stem[]) => void;
@@ -94,6 +105,102 @@ const createDefaultStems = (): Stem[] => {
   ];
 };
 
+// Process a single job (internal helper)
+async function processJob(
+  file: AudioFileMetadata,
+  job: ProcessingJob,
+  settings: ProcessingSettings,
+  updateJob: (id: string, updates: Partial<ProcessingJob>) => void,
+  setCurrentStems: (stems: Stem[]) => void,
+  setActiveView: (view: 'files' | 'queue' | 'mixer' | 'settings') => void,
+): Promise<boolean> {
+  updateJob(job.id, { status: 'processing' });
+
+  try {
+    // Call the Tauri backend for stem separation
+    const stems = await invoke<StemInfo[]>('start_separation', {
+      sourcePath: file.path,
+      outputPath: job.output_path,
+      settings: {
+        model: settings.model,
+        device: settings.device,
+        output_format: settings.outputFormat,
+        quality_preset: settings.qualityPreset,
+        dj_preset: settings.djPreset,
+      },
+    });
+
+    // Update currentStems with the real file paths from the backend
+    if (stems && stems.length > 0) {
+      const stemMap = new Map(stems.map(s => [s.stem_type.toLowerCase(), s]));
+      const updatedStems = createDefaultStems().map(stem => {
+        const stemInfo = stemMap.get(stem.type);
+        return stemInfo?.file_path
+          ? { ...stem, file_path: stemInfo.file_path }
+          : stem;
+      });
+      setCurrentStems(updatedStems);
+      
+      // Navigate to mixer for preview
+      setActiveView('mixer');
+    }
+
+    // Pack stems into .stem.mp4
+    const masterPath = file.path;
+    const stemPaths = stems.map(s => ({
+      stem_type: s.stem_type,
+      path: s.file_path || '',
+    })).filter(s => s.path);
+
+    if (stemPaths.length > 0) {
+      updateJob(job.id, { progress: 0.8 });
+
+      await invoke<PackStemsResponse>('pack_stems', {
+        request: {
+          master_path: masterPath,
+          stem_paths: stemPaths,
+          output_path: job.output_path,
+          dj_software: settings.djPreset,
+          output_format: settings.outputFormat,
+        },
+      });
+    }
+
+    // Add to processing history
+    try {
+      await invoke('add_to_history', {
+        entry: {
+          id: job.id,
+          source_path: file.path,
+          output_path: job.output_path,
+          model: settings.model,
+          dj_preset: settings.djPreset,
+          processed_at: new Date().toISOString(),
+          duration_ms: 0,
+          file_size: file.size,
+        },
+      });
+    } catch (historyError) {
+      console.warn('Failed to add to history:', historyError);
+    }
+
+    // Job completed successfully
+    updateJob(job.id, {
+      status: 'completed',
+      progress: 1,
+      completed_at: new Date().toISOString(),
+    });
+    return true;
+  } catch (error) {
+    // Job failed
+    updateJob(job.id, {
+      status: 'failed',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -103,6 +210,9 @@ export const useAppStore = create<AppState>()(
       jobs: [],
       currentJobId: null,
       isProcessing: false,
+      maxParallelJobs: 2,
+      activeJobCount: 0,
+      pendingFiles: [],
       currentStems: createDefaultStems(),
       dependencies: {
         ffmpeg: false,
@@ -160,133 +270,168 @@ export const useAppStore = create<AppState>()(
         }));
       },
       
-      clearJobs: () => set({ jobs: [], currentJobId: null, isProcessing: false }),
+      clearJobs: () => set({ jobs: [], currentJobId: null, isProcessing: false, pendingFiles: [], activeJobCount: 0 }),
       
       setCurrentJob: (id) => set({ currentJobId: id }),
       
       setIsProcessing: (processing) => set({ isProcessing: processing }),
       
-      // Start processing - creates jobs for selected files
+      // Batch processing (Phase 5) - parallel job execution
       startProcessing: async (files: AudioFileMetadata[]) => {
-        const { settings, addJob, setCurrentJob, setIsProcessing, setActiveView } = get();
+        const { settings, addJob, setCurrentJob, setIsProcessing, setActiveView, updateJob, setCurrentStems, maxParallelJobs, pendingFiles } = get();
         
         if (files.length === 0) return;
         
         setIsProcessing(true);
         
-        // Create and process jobs for each file sequentially
-        for (const file of files) {
-          const job: ProcessingJob = {
-            id: generateId(),
-            input_path: file.path,
-            output_path: file.path.replace(/\.[^.]+$/, '.stem.mp4'),
-            status: 'pending',
-            progress: 0,
-            model: settings.model,
-            dj_software: settings.djPreset,
-            started_at: new Date().toISOString(),
-          };
-          
-          addJob(job);
-          setCurrentJob(job.id);
-          
-          // Update job status to processing
-          get().updateJob(job.id, { status: 'processing' });
-          
-          try {
-            // Call the Tauri backend for stem separation
-            const stems = await invoke<StemInfo[]>('start_separation', {
-              sourcePath: file.path,
-              outputPath: job.output_path,
-              settings: {
-                model: settings.model,
-                device: settings.device,
-                output_format: settings.outputFormat,
-                quality_preset: settings.qualityPreset,
-                dj_preset: settings.djPreset,
-              },
-            });
-            
-            // Update currentStems with the real file paths from the backend
-            if (stems && stems.length > 0) {
-              const stemMap = new Map(stems.map(s => [s.stem_type.toLowerCase(), s]));
-              const updatedStems = get().currentStems.map(stem => {
-                const stemInfo = stemMap.get(stem.type);
-                return stemInfo?.file_path
-                  ? { ...stem, file_path: stemInfo.file_path }
-                  : stem;
-              });
-              set({ currentStems: updatedStems });
-              
-              // Navigate to mixer for preview
-              setActiveView('mixer');
-            }
-            
-            // Pack stems into .stem.mp4
-            const masterPath = file.path;
-            const stemPaths = stems.map(s => ({
-              stem_type: s.stem_type,
-              path: s.file_path || '',
-            })).filter(s => s.path);
-            
-            if (stemPaths.length > 0) {
-              get().updateJob(job.id, { progress: 0.8 });
-              
-              await invoke<PackStemsResponse>('pack_stems', {
-                request: {
-                  master_path: masterPath,
-                  stem_paths: stemPaths,
-                  output_path: job.output_path,
-                  dj_software: settings.djPreset,
-                  output_format: settings.outputFormat,
-                },
-              });
-            }
-            
-            // Add to processing history
-            try {
-              await invoke('add_to_history', {
-                entry: {
-                  id: job.id,
-                  source_path: file.path,
-                  output_path: job.output_path,
-                  model: settings.model,
-                  dj_preset: settings.djPreset,
-                  processed_at: new Date().toISOString(),
-                  duration_ms: 0,
-                  file_size: file.size,
-                },
-              });
-            } catch (historyError) {
-              console.warn('Failed to add to history:', historyError);
-            }
-            
-            // Job completed successfully
-            get().updateJob(job.id, {
-              status: 'completed',
-              progress: 1,
-              completed_at: new Date().toISOString(),
-            });
-          } catch (error) {
-            // Job failed
-            get().updateJob(job.id, {
-              status: 'failed',
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        }
+        // Create jobs for all files
+        const newJobs: ProcessingJob[] = files.map((file) => ({
+          id: generateId(),
+          input_path: file.path,
+          output_path: file.path.replace(/\.[^.]+$/, '.stem.mp4'),
+          status: 'pending' as const,
+          progress: 0,
+          model: settings.model,
+          dj_software: settings.djPreset,
+          started_at: new Date().toISOString(),
+        }));
         
-        setIsProcessing(false);
+        // Add all jobs to queue
+        set((state) => ({
+          jobs: [...state.jobs, ...newJobs],
+          pendingFiles: files,
+        }));
+        
+        // Process jobs in parallel (up to maxParallelJobs at a time)
+        const processNextBatch = async () => {
+          const currentState = get();
+          if (!currentState.isProcessing) return;
+          
+          const pending = currentState.pendingFiles;
+          const active = currentState.activeJobCount;
+          
+          if (pending.length === 0 && active === 0) {
+            // All done
+            setIsProcessing(false);
+            return;
+          }
+          
+          // Start new jobs if we have capacity
+          while (currentState.pendingFiles.length > 0 && currentState.activeJobCount < currentState.maxParallelJobs) {
+            const file = currentState.pendingFiles[0];
+            const job = currentState.jobs.find(j => j.input_path === file.path && j.status === 'pending');
+            
+            if (!job) {
+              // Job not found, skip this file
+              set((state) => ({ pendingFiles: state.pendingFiles.slice(1) }));
+              continue;
+            }
+            
+            // Remove from pending, increment active count
+            set((state) => ({
+              pendingFiles: state.pendingFiles.slice(1),
+              activeJobCount: state.activeJobCount + 1,
+            }));
+            
+            setCurrentJob(job.id);
+            
+            // Process job in background
+            processJob(file, job, settings, updateJob, setCurrentStems, setActiveView)
+              .finally(() => {
+                set((state) => ({
+                  activeJobCount: Math.max(0, state.activeJobCount - 1),
+                }));
+                // Process next batch
+                processNextBatch();
+              });
+          }
+        };
+        
+        // Start processing
+        processNextBatch();
       },
       
       // Cancel a processing job
       cancelProcessing: async (jobId: string) => {
+        const job = get().jobs.find(j => j.id === jobId);
+        if (!job) return;
+        
+        // If pending, remove from pending files
+        if (job.status === 'pending') {
+          set((state) => ({
+            pendingFiles: state.pendingFiles.filter(f => f.path !== job.input_path),
+          }));
+        }
+        
         try {
           await invoke('cancel_separation', { jobId });
-          get().updateJob(jobId, { status: 'cancelled' });
         } catch (error) {
           console.error('Failed to cancel job:', error);
         }
+        
+        get().updateJob(jobId, { status: 'cancelled' });
+        
+        // Decrement active count if was processing
+        const currentJob = get().jobs.find(j => j.id === jobId);
+        if (currentJob?.status === 'processing') {
+          set((state) => ({
+            activeJobCount: Math.max(0, state.activeJobCount - 1),
+          }));
+        }
+      },
+      
+      // Cancel all processing
+      cancelAllProcessing: async () => {
+        const { jobs, pendingFiles, isProcessing } = get();
+        
+        if (!isProcessing) return;
+        
+        // Cancel all pending jobs
+        for (const file of pendingFiles) {
+          const job = jobs.find(j => j.input_path === file.path && j.status === 'pending');
+          if (job) {
+            get().updateJob(job.id, { status: 'cancelled' });
+          }
+        }
+        
+        // Cancel currently processing jobs
+        for (const job of jobs) {
+          if (job.status === 'processing') {
+            try {
+              await invoke('cancel_separation', { jobId: job.id });
+            } catch (error) {
+              console.error('Failed to cancel job:', error);
+            }
+            get().updateJob(job.id, { status: 'cancelled' });
+          }
+        }
+        
+        set({ 
+          isProcessing: false, 
+          pendingFiles: [], 
+          activeJobCount: 0 
+        });
+      },
+      
+      // Pause processing (stops starting new jobs but continues current ones)
+      pauseProcessing: () => {
+        set({ isProcessing: false });
+      },
+      
+      // Resume processing
+      resumeProcessing: () => {
+        const { pendingFiles } = get();
+        if (pendingFiles.length > 0) {
+          set({ isProcessing: true });
+          // Trigger next batch processing
+          get().startProcessing([]);
+        }
+      },
+      
+      // Batch processing config (Phase 5)
+      setMaxParallelJobs: (count) => {
+        const clampedCount = Math.max(1, Math.min(4, count));
+        set({ maxParallelJobs: clampedCount });
       },
       
       // Stem actions
@@ -384,6 +529,7 @@ export const useAppStore = create<AppState>()(
         settings: state.settings,
         sidebarCollapsed: state.sidebarCollapsed,
         activeView: state.activeView,
+        maxParallelJobs: state.maxParallelJobs,
       }),
     }
   )
