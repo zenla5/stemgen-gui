@@ -192,7 +192,8 @@ jobs:
             libsoup-3.0-dev \
             libwebkit2gtk-4.1-dev \
             libglib2.0-dev \
-            libcairo2-dev
+            libcairo2-dev \
+            libayatana-appindicator3-dev
 
       - name: Install dependencies
         run: npm ci
