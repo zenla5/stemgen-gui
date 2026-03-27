@@ -1,5 +1,5 @@
 //! Model information and management
-//! 
+//!
 //! Handles AI model metadata for stem separation.
 
 use serde::{Deserialize, Serialize};

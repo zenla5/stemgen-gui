@@ -1,14 +1,14 @@
 //! Stemgen-GUI - Main library
-//! 
+//!
 //! A free and open source (FOSS) stem file generator for DJ software.
 
 pub mod audio;
 pub mod commands;
 pub mod stems;
 
-use tokio::sync::Mutex as TokioMutex;
 use std::sync::Mutex as StdMutex;
 use tauri::Manager;
+use tokio::sync::Mutex as TokioMutex;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -29,12 +29,12 @@ pub fn run() {
     let log_dir = directories::ProjectDirs::from("dev", "stemgen", "stemgen-gui")
         .map(|d| d.data_dir().to_path_buf())
         .unwrap_or_else(|| std::env::temp_dir().join("stemgen-gui"));
-    
+
     std::fs::create_dir_all(&log_dir).ok();
-    
+
     let file_appender = tracing_appender::rolling::daily(&log_dir, "stemgen-gui.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-    
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
@@ -77,22 +77,24 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(|app| {
             info!("Setting up application");
-            
+
             // Initialize database
-            let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("Failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).ok();
-            
+
             let db_path = app_data_dir.join("stemgen.db");
-            let conn = rusqlite::Connection::open(&db_path)
-                .expect("Failed to open database");
-            
+            let conn = rusqlite::Connection::open(&db_path).expect("Failed to open database");
+
             // Run migrations
             commands::db::run_migrations(&conn).expect("Failed to run migrations");
-            
+
             // Set up sidecar paths
             let project_dirs = directories::ProjectDirs::from("dev", "stemgen", "stemgen-gui")
                 .expect("Failed to get project directories");
-            
+
             let data_dir = project_dirs.data_dir();
             let output_dir = data_dir.join("stems");
             let sidecar_path = std::env::current_exe()
@@ -101,13 +103,13 @@ pub fn run() {
                 .unwrap_or_else(|| data_dir.to_path_buf())
                 .join("python")
                 .join("stemgen_sidecar.py");
-            
+
             // Create directories
             std::fs::create_dir_all(&output_dir).ok();
-            
+
             info!("Output directory: {}", output_dir.display());
             info!("Sidecar path: {}", sidecar_path.display());
-            
+
             // Manage app state first (state must be registered before accessed)
             app.manage(AppState {
                 db: StdMutex::new(conn),
@@ -115,7 +117,7 @@ pub fn run() {
                 output_dir,
                 sidecar_path,
             });
-            
+
             // Initialize the sidecar manager with the app handle for event emission
             let app_handle = app.handle().clone();
             let app_state = app.state::<AppState>();
@@ -126,7 +128,7 @@ pub fn run() {
             );
             sidecar.set_app_handle(app_handle);
             *sidecar_guard = Some(sidecar);
-            
+
             info!("Application setup complete");
             Ok(())
         })

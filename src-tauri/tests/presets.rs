@@ -64,7 +64,7 @@ fn test_all_presets_have_four_stems() {
         DJSoftware::Djay,
         DJSoftware::VirtualDJ,
     ];
-    
+
     for software in all_presets {
         let order = software.stem_order();
         assert_eq!(
@@ -89,11 +89,17 @@ fn test_djsoftware_display_names() {
 #[test]
 fn test_djsoftware_from_str() {
     assert_eq!(DJSoftware::from_str("traktor"), Some(DJSoftware::Traktor));
-    assert_eq!(DJSoftware::from_str("rekordbox"), Some(DJSoftware::Rekordbox));
+    assert_eq!(
+        DJSoftware::from_str("rekordbox"),
+        Some(DJSoftware::Rekordbox)
+    );
     assert_eq!(DJSoftware::from_str("serato"), Some(DJSoftware::Serato));
     assert_eq!(DJSoftware::from_str("mixxx"), Some(DJSoftware::Mixxx));
     assert_eq!(DJSoftware::from_str("djay"), Some(DJSoftware::Djay));
-    assert_eq!(DJSoftware::from_str("virtualdj"), Some(DJSoftware::VirtualDJ));
+    assert_eq!(
+        DJSoftware::from_str("virtualdj"),
+        Some(DJSoftware::VirtualDJ)
+    );
     assert_eq!(DJSoftware::from_str("TRASKTRO"), None); // Invalid
     assert_eq!(DJSoftware::from_str("unknown"), None);
 }
@@ -115,12 +121,12 @@ fn test_djsoftware_file_extension() {
 #[test]
 fn test_metadata_json_roundtrip_presets() {
     use stemgen_gui_lib::stems::metadata::NIStemMetadata;
-    
+
     let metadata = NIStemMetadata::default();
     let json_bytes = metadata.to_json_bytes().expect("must serialize");
-    let deserialized: NIStemMetadata = NIStemMetadata::from_json_bytes(&json_bytes)
-        .expect("must deserialize");
-    
+    let deserialized: NIStemMetadata =
+        NIStemMetadata::from_json_bytes(&json_bytes).expect("must deserialize");
+
     assert_eq!(deserialized.stems.len(), 4);
     assert_eq!(deserialized.stems[0].name, "Drums");
 }

@@ -1,5 +1,5 @@
 //! DJ Software presets for stem ordering and formatting
-//! 
+//!
 //! Each DJ software has specific requirements for stem format.
 
 use serde::{Deserialize, Serialize};
@@ -83,12 +83,12 @@ impl DJSoftware {
     #[allow(clippy::unneeded_struct_pattern)]
     pub fn codec(&self) -> &'static str {
         match *self {
-            Self::Traktor => "alac",      // Native Instruments prefers ALAC
-            Self::Rekordbox => "aac",     // Pioneer uses AAC
-            Self::Serato => "aac",        // Serato uses AAC
-            Self::Mixxx => "alac",        // Mixxx supports both
-            Self::Djay => "aac",          // Algoriddim uses AAC
-            Self::VirtualDJ => "aac",     // Atomix uses AAC
+            Self::Traktor => "alac",  // Native Instruments prefers ALAC
+            Self::Rekordbox => "aac", // Pioneer uses AAC
+            Self::Serato => "aac",    // Serato uses AAC
+            Self::Mixxx => "alac",    // Mixxx supports both
+            Self::Djay => "aac",      // Algoriddim uses AAC
+            Self::VirtualDJ => "aac", // Atomix uses AAC
         }
     }
 
@@ -115,8 +115,8 @@ impl DJSoftware {
 /// Output format for stems
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutputFormat {
-    Alac,  // Lossless, Apple
-    Aac,   // Compressed, Universal
+    Alac, // Lossless, Apple
+    Aac,  // Compressed, Universal
 }
 
 impl OutputFormat {
@@ -140,8 +140,8 @@ impl OutputFormat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QualityPreset {
     Draft,    // Fast, lower quality
-    Standard,  // Balanced
-    Master,    // Slow, highest quality
+    Standard, // Balanced
+    Master,   // Slow, highest quality
 }
 
 impl QualityPreset {
@@ -234,7 +234,10 @@ mod tests {
     #[test]
     fn test_djsoftware_from_str() {
         assert_eq!(DJSoftware::from_str("traktor"), Some(DJSoftware::Traktor));
-        assert_eq!(DJSoftware::from_str("rekordbox"), Some(DJSoftware::Rekordbox));
+        assert_eq!(
+            DJSoftware::from_str("rekordbox"),
+            Some(DJSoftware::Rekordbox)
+        );
         assert_eq!(DJSoftware::from_str("serato"), Some(DJSoftware::Serato));
         assert_eq!(DJSoftware::from_str("TRASKTRO"), None); // Invalid
     }

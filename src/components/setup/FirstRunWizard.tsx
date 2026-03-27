@@ -59,23 +59,23 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
       await new Promise(r => setTimeout(r, 300)); // brief delay for UX
 
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const env: any = await invoke('validate_environment');
+        const env = await invoke<Record<string, PackageStatus | unknown>>('validate_environment');
 
         if (dep.name === 'FFmpeg') {
-          const { status, message } = getDepStatus(env.ffmpeg, 'Found and ready');
+          const { status, message } = getDepStatus(env.ffmpeg as PackageStatus | undefined, 'Found and ready');
           updateDependency(dep.name, status, message);
         } else if (dep.name === 'Python') {
-          const { status, message } = getDepStatus(env.python, `v${env.pythonVersion ?? 'unknown'}`);
+          const { status, message } = getDepStatus(env.python as PackageStatus | undefined, `v${(env as Record<string, unknown>).pythonVersion ?? 'unknown'}`);
           updateDependency(dep.name, status, message || 'Python not found');
         } else if (dep.name === 'PyTorch') {
-          const { status, message } = getDepStatus(env.pytorch, `v${env.pytorchVersion ?? 'unknown'}`);
+          const { status, message } = getDepStatus(env.pytorch as PackageStatus | undefined, `v${(env as Record<string, unknown>).pytorchVersion ?? 'unknown'}`);
           updateDependency(dep.name, status, message || 'PyTorch not installed');
         } else if (dep.name === 'demucs') {
-          const { status, message } = getDepStatus(env.demucs, 'Ready');
+          const { status, message } = getDepStatus(env.demucs as PackageStatus | undefined, 'Ready');
           updateDependency(dep.name, status, message || 'demucs not installed');
         } else if (dep.name === 'CUDA') {
-          const { status, message } = getDepStatus(env.cuda, env.gpuName ?? 'GPU available');
+          const gpuName = String((env as Record<string, unknown>).gpuName ?? 'GPU available');
+          const { status, message } = getDepStatus(env.cuda as PackageStatus | undefined, gpuName);
           updateDependency(dep.name, status, message || 'CPU mode — GPU recommended');
         }
       } catch {

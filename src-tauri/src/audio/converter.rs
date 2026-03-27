@@ -1,5 +1,5 @@
 //! Audio converter module
-//! 
+//!
 //! Converts between audio formats using FFmpeg.
 
 use anyhow::{Context, Result};
@@ -92,12 +92,7 @@ impl AudioConverter {
     }
 
     /// Convert audio to WAV format (32-bit float)
-    pub fn convert_to_wav(
-        &self,
-        input: &Path,
-        output: &Path,
-        sample_rate: u32,
-    ) -> Result<()> {
+    pub fn convert_to_wav(&self, input: &Path, output: &Path, sample_rate: u32) -> Result<()> {
         info!("Converting {:?} to WAV: {:?}", input, output);
 
         let output = Command::new(&self.ffmpeg_path)
@@ -106,11 +101,11 @@ impl AudioConverter {
                 "-i",
                 input.to_str().unwrap(),
                 "-acodec",
-                "pcm_f32le",  // 32-bit float
+                "pcm_f32le", // 32-bit float
                 "-ar",
                 &sample_rate.to_string(),
                 "-ac",
-                "2",  // Stereo
+                "2", // Stereo
                 output.to_str().unwrap(),
             ])
             .output()
@@ -195,26 +190,23 @@ impl AudioConverter {
     }
 
     /// Extract audio from video
-    pub fn extract_audio(
-        &self,
-        input: &Path,
-        output: &Path,
-        format: AudioFormat,
-    ) -> Result<()> {
+    pub fn extract_audio(&self, input: &Path, output: &Path, format: AudioFormat) -> Result<()> {
         info!("Extracting audio from {:?} to {:?}", input, output);
 
         let mut args = vec![
             "-y".to_string(),
             "-i".to_string(),
             input.to_str().unwrap().to_string(),
-            "-vn".to_string(),  // No video
+            "-vn".to_string(), // No video
             "-acodec".to_string(),
-            "copy".to_string(),  // Copy codec (no re-encoding)
+            "copy".to_string(), // Copy codec (no re-encoding)
         ];
 
         match format {
             AudioFormat::Mp3 => args.extend(["-f".to_string(), "mp3".to_string()]),
-            AudioFormat::Aac | AudioFormat::Alac => args.extend(["-f".to_string(), "ipod".to_string()]),
+            AudioFormat::Aac | AudioFormat::Alac => {
+                args.extend(["-f".to_string(), "ipod".to_string()])
+            }
             AudioFormat::Ogg => args.extend(["-f".to_string(), "ogg".to_string()]),
             _ => {}
         }

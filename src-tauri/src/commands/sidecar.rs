@@ -65,13 +65,13 @@ impl SidecarManager {
                 r"C:\Python312\python.exe".to_string(),
                 r"C:\Python311\python.exe".to_string(),
                 r"C:\Python310\python.exe".to_string(),
-                format!(r"{}\AppData\Local\Programs\Python\Python312\python.exe", std::env::var("USERPROFILE").unwrap_or_default()),
+                format!(
+                    r"{}\AppData\Local\Programs\Python\Python312\python.exe",
+                    std::env::var("USERPROFILE").unwrap_or_default()
+                ),
             ]
         } else {
-            vec![
-                "python3".to_string(),
-                "python".to_string(),
-            ]
+            vec!["python3".to_string(), "python".to_string()]
         };
 
         for candidate in &candidates {
@@ -82,7 +82,7 @@ impl SidecarManager {
                     .output()
                     .await
                     .context("Failed to check Python version")?;
-                
+
                 if output.status.success() {
                     let version = String::from_utf8_lossy(&output.stdout);
                     info!("Found Python: {} at {}", version.trim(), path.display());
@@ -126,8 +126,7 @@ impl SidecarManager {
 
         // Create output directory for this job
         let job_output_dir = self.output_dir.join(&job_id);
-        std::fs::create_dir_all(&job_output_dir)
-            .context("Failed to create output directory")?;
+        std::fs::create_dir_all(&job_output_dir).context("Failed to create output directory")?;
 
         info!(
             "Starting separation: {} -> {} (model: {}, device: {})",
@@ -173,22 +172,19 @@ impl SidecarManager {
             tokio::spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
-                
+
                 while let Ok(Some(line)) = lines.next_line().await {
                     let trimmed = line.trim();
                     if trimmed.is_empty() {
                         continue;
                     }
-                    
+
                     if let Ok(progress) = serde_json::from_str::<ProgressUpdate>(trimmed) {
                         info!(
                             "[{}] Progress: {} (stage={:?}, progress={:?})",
-                            job_id_for_emit,
-                            progress.status,
-                            progress.stage,
-                            progress.progress
+                            job_id_for_emit, progress.status, progress.stage, progress.progress
                         );
-                        
+
                         // Emit event to frontend if we have an app handle
                         if let Some(ref handle) = app_handle_clone {
                             let _ = handle.emit(
@@ -237,14 +233,17 @@ impl SidecarManager {
         if status.success() {
             // Collect stem paths
             let stems = self.collect_stems(&job_output_dir, source_path)?;
-            
+
             Ok(SeparationResult {
                 success: true,
                 stems,
                 output_dir: job_output_dir,
             })
         } else {
-            Err(anyhow::anyhow!("Separation process failed with exit code: {:?}", status.code()))
+            Err(anyhow::anyhow!(
+                "Separation process failed with exit code: {:?}",
+                status.code()
+            ))
         }
     }
 
@@ -252,14 +251,15 @@ impl SidecarManager {
     fn collect_stems(&self, output_dir: &Path, source_path: &Path) -> Result<Vec<StemResult>> {
         let mut stems = Vec::new();
         let stem_names = ["drums", "bass", "other", "vocals"];
-        let source_stem = source_path.file_stem()
+        let source_stem = source_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("stem");
 
         for name in &stem_names {
             let stem_filename = format!("{}_{}.wav", source_stem, name);
             let stem_path = output_dir.join(&stem_filename);
-            
+
             if stem_path.exists() {
                 stems.push(StemResult {
                     stem_type: name.to_string(),

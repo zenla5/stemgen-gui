@@ -1,5 +1,5 @@
+use lofty::{Accessor, AudioFile, TaggedFileExt};
 use serde::{Deserialize, Serialize};
-use lofty::{AudioFile, TaggedFileExt, Accessor};
 use std::path::Path;
 use tracing::info;
 
@@ -20,34 +20,34 @@ pub struct AudioInfo {
 #[tauri::command]
 pub async fn get_audio_info(path: String) -> Result<AudioInfo, String> {
     info!("Getting audio info for: {}", path);
-    
+
     let path_obj = Path::new(&path);
-    
+
     if !path_obj.exists() {
         return Err(format!("File not found: {}", path));
     }
-    
+
     let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
     let name = path_obj
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".to_string());
-    
+
     // Get file format
     let format = path_obj
         .extension()
         .map(|e| e.to_string_lossy().to_string().to_uppercase())
         .unwrap_or_else(|| "UNKNOWN".to_string());
-    
+
     // Read audio metadata using lofty
     let tagged_file = lofty::read_from_path(&path).map_err(|e| e.to_string())?;
     let properties = tagged_file.properties();
-    
+
     let duration = properties.duration().as_secs_f64();
     let sample_rate = properties.sample_rate().unwrap_or(44100);
     let channels = properties.channels().unwrap_or(2);
     let bit_depth = properties.bit_depth().unwrap_or(16) as u16;
-    
+
     // Extract tags
     let mut meta = std::collections::HashMap::new();
     if let Some(tag) = tagged_file.primary_tag() {
@@ -67,12 +67,12 @@ pub async fn get_audio_info(path: String) -> Result<AudioInfo, String> {
             meta.insert("genre".to_string(), genre.to_string());
         }
     }
-    
+
     info!(
         "Audio info: {} ({}s, {}Hz, {}bit, {}ch)",
         name, duration, sample_rate, bit_depth, channels
     );
-    
+
     Ok(AudioInfo {
         path,
         name,

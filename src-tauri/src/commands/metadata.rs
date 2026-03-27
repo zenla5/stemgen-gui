@@ -1,5 +1,5 @@
 //! Metadata commands
-//! 
+//!
 //! Reads audio metadata, BPM, key, and NI stem metadata from files.
 
 use lofty::{Accessor, AudioFile, TaggedFileExt};
@@ -59,48 +59,51 @@ pub struct StemFileMetadata {
 #[tauri::command]
 pub async fn read_audio_metadata(path: String) -> Result<AudioMetadata, String> {
     info!("Reading audio metadata: {}", path);
-    
+
     let path_obj = Path::new(&path);
     if !path_obj.exists() {
         return Err(format!("File not found: {}", path));
     }
-    
+
     // Read with lofty
     let tagged_file = lofty::read_from_path(&path).map_err(|e| {
         warn!("Failed to read tags with lofty: {}", e);
         e.to_string()
     })?;
-    
+
     let properties = tagged_file.properties();
     let duration = properties.duration().as_secs_f64();
     let sample_rate = properties.sample_rate().unwrap_or(44100);
     let channels = properties.channels().unwrap_or(2);
     let bit_depth = properties.bit_depth().unwrap_or(16) as u16;
-    
+
     // Extract tags
     let mut title = None;
     let mut artist = None;
     let mut album = None;
     let mut year = None;
     let mut genre = None;
-    
-    if let Some(tag) = tagged_file.primary_tag().or_else(|| tagged_file.first_tag()) {
+
+    if let Some(tag) = tagged_file
+        .primary_tag()
+        .or_else(|| tagged_file.first_tag())
+    {
         title = tag.title().map(|t| t.to_string());
         artist = tag.artist().map(|a| a.to_string());
         album = tag.album().map(|a| a.to_string());
         year = tag.year();
         genre = tag.genre().map(|g| g.to_string());
     }
-    
+
     // Extract BPM from FFprobe
     let bpm = get_bpm_from_ffprobe(&path);
-    
+
     // Key detection would require librosa-like analysis, skip for now
     let key = None;
-    
+
     // Extract cover art to temp file
     let cover_art_path = extract_cover_art_ffmpeg(&path).ok();
-    
+
     info!(
         "Audio metadata: '{}' by '{}' ({}s, {:?} BPM, {:?} key)",
         title.as_deref().unwrap_or("Unknown"),
@@ -109,7 +112,7 @@ pub async fn read_audio_metadata(path: String) -> Result<AudioMetadata, String> 
         bpm,
         key
     );
-    
+
     Ok(AudioMetadata {
         path,
         title,
@@ -131,24 +134,27 @@ pub async fn read_audio_metadata(path: String) -> Result<AudioMetadata, String> 
 fn get_bpm_from_ffprobe(path: &str) -> Option<f64> {
     let output = std::process::Command::new("ffprobe")
         .args([
-            "-v", "quiet",
-            "-show_entries", "format_tags=TBPM",
-            "-of", "csv=p=0",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format_tags=TBPM",
+            "-of",
+            "csv=p=0",
             path,
         ])
         .output()
         .ok()?;
-    
+
     if !output.status.success() {
         return None;
     }
-    
+
     let bpm_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    
+
     if bpm_str.is_empty() || bpm_str == "TBPM" {
         return None;
     }
-    
+
     bpm_str.parse::<f64>().ok()
 }
 
@@ -158,30 +164,32 @@ fn extract_cover_art_ffmpeg(path: &str) -> Result<String, String> {
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("cover");
-    
+
     let temp_dir = std::env::temp_dir();
     let cover_path = temp_dir.join(format!("{}_cover.jpg", source_name));
-    
+
     let output = std::process::Command::new("ffmpeg")
         .args([
             "-y",
-            "-i", path,
+            "-i",
+            path,
             "-an",
-            "-vcodec", "copy",
+            "-vcodec",
+            "copy",
             cover_path.to_str().unwrap(),
         ])
         .output()
         .map_err(|e| e.to_string())?;
-    
+
     if !output.status.success() {
         return Err("FFmpeg failed to extract cover".to_string());
     }
-    
+
     // If the file doesn't exist, it might not have cover art
     if !cover_path.exists() {
         return Err("No cover art found".to_string());
     }
-    
+
     debug!("Extracted cover art to: {:?}", cover_path);
     Ok(cover_path.to_string_lossy().to_string())
 }
@@ -190,30 +198,26 @@ fn extract_cover_art_ffmpeg(path: &str) -> Result<String, String> {
 #[tauri::command]
 pub async fn read_stem_metadata(path: String) -> Result<StemFileMetadata, String> {
     info!("Reading stem metadata: {}", path);
-    
+
     let path_obj = Path::new(&path);
     if !path_obj.exists() {
         return Err(format!("File not found: {}", path));
     }
-    
+
     // Read base audio metadata
     let audio = read_audio_metadata(path.clone()).await?;
-    
+
     // Try to read NI metadata from sidecar JSON file
     let ni_metadata = read_ni_sidecar_metadata(path_obj);
-    
+
     // Get track count from file (count audio streams)
     let track_count = count_audio_tracks(path_obj).unwrap_or(1);
-    
+
     // Determine DJ software from track ordering (heuristic)
     let dj_software = infer_dj_software(&ni_metadata);
-    
-    debug!(
-        "Stem file: {} tracks, DJ: {:?}",
-        track_count,
-        dj_software
-    );
-    
+
+    debug!("Stem file: {} tracks, DJ: {:?}", track_count, dj_software);
+
     Ok(StemFileMetadata {
         path,
         ni_metadata,
@@ -235,18 +239,21 @@ fn read_ni_sidecar_metadata(stem_path: &Path) -> Option<NIStemMetadata> {
             }
         }
     }
-    
+
     // Try .metadata.json sidecar
     let alt_metadata_path = stem_path.with_extension("metadata.json");
     if alt_metadata_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&alt_metadata_path) {
             if let Ok(metadata) = serde_json::from_str::<NIStemMetadata>(&content) {
-                debug!("Loaded NI metadata from alt sidecar: {:?}", alt_metadata_path);
+                debug!(
+                    "Loaded NI metadata from alt sidecar: {:?}",
+                    alt_metadata_path
+                );
                 return Some(metadata);
             }
         }
     }
-    
+
     debug!("No NI sidecar metadata found for: {:?}", stem_path);
     None
 }
@@ -255,36 +262,39 @@ fn read_ni_sidecar_metadata(stem_path: &Path) -> Option<NIStemMetadata> {
 fn count_audio_tracks(path: &Path) -> std::io::Result<u32> {
     let output = std::process::Command::new("ffprobe")
         .args([
-            "-v", "quiet",
-            "-show_entries", "stream=codec_type",
-            "-of", "csv=p=0",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "csv=p=0",
             path.to_str().unwrap_or(""),
         ])
         .output()?;
-    
+
     if !output.status.success() {
         return Ok(1);
     }
-    
+
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let count = stdout.lines()
-        .filter(|line| line.contains("audio"))
-        .count() as u32;
-    
+    let count = stdout.lines().filter(|line| line.contains("audio")).count() as u32;
+
     Ok(count.max(1))
 }
 
 /// Infer DJ software from NI metadata stem ordering
 fn infer_dj_software(ni_metadata: &Option<NIStemMetadata>) -> Option<String> {
-    let Some(metadata) = ni_metadata else { return None; };
-    
+    let Some(metadata) = ni_metadata else {
+        return None;
+    };
+
     if metadata.stems.len() != 4 {
         return None;
     }
-    
+
     // Check stem order to determine DJ software
     let order: Vec<&str> = metadata.stems.iter().map(|s| s.name.as_str()).collect();
-    
+
     match order.as_slice() {
         ["Vocals", "Drums", "Bass", "Other"] => Some("Serato DJ".to_string()),
         ["Drums", "Bass", "Other", "Vocals"] => Some("Traktor Pro".to_string()),

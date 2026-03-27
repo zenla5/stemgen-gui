@@ -12,9 +12,7 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
 /// Supported audio formats
-const SUPPORTED_FORMATS: &[&str] = &[
-    "mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "aiff",
-];
+const SUPPORTED_FORMATS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "aiff"];
 
 /// Audio metadata
 pub struct AudioMetadata {
@@ -49,7 +47,6 @@ impl SampleData {
     }
 }
 
-
 /// Audio decoder for reading various audio formats
 pub struct AudioDecoder {
     samples: Vec<f32>,
@@ -72,62 +69,63 @@ impl AudioDecoder {
         // Create the media source stream
         let file = std::fs::File::open(path)
             .context(format!("Failed to open audio file: {}", path.display()))?;
-        
+
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
-        
+
         // Create the probe
         let mut hint = Hint::new();
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             hint.with_extension(ext);
         }
-        
+
         let format_opts = FormatOptions::default();
         let metadata_opts = MetadataOptions::default();
-        
+
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &format_opts, &metadata_opts)
             .context("Unsupported audio format")?;
-        
+
         let mut format = probed.format;
-        
+
         // Get the default track
-        let track = format
-            .default_track()
-            .context("No audio track found")?;
-        
+        let track = format.default_track().context("No audio track found")?;
+
         let codec_params = track.codec_params.clone();
         let track_id = track.id;
         let sample_rate = codec_params.sample_rate.unwrap_or(44100);
         let channels = codec_params.channels.map(|c| c.count() as u8).unwrap_or(2);
-        
+
         // Create the decoder
         let decoder_opts = DecoderOptions::default();
         let mut decoder = symphonia::default::get_codecs()
             .make(&codec_params, &decoder_opts)
             .context("Failed to create decoder")?;
-        
+
         // Decode all samples
         let mut all_samples = Vec::new();
-        
+
         loop {
             let packet = match format.next_packet() {
                 Ok(packet) => packet,
-                Err(symphonia::core::errors::Error::IoError(ref e)) 
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(symphonia::core::errors::Error::IoError(ref e))
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                {
+                    break
+                }
                 Err(_) => break,
             };
-            
+
             // Skip non-audio packets
             if packet.track_id() != track_id {
                 continue;
             }
-            
+
             // Decode the packet
             let decoded = match decoder.decode(&packet) {
                 Ok(decoded) => decoded,
                 Err(_) => continue,
             };
-            
+
             // Convert to f32 samples
             match decoded {
                 AudioBufferRef::F32(buf) => {
@@ -145,12 +143,12 @@ impl AudioDecoder {
                 _ => {}
             }
         }
-        
+
         // Store decoded data
         self.samples = all_samples.clone();
         self.sample_rate = sample_rate;
         self.channels = channels;
-        
+
         Ok(SampleData {
             samples: all_samples,
             sample_rate,
@@ -200,7 +198,7 @@ mod tests {
             sample_rate: 44100,
             channels: 2,
         };
-        
+
         assert_eq!(sample_data.samples.len(), 1000);
         assert_eq!(sample_data.sample_rate, 44100);
         assert_eq!(sample_data.channels, 2);
@@ -212,7 +210,7 @@ mod tests {
         let min = -1.0f32;
         let max = 1.0f32;
         let rms = 0.707f32; // Approximate RMS for sine wave
-        
+
         assert!(min <= rms && rms <= max);
     }
 

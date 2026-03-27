@@ -1,7 +1,7 @@
 //! NI Stem packer
-//! 
+//!
 //! Creates .stem.mp4 files compatible with Native Instruments hardware.
-//! 
+//!
 //! The NI stem format embeds metadata as a custom 'nmde' atom inside the 'udta'
 //! box of the MP4 container. This is what Traktor and other NI-compatible
 //! software reads to identify stem files and display stem colors/names.
@@ -16,7 +16,7 @@ use super::metadata::{NIStemMetadata, StemData, StemType};
 use super::presets::ExportSettings;
 
 /// NI Stem Packer
-/// 
+///
 /// Creates .stem.mp4 files with:
 /// - 5 audio tracks (master + 4 stems)
 /// - NI stem metadata JSON atom
@@ -38,7 +38,7 @@ impl StemPacker {
     }
 
     /// Pack stems into a .stem.mp4 file
-    /// 
+    ///
     /// This creates an MP4 file with:
     /// - 5 audio tracks (master + 4 stems reordered per DJ software)
     /// - NI stem metadata JSON atom
@@ -60,12 +60,7 @@ impl StemPacker {
         let stem_order = self.settings.dj_software.stem_order();
         let ordered_stems: Vec<(StemType, PathBuf)> = stem_order
             .iter()
-            .filter_map(|st| {
-                stem_paths
-                    .iter()
-                    .find(|(t, _)| t == st)
-                    .cloned()
-            })
+            .filter_map(|st| stem_paths.iter().find(|(t, _)| t == st).cloned())
             .collect();
 
         // Validate we have stems
@@ -124,10 +119,12 @@ impl StemPacker {
 
         // If we have stems, create multi-track file
         if !stems.is_empty() {
-            self.create_multi_track_stem(master_path, stems, output_path).await?;
+            self.create_multi_track_stem(master_path, stems, output_path)
+                .await?;
         } else {
             // Fallback: create single track from master
-            self.create_single_track_stem(master_path, output_path).await?;
+            self.create_single_track_stem(master_path, output_path)
+                .await?;
         }
 
         // Embed NI metadata JSON into the MP4 as a custom atom
@@ -135,8 +132,8 @@ impl StemPacker {
 
         // Write metadata JSON to sidecar file for reference
         let metadata_path = output_path.with_extension("metadata.json");
-        let metadata_json = serde_json::to_string_pretty(metadata)
-            .context("Failed to serialize metadata")?;
+        let metadata_json =
+            serde_json::to_string_pretty(metadata).context("Failed to serialize metadata")?;
         std::fs::write(&metadata_path, metadata_json)?;
 
         debug!("Created metadata file: {:?}", metadata_path);
@@ -144,11 +141,11 @@ impl StemPacker {
     }
 
     /// Create a multi-track stem.mp4 with all stems
-    /// 
+    ///
     /// Uses FFmpeg's -map to create separate audio streams for each track:
     /// Track 1: Master (full mix)
     /// Track 2-5: Individual stems (drums, bass, other, vocals)
-    /// 
+    ///
     /// This produces a proper .stem.mp4 that NI Traktor can read.
     #[allow(clippy::similar_names)]
     async fn create_multi_track_stem(
@@ -169,10 +166,10 @@ impl StemPacker {
         let mut cmd = Command::new("ffmpeg");
         cmd.arg("-y"); // Overwrite output
         cmd.arg("-hide_banner");
-        
+
         // Add master as first input (index 0)
         cmd.arg("-i").arg(master_path);
-        
+
         // Add each stem as additional inputs
         for (_, stem_path) in stems {
             cmd.arg("-i").arg(stem_path);
@@ -187,29 +184,30 @@ impl StemPacker {
         // Set audio properties for all streams
         cmd.args(["-ar", "44100"]);
         cmd.arg("-c:a").arg(codec);
-        
+
         // Apply per-stream codec settings
         // Stream 0 (master) gets ALAC/AAC, same for all others
         for codec_arg in codec_args {
             cmd.arg(codec_arg);
         }
-        
+
         // Set metadata for each stream (track name)
         // Track 0 = Master
         cmd.args(["-metadata:s:a:0", &format!("title={}", "Master")]);
-        
+
         // Tracks 1-4 = Stems (in order of stems vec, which is DJ-software-specific)
         for (i, (stem_type, _)) in stems.iter().enumerate() {
             cmd.arg(format!("-metadata:s:a:{}", i + 1))
-               .arg(format!("title={}", stem_type.name()));
+                .arg(format!("title={}", stem_type.name()));
         }
 
         // Output path
         cmd.arg(output_path);
-        
+
         debug!("FFmpeg multi-track command: {:?}", cmd);
-        
-        let output = cmd.output()
+
+        let output = cmd
+            .output()
             .context("Failed to execute FFmpeg for multi-track stem")?;
 
         if !output.status.success() {
@@ -221,9 +219,11 @@ impl StemPacker {
                 stdout,
                 stderr
             );
-            
+
             // Fallback to single track
-            return self.create_single_track_stem(master_path, output_path).await;
+            return self
+                .create_single_track_stem(master_path, output_path)
+                .await;
         }
 
         info!("Multi-track stem file created: {:?}", output_path);
@@ -231,22 +231,22 @@ impl StemPacker {
     }
 
     /// Create a single-track stem file (fallback when no stems available)
-    async fn create_single_track_stem(
-        &self,
-        master_path: &Path,
-        output_path: &Path,
-    ) -> Result<()> {
+    async fn create_single_track_stem(&self, master_path: &Path, output_path: &Path) -> Result<()> {
         info!("Creating single-track stem file from master");
 
         let codec = self.settings.output_format.codec_name();
-        
+
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-i", master_path.to_str().unwrap(),
-                "-acodec", codec,
-                "-ar", "44100",
-                "-ac", "2",
+                "-i",
+                master_path.to_str().unwrap(),
+                "-acodec",
+                codec,
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
                 output_path.to_str().unwrap(),
             ])
             .output()
@@ -261,22 +261,23 @@ impl StemPacker {
     }
 
     /// Embed NI metadata JSON into the MP4 file as a custom `nmde` atom.
-    /// 
+    ///
     /// NI stem files embed the metadata as a custom atom inside the `udta` box:
     ///   [ftyp] ... [moov]→[udta]→[nmde] (NI metadata)
-    /// 
+    ///
     /// This function reads the MP4, finds the `udta` box, and appends/replaces
     /// the `nmde` child box with our JSON metadata. If `udta` doesn't exist,
     /// it is created inside `moov`. If `moov` doesn't exist, the metadata is
     /// still written to a sidecar JSON file as a fallback.
     fn embed_metadata_atom(&self, metadata: &NIStemMetadata, mp4_path: &Path) -> Result<()> {
-        let metadata_json = serde_json::to_string(metadata)
-            .context("Failed to serialize NI metadata to JSON")?;
-        
+        let metadata_json =
+            serde_json::to_string(metadata).context("Failed to serialize NI metadata to JSON")?;
+
         // --- Step 1: Read the MP4 file ---
         let mut file = std::fs::File::open(mp4_path)
             .with_context(|| format!("Failed to open MP4 file: {:?}", mp4_path))?;
-        let file_size = file.metadata()
+        let file_size = file
+            .metadata()
             .context("Failed to get file metadata")?
             .len() as usize;
         let mut buffer = vec![0u8; file_size];
@@ -317,15 +318,15 @@ impl StemPacker {
     }
 
     /// Inject a `nmde` atom into the `udta` box of an MP4 file buffer.
-    /// 
+    ///
     /// Returns `Ok(true)` if injection succeeded, `Ok(false)` if the file
     /// couldn't be parsed (no `moov` box found), and `Err(_)` on I/O errors.
-    /// 
+    ///
     /// The MP4 format uses big-endian length-prefixed boxes (atoms):
     ///   - 4 bytes: box size (including header)
     ///   - 4 bytes: box type (ASCII fourcc)
     ///   - N bytes: payload
-    /// 
+    ///
     /// We walk the top-level boxes looking for `moov`, then look inside it
     /// for `udta`. If `udta` exists, we remove any existing `nmde` child
     /// and append the new one. If `udta` doesn't exist, we create it.
@@ -337,7 +338,7 @@ impl StemPacker {
         nmde_payload.extend_from_slice(stem_marker);
         nmde_payload.push(0u8); // null terminator after "stem"
         nmde_payload.extend_from_slice(json_bytes);
-        
+
         // Wrap in an nmde box: [4-byte size][b"nmde"][payload]
         let nmde_payload_len = 4 + json_bytes.len() + 1; // "stem" + null + json
         let nmde_total_len = 8 + nmde_payload_len; // header + payload
@@ -357,7 +358,12 @@ impl StemPacker {
         let mut udta_child_end: Option<usize> = None;
 
         while offset + 8 <= buffer.len() {
-            let size = u32::from_be_bytes([buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]]) as usize;
+            let size = u32::from_be_bytes([
+                buffer[offset],
+                buffer[offset + 1],
+                buffer[offset + 2],
+                buffer[offset + 3],
+            ]) as usize;
             let fourcc = &buffer[offset + 4..offset + 8];
 
             if size < 8 {
@@ -373,7 +379,12 @@ impl StemPacker {
                 // Walk moov's children looking for "udta"
                 let mut child = offset + 8;
                 while child + 8 <= box_end {
-                    let child_size = u32::from_be_bytes([buffer[child], buffer[child + 1], buffer[child + 2], buffer[child + 3]]) as usize;
+                    let child_size = u32::from_be_bytes([
+                        buffer[child],
+                        buffer[child + 1],
+                        buffer[child + 2],
+                        buffer[child + 3],
+                    ]) as usize;
                     let child_fourcc = &buffer[child + 4..child + 8];
                     if child_size < 8 {
                         break;
@@ -384,7 +395,12 @@ impl StemPacker {
                         // Walk udta's children looking for existing "nmde"
                         let mut grandchild = child + 8;
                         while grandchild + 8 <= child_end {
-                            let gc_size = u32::from_be_bytes([buffer[grandchild], buffer[grandchild + 1], buffer[grandchild + 2], buffer[grandchild + 3]]) as usize;
+                            let gc_size = u32::from_be_bytes([
+                                buffer[grandchild],
+                                buffer[grandchild + 1],
+                                buffer[grandchild + 2],
+                                buffer[grandchild + 3],
+                            ]) as usize;
                             let gc_fourcc = &buffer[grandchild + 4..grandchild + 8];
                             if gc_size < 8 {
                                 break;
@@ -421,7 +437,12 @@ impl StemPacker {
         let mut udta_box_end: Option<usize> = None;
 
         while offset + 8 <= moov_e {
-            let size = u32::from_be_bytes([buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]]) as usize;
+            let size = u32::from_be_bytes([
+                buffer[offset],
+                buffer[offset + 1],
+                buffer[offset + 2],
+                buffer[offset + 3],
+            ]) as usize;
             let fourcc = &buffer[offset + 4..offset + 8];
             if size < 8 {
                 break;
@@ -452,7 +473,12 @@ impl StemPacker {
                 let mut child = moov_s + 8;
                 let mut last_child_start = moov_s + 8;
                 while child + 8 <= moov_e {
-                    let child_size = u32::from_be_bytes([buffer[child], buffer[child + 1], buffer[child + 2], buffer[child + 3]]) as usize;
+                    let child_size = u32::from_be_bytes([
+                        buffer[child],
+                        buffer[child + 1],
+                        buffer[child + 2],
+                        buffer[child + 3],
+                    ]) as usize;
                     if child_size < 8 {
                         break;
                     }
@@ -480,7 +506,7 @@ impl StemPacker {
     fn replace_atom(&self, buffer: &mut [u8], old_start: usize, old_end: usize, new_atom: &[u8]) {
         let old_len = old_end - old_start;
         let diff = new_atom.len() as isize - old_len as isize;
-        
+
         if diff == 0 {
             buffer[old_start..old_end].copy_from_slice(new_atom);
         } else {
@@ -496,15 +522,25 @@ impl StemPacker {
             // Write new atom at old start
             buffer[old_start..old_start + new_atom.len()].copy_from_slice(new_atom);
             // Note: size in parent headers needs updating — handled separately
-            debug!("Replaced nmde atom ({} → {} bytes)", old_len, new_atom.len());
+            debug!(
+                "Replaced nmde atom ({} → {} bytes)",
+                old_len,
+                new_atom.len()
+            );
         }
     }
 
     /// Append an atom to a parent box (updates parent size in header).
-    fn append_atom_to_parent(&self, buffer: &mut [u8], udta_start: usize, udta_end: usize, new_child: &[u8]) {
+    fn append_atom_to_parent(
+        &self,
+        buffer: &mut [u8],
+        udta_start: usize,
+        udta_end: usize,
+        new_child: &[u8],
+    ) {
         // Insert new_child right before udta_end (after all existing children)
         let insert_at = udta_end - new_child.len();
-        
+
         // Shift bytes from insert_at to end
         let len = buffer.len();
         let mut i = len;
@@ -512,32 +548,35 @@ impl StemPacker {
             i -= 1;
             buffer[i] = buffer[i - new_child.len()];
         }
-        
+
         // Write new child
         for (j, &byte) in new_child.iter().enumerate() {
             buffer[insert_at + j] = byte;
         }
-        
+
         // Update udta size in header (udta_start to udta_start+4)
         let new_udta_size = (udta_end - udta_start) as u32 + new_child.len() as u32;
         let size_bytes = u32::to_be_bytes(new_udta_size);
         buffer[udta_start..udta_start + 4].copy_from_slice(&size_bytes);
-        
-        debug!("Appended nmde atom to udta; new udta size: {}", new_udta_size);
+
+        debug!(
+            "Appended nmde atom to udta; new udta size: {}",
+            new_udta_size
+        );
     }
 
     /// Insert a new box into the buffer before the given position.
     fn insert_box(&self, buffer: &mut [u8], insert_at: usize, new_box: &[u8]) {
         let box_len = new_box.len();
         let len = buffer.len();
-        
+
         // Shift everything from insert_at to end
         let mut i = len;
         while i > insert_at {
             i -= 1;
             buffer[i] = buffer[i - box_len];
         }
-        
+
         // Write new box
         for (j, &byte) in new_box.iter().enumerate() {
             buffer[insert_at + j] = byte;

@@ -1,7 +1,7 @@
 //! Audio resampler using rubato
-//! 
+//!
 //! Resamples audio to 44.1kHz (NI stem standard).
-//! 
+//!
 //! Uses rubato v1.0.1 Fft synchronous resampler.
 
 use anyhow::Result;
@@ -23,9 +23,7 @@ pub struct AudioResampler {
 impl AudioResampler {
     /// Create a new audio resampler
     pub fn new(target_sample_rate: u32) -> Self {
-        Self {
-            target_sample_rate,
-        }
+        Self { target_sample_rate }
     }
 
     /// Create a resampler for 44.1kHz output (NI stem standard)
@@ -34,7 +32,7 @@ impl AudioResampler {
     }
 
     /// Resample audio to target sample rate
-    /// 
+    ///
     /// Uses rubato v1 Fft synchronous resampler with FixedSync::Input mode.
     /// The process method handles the full resampling with InterleavedOwned buffers.
     pub fn resample(&mut self, samples: &SampleData) -> Result<SampleData> {
@@ -64,12 +62,8 @@ impl AudioResampler {
         )?;
 
         // Create input InterleavedOwned buffer from flat samples
-        let mut input_buf = InterleavedOwned::<f32>::new(
-            0.0f32,
-            num_channels,
-            num_frames,
-        );
-        
+        let mut input_buf = InterleavedOwned::<f32>::new(0.0f32, num_channels, num_frames);
+
         // Copy samples into the interleaved buffer
         // InterleavedOwned stores samples as [ch0_s0, ch1_s0, ch0_s1, ch1_s1, ...]
         for frame in 0..num_frames {

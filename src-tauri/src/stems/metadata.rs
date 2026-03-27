@@ -1,5 +1,5 @@
 //! NI Stem metadata
-//! 
+//!
 //! Defines the metadata structure for NI stem files.
 
 use serde::{Deserialize, Serialize};
@@ -29,8 +29,8 @@ impl StemType {
         match self {
             Self::Drums => (0xFF, 0x6B, 0x6B),  // Red
             Self::Bass => (0x4E, 0xCD, 0xC4),   // Teal
-            Self::Other => (0xFF, 0xE6, 0x6D),   // Yellow
-            Self::Vocals => (0x95, 0xE1, 0xD3),  // Mint green
+            Self::Other => (0xFF, 0xE6, 0x6D),  // Yellow
+            Self::Vocals => (0x95, 0xE1, 0xD3), // Mint green
         }
     }
 
@@ -51,7 +51,7 @@ pub struct StemInfo {
 }
 
 /// NI Stem metadata JSON structure
-/// 
+///
 /// This is embedded in the .stem.mp4 file as a custom atom
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NIStemMetadata {
@@ -204,14 +204,14 @@ mod tests {
                 file_path: "bass.m4a".to_string(),
             },
         ];
-        
+
         let master = MasterData {
             name: "Master".to_string(),
             file_path: "master.m4a".to_string(),
         };
-        
+
         let metadata = NIStemMetadata::new(stems, master);
-        
+
         assert_eq!(metadata.version, "1.0");
         assert_eq!(metadata.stems.len(), 2);
         assert_eq!(metadata.master.name, "Master");
@@ -220,10 +220,10 @@ mod tests {
     #[test]
     fn test_metadata_serialization() {
         let metadata = NIStemMetadata::default();
-        
+
         let json = metadata.to_json_bytes().unwrap();
         assert!(!json.is_empty());
-        
+
         let deserialized = NIStemMetadata::from_json_bytes(&json).unwrap();
         assert_eq!(deserialized.version, metadata.version);
         assert_eq!(deserialized.stems.len(), metadata.stems.len());
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn test_metadata_default() {
         let metadata = NIStemMetadata::default();
-        
+
         assert_eq!(metadata.version, "1.0");
         assert_eq!(metadata.stems.len(), 4);
         assert_eq!(metadata.master.name, "Master");
@@ -251,7 +251,7 @@ mod tests {
             duration: Some(180.5),
             cover_art: None,
         };
-        
+
         let json = serde_json::to_string(&track).unwrap();
         assert!(json.contains("Test Song"));
         assert!(json.contains("128"));
