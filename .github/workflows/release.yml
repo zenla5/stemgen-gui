@@ -17,9 +17,11 @@ env:
 
 jobs:
   # Validate version consistency before any builds
+  # Only runs on tag pushes, not workflow_dispatch
   version-check:
     name: Version Consistency Check
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
       
