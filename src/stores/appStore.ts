@@ -10,6 +10,8 @@ import type {
   Stem,
   StemInfo,
   PackStemsResponse,
+  SidecarStatus,
+  EnvironmentValidation,
 } from '@/lib/types';
 import { DEFAULT_PROCESSING_SETTINGS, STEM_COLORS, STEM_DEFAULT_NAMES } from '@/lib/constants';
 
@@ -32,6 +34,11 @@ interface AppState {
   // Dependencies
   dependencies: DependencyStatus;
   dependenciesChecked: boolean;
+  
+  // Sidecar health (Phase 3)
+  sidecarHealth: SidecarStatus | null;
+  environmentValidation: EnvironmentValidation | null;
+  environmentValidated: boolean;
   
   // Settings
   settings: ProcessingSettings;
@@ -63,6 +70,10 @@ interface AppState {
   
   // Dependency actions
   checkDependencies: () => Promise<void>;
+  
+  // Sidecar health actions (Phase 3)
+  checkSidecarHealth: () => Promise<void>;
+  validateEnvironment: () => Promise<void>;
   
   // Settings actions
   updateSettings: (settings: Partial<ProcessingSettings>) => void;
@@ -102,6 +113,9 @@ export const useAppStore = create<AppState>()(
         models: false,
       },
       dependenciesChecked: false,
+      sidecarHealth: null,
+      environmentValidation: null,
+      environmentValidated: false,
       settings: DEFAULT_PROCESSING_SETTINGS,
       sidebarCollapsed: false,
       activeView: 'files',
@@ -306,6 +320,46 @@ export const useAppStore = create<AppState>()(
         } catch (error) {
           console.error('Failed to check dependencies:', error);
           set({ dependenciesChecked: true });
+        }
+      },
+      
+      // Sidecar health check (Phase 3)
+      checkSidecarHealth: async () => {
+        try {
+          const health = await invoke<SidecarStatus>('get_sidecar_status');
+          set({ sidecarHealth: health });
+        } catch (error) {
+          console.error('Failed to check sidecar health:', error);
+          set({ 
+            sidecarHealth: {
+              isHealthy: false,
+              pythonFound: false,
+              modelDirectory: '',
+              modelCount: 0,
+              errors: [error instanceof Error ? error.message : String(error)],
+              gpuAvailable: false,
+              demucsAvailable: false,
+              bsRoformerAvailable: false,
+              sidecarScriptFound: false,
+            }
+          });
+        }
+      },
+      
+      // Environment validation
+      validateEnvironment: async () => {
+        try {
+          const validation = await invoke<EnvironmentValidation>('validate_environment');
+          set({ environmentValidation: validation, environmentValidated: true });
+        } catch (error) {
+          console.error('Failed to validate environment:', error);
+          set({ 
+            environmentValidation: {
+              isReady: false,
+              warnings: [error instanceof Error ? error.message : String(error)],
+            },
+            environmentValidated: true 
+          });
         }
       },
       

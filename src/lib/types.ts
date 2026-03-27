@@ -231,6 +231,80 @@ export interface StemFileMetadata {
   audio: AudioMetadata;
 }
 
+// Sidecar health status (Phase 3 - mirrors Rust backend)
+export interface SidecarStatus {
+  isHealthy: boolean;
+  pythonFound: boolean;
+  pythonPath?: string;
+  pythonVersion?: string;
+  pytorchVersion?: string;
+  gpuAvailable: boolean;
+  gpuDevice?: string;
+  demucsAvailable: boolean;
+  demucsVersion?: string;
+  torchaudioVersion?: string;
+  bsRoformerAvailable: boolean;
+  bsRoformerVersion?: string;
+  sidecarScriptFound: boolean;
+  sidecarScriptPath?: string;
+  modelDirectory: string;
+  modelCount: number;
+  errors: string[];
+}
+
+// Model availability info
+export interface ModelAvailability {
+  model: string;
+  available: boolean;
+  sizeBytes: number;
+  downloadSizeBytes: number;
+  path?: string;
+}
+
+// Package validation status (mirrors Rust PackageStatus enum with snake_case)
+export interface PackageStatusAvailable {
+  available: null;
+}
+
+export interface PackageStatusUnavailable {
+  unavailable: string;
+}
+
+export interface PackageStatusWarning {
+  warning: string;
+}
+
+export interface PackageStatusMissing {
+  missing: string;
+}
+
+export type PackageStatus = 
+  | PackageStatusAvailable 
+  | PackageStatusUnavailable 
+  | PackageStatusWarning 
+  | PackageStatusMissing;
+
+// Full environment validation result
+export interface EnvironmentValidation {
+  isReady: boolean;
+  python?: PackageStatus;
+  pythonPath?: string;
+  pythonVersion?: string;
+  pytorch?: PackageStatus;
+  pytorchVersion?: string;
+  torchaudio?: PackageStatus;
+  torchaudioVersion?: string;
+  demucs?: PackageStatus;
+  demucsVersion?: string;
+  cuda?: PackageStatus;
+  gpuName?: string;
+  ffmpeg?: PackageStatus;
+  ffprobe?: PackageStatus;
+  sidecarScript?: PackageStatus;
+  sidecarScriptPath?: string;
+  warnings: string[];
+}
+
 // History
 export interface HistoryEntry {
   id: string;
