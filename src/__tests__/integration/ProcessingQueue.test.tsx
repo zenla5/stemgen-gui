@@ -13,13 +13,15 @@ vi.mock('@tauri-apps/api/core', () => ({
 // ─── Store reset helper ────────────────────────────────────────────────────────
 
 function resetStore() {
-  useAppStore.setState({
-    audioFiles: [],
-    jobs: [],
-    isProcessing: false,
-    activeJobCount: 0,
-    pendingFiles: [],
-    maxParallelJobs: 2,
+  act(() => {
+    useAppStore.setState({
+      audioFiles: [],
+      jobs: [],
+      isProcessing: false,
+      activeJobCount: 0,
+      pendingFiles: [],
+      maxParallelJobs: 2,
+    });
   });
 }
 

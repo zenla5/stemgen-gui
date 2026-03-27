@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import { FileBrowser } from '@/components/file-browser/FileBrowser';
 import { useAppStore } from '@/stores/appStore';
 
@@ -27,9 +27,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 // ─── Store reset helper ────────────────────────────────────────────────────────
 
 function resetStore() {
-  useAppStore.setState({
-    audioFiles: [],
-    selectedFile: null,
+  act(() => {
+    useAppStore.setState({
+      audioFiles: [],
+      selectedFile: null,
+    });
   });
 }
 

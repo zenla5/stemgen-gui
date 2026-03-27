@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -14,36 +14,38 @@ vi.mock('@tauri-apps/api/core', () => ({
 // ─── Store reset helper ────────────────────────────────────────────────────────
 
 function resetStores() {
-  useAppStore.setState({
-    settings: {
-      model: 'bs_roformer',
-      device: 'cuda',
-      outputFormat: 'alac',
-      qualityPreset: 'standard',
-      djPreset: 'traktor',
-      inferenceProvider: 'local',
-      customStemColors: true,
-      normalizeAudio: true,
-      preserveOriginal: true,
+  act(() => {
+    useAppStore.setState({
+      settings: {
+        model: 'bs_roformer',
+        device: 'cuda',
+        outputFormat: 'alac',
+        qualityPreset: 'standard',
+        djPreset: 'traktor',
+        inferenceProvider: 'local',
+        customStemColors: true,
+        normalizeAudio: true,
+        preserveOriginal: true,
+        cpuThreads: 4,
+        gpuEnabled: true,
+      },
+      dependencies: {
+        ffmpeg: true,
+        sox: true,
+        python: true,
+        cuda: false,
+        mps: false,
+        models: false,
+      },
+    });
+
+    useSettingsStore.setState({
+      theme: 'dark',
+      language: 'en',
       cpuThreads: 4,
       gpuEnabled: true,
-    },
-    dependencies: {
-      ffmpeg: true,
-      sox: true,
-      python: true,
-      cuda: false,
-      mps: false,
-      models: false,
-    },
-  });
-
-  useSettingsStore.setState({
-    theme: 'dark',
-    language: 'en',
-    cpuThreads: 4,
-    gpuEnabled: true,
-    maxParallelJobs: 1,
+      maxParallelJobs: 1,
+    });
   });
 }
 

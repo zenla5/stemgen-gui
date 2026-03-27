@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import { StemMixer } from '@/components/mixer/StemMixer';
 import { useAppStore } from '@/stores/appStore';
 
@@ -48,14 +48,16 @@ vi.mock('@/components/audio', () => ({
 // ─── Store reset helper ────────────────────────────────────────────────────────
 
 function resetStore() {
-  useAppStore.setState({
-    currentStems: [
-      { id: 'drums', type: 'drums' as const, name: 'Drums', color: '#FF6B6B', volume: 1, muted: false, solo: false, file_path: '/test/drums.wav' },
-      { id: 'bass', type: 'bass' as const, name: 'Bass', color: '#4ECDC4', volume: 1, muted: false, solo: false, file_path: '/test/bass.wav' },
-      { id: 'other', type: 'other' as const, name: 'Other', color: '#FFE66D', volume: 1, muted: false, solo: false, file_path: '/test/other.wav' },
-      { id: 'vocals', type: 'vocals' as const, name: 'Vocals', color: '#95E1D3', volume: 1, muted: false, solo: false, file_path: '/test/vocals.wav' },
-    ],
-    selectedFile: null,
+  act(() => {
+    useAppStore.setState({
+      currentStems: [
+        { id: 'drums', type: 'drums' as const, name: 'Drums', color: '#FF6B6B', volume: 1, muted: false, solo: false, file_path: '/test/drums.wav' },
+        { id: 'bass', type: 'bass' as const, name: 'Bass', color: '#4ECDC4', volume: 1, muted: false, solo: false, file_path: '/test/bass.wav' },
+        { id: 'other', type: 'other' as const, name: 'Other', color: '#FFE66D', volume: 1, muted: false, solo: false, file_path: '/test/other.wav' },
+        { id: 'vocals', type: 'vocals' as const, name: 'Vocals', color: '#95E1D3', volume: 1, muted: false, solo: false, file_path: '/test/vocals.wav' },
+      ],
+      selectedFile: null,
+    });
   });
 }
 
@@ -114,15 +116,17 @@ describe('StemMixer', () => {
     expect(sliders.length).toBeGreaterThan(0);
   });
 
-  it('shows placeholder when no stems are loaded', () => {
+  it('shows placeholder when no stems are loaded', async () => {
     // Override store to have no stems with file paths
-    useAppStore.setState({
-      currentStems: [
-        { id: 'drums', type: 'drums' as const, name: 'Drums', color: '#FF6B6B', volume: 1, muted: false, solo: false },
-        { id: 'bass', type: 'bass' as const, name: 'Bass', color: '#4ECDC4', volume: 1, muted: false, solo: false },
-        { id: 'other', type: 'other' as const, name: 'Other', color: '#FFE66D', volume: 1, muted: false, solo: false },
-        { id: 'vocals', type: 'vocals' as const, name: 'Vocals', color: '#95E1D3', volume: 1, muted: false, solo: false },
-      ],
+    await act(async () => {
+      useAppStore.setState({
+        currentStems: [
+          { id: 'drums', type: 'drums' as const, name: 'Drums', color: '#FF6B6B', volume: 1, muted: false, solo: false },
+          { id: 'bass', type: 'bass' as const, name: 'Bass', color: '#4ECDC4', volume: 1, muted: false, solo: false },
+          { id: 'other', type: 'other' as const, name: 'Other', color: '#FFE66D', volume: 1, muted: false, solo: false },
+          { id: 'vocals', type: 'vocals' as const, name: 'Vocals', color: '#95E1D3', volume: 1, muted: false, solo: false },
+        ],
+      });
     });
 
     render(<StemMixer />);
