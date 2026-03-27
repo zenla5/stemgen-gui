@@ -1,6 +1,6 @@
 import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles, RefreshCw, CheckCircle, XCircle, AlertCircle, Package } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, supportedLanguages } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
 import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
@@ -225,11 +225,11 @@ export function SettingsPanel() {
           onChange={(e) => settings.setLanguage(e.target.value)}
           className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm"
         >
-          <option value="en">English</option>
-          <option value="de">Deutsch</option>
-          <option value="fr">Français</option>
-          <option value="es">Español</option>
-          <option value="ja">日本語</option>
+          {supportedLanguages.map((lang) => (
+            <option key={lang.code} value={lang.code}>
+              {lang.nativeName}
+            </option>
+          ))}
         </select>
       </section>
 

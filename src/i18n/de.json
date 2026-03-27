@@ -1,0 +1,78 @@
+{
+  "app": {
+    "name": "Stemgen-GUI",
+    "description": "Ein kostenloser und quelloffener Stem-Dateigenerator für DJ-Software"
+  },
+  "nav": {
+    "files": "Dateien",
+    "queue": "Warteschlange",
+    "mixer": "Mixer",
+    "settings": "Einstellungen"
+  },
+  "files": {
+    "title": "Dateibrowser",
+    "dragDrop": "Audiodateien hierher ziehen",
+    "dropHere": "Audiodateien hier ablegen",
+    "orBrowse": "oder klicken zum Durchsuchen",
+    "openFolder": "Ordner öffnen",
+    "selected": "{{count}} Datei ausgewählt",
+    "selected_plural": "{{count}} Dateien ausgewählt",
+    "noFiles": "Keine Dateien ausgewählt"
+  },
+  "queue": {
+    "title": "Verarbeitungswarteschlange",
+    "empty": "Keine Aufträge in der Warteschlange",
+    "emptyDescription": "Audiodateien hinzufügen und Verarbeitung starten",
+    "clearAll": "Alle löschen",
+    "startProcessing": "Verarbeitung starten"
+  },
+  "mixer": {
+    "title": "Stem-Mixer",
+    "reset": "Zurücksetzen",
+    "volume": "Lautstärke",
+    "preview": "Vorschau",
+    "drums": "Schlagzeug",
+    "bass": "Bass",
+    "other": "Sonstige",
+    "vocals": "Gesang"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "appearance": "Erscheinungsbild",
+    "language": "Sprache",
+    "aiModel": "KI-Modell",
+    "device": "Verarbeitungsgerät",
+    "djSoftware": "Ziel-DJ-Software",
+    "outputFormat": "Ausgabeformat",
+    "qualityPreset": "Qualitätsvoreinstellung",
+    "gpuAcceleration": "GPU-Beschleunigung",
+    "cpuThreads": "CPU-Threads",
+    "parallelJobs": "Parallele Aufträge"
+  },
+  "models": {
+    "demucs": "Demucs",
+    "bs_roformer": "BS-RoFormer",
+    "htdemucs": "HT-Demucs",
+    "htdemucs_ft": "HT-Demucs FT"
+  },
+  "status": {
+    "ready": "Bereit",
+    "checking": "Abhängigkeiten werden geprüft...",
+    "processing": "Verarbeitung: {{progress}}%"
+  },
+  "dependencies": {
+    "ffmpeg": "FFmpeg",
+    "python": "Python",
+    "gpu": "GPU",
+    "models": "Modelle"
+  },
+  "quality": {
+    "draft": "Entwurf",
+    "standard": "Standard",
+    "master": "Master"
+  },
+  "format": {
+    "alac": "ALAC",
+    "aac": "AAC"
+  }
+}

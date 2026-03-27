@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AIModel, DJSoftware } from '@/lib/types';
 import type { Theme } from '@/lib/types';
+import { changeLanguage, supportedLanguages } from '@/i18n';
 
 export type ExportPreset = {
   id: string;
@@ -12,12 +13,14 @@ export type ExportPreset = {
   qualityPreset: 'draft' | 'standard' | 'master';
 };
 
+export type SupportedLanguageCode = 'en' | 'de';
+
 interface SettingsState {
   // Theme
   theme: Theme;
   
   // Language
-  language: string;
+  language: SupportedLanguageCode;
   
   // Default export settings
   defaultModel: AIModel;
@@ -55,9 +58,12 @@ interface SettingsState {
   resetSettings: () => void;
 }
 
+// Get available language codes from supportedLanguages
+const availableLanguages: SupportedLanguageCode[] = supportedLanguages.map(l => l.code as SupportedLanguageCode);
+
 const DEFAULT_SETTINGS = {
   theme: 'system' as Theme,
-  language: 'en',
+  language: 'en' as SupportedLanguageCode,
   defaultModel: 'bs_roformer' as AIModel,
   defaultDjSoftware: 'traktor' as DJSoftware,
   defaultOutputFormat: 'alac' as const,
@@ -74,7 +80,13 @@ export const useSettingsStore = create<SettingsState>()(
       ...DEFAULT_SETTINGS,
       
       setTheme: (theme) => set({ theme }),
-      setLanguage: (language) => set({ language }),
+      setLanguage: async (language) => {
+        // Only change language if it's a supported language
+        if (availableLanguages.includes(language as SupportedLanguageCode)) {
+          await changeLanguage(language as SupportedLanguageCode);
+        }
+        set({ language: language as SupportedLanguageCode });
+      },
       setDefaultModel: (model) => set({ defaultModel: model }),
       setDefaultDjSoftware: (software) => set({ defaultDjSoftware: software }),
       setDefaultOutputFormat: (format) => set({ defaultOutputFormat: format }),
@@ -108,3 +120,5 @@ export const useSettingsStore = create<SettingsState>()(
     }
   )
 );
+
+export { supportedLanguages };
