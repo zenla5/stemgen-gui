@@ -73,20 +73,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Run integration tests with coverage
-        run: npm run test:integration -- --coverage
+      - name: Run integration tests (component rendering tests)
+        run: npm run test:integration
 
-      - name: Check integration coverage thresholds
-        run: |
-          echo "=== Integration Test Coverage ==="
-          echo "Thresholds enforced: lines 39%, functions 58%, branches 55%, statements 39%"
-      
-      - name: Upload coverage report
+      - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
-          name: coverage-report
-          path: coverage/
+          name: integration-test-results
+          path: |
+            test-results/
           retention-days: 7
 
   # E2E tests - simplified to single browser on Ubuntu

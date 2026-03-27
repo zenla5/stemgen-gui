@@ -25,14 +25,12 @@ export default defineConfig({
         '*.d.ts',
         // Test files themselves
         'src/__tests__/**',
-        // Large components that require browser/wavesurfer APIs (covered by integration tests)
+        // Large components that require browser/wavesurfer APIs
         'src/components/audio/WaveformDisplay.tsx',
         'src/components/audio/StemWaveformDisplay.tsx',
         // Hooks that depend on browser audio APIs
         'src/hooks/useAudioPlayer.ts',
         'src/hooks/useMultiStemPlayer.ts',
-        // Integration test mocks
-        'src/__tests__/integration/setup.ts',
         // Python sidecar (not TypeScript)
         'python/**',
         // Auto-generated/generated files

@@ -255,7 +255,6 @@ jobs:
       #
       # 1. TAURI_PRIVATE_KEY — Base64-encoded Ed25519 private key
       #    (the raw 32-byte key, base64)
-      #    Value: +ymEyzjvqHMaDy40E58SEBfoC1obO+elXQOMEaWMEV8=
       #
       # 2. TAURI_SIGNING_PASSWORD — Password for the signing key
       #    Value: (your chosen passphrase)

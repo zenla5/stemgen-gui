@@ -68,7 +68,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "ahP8G/6LD+DXvpTMx67te3XdimC/LyDPKh8TDnv7dOw=",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM0OUU5QkQwRTQ1NjU4QzMKUldURFdGYmswSnVlTkI3R0RUYU1hancwb3E4eHljcjltWU92SlhFbFhVdE5IajJhODdLdTNJd2oK",
       "endpoints": [
         "https://github.com/zenla5/stemgen-gui/releases/latest/download/latest.json"
       ],
