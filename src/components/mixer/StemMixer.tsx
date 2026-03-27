@@ -91,22 +91,33 @@ export function StemMixer() {
   const hasStems = loadedStemsCount > 0;
 
   return (
-    <div className="flex h-full flex-col gap-6 p-4">
+    <div 
+      className="flex h-full flex-col gap-6 p-4" 
+      role="region" 
+      aria-label="Stem Mixer"
+      id="main-content"
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Stem Mixer</h2>
         <button
           onClick={resetStemMixer}
           className="flex items-center gap-2 rounded-md border border-muted px-3 py-1.5 text-sm hover:bg-muted/50"
+          aria-label="Reset all stem mixer settings to default"
         >
-          <RefreshCw className="h-4 w-4" />
-          Reset
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          <span>Reset</span>
         </button>
       </div>
 
       {/* Loading state */}
       {player.state.isLoading && (
-        <div className="flex items-center justify-center gap-3 py-8 text-muted-foreground">
+        <div 
+          className="flex items-center justify-center gap-3 py-8 text-muted-foreground"
+          role="status"
+          aria-live="polite"
+          aria-label="Loading stems"
+        >
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <span>
             Loading stems... {Math.round(player.state.loadingProgress * 100)}%
@@ -116,8 +127,11 @@ export function StemMixer() {
 
       {/* No stems loaded */}
       {!player.state.isLoading && !hasStems && (
-        <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
-          <div className="text-4xl">🎵</div>
+        <div 
+          className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground"
+          role="status"
+        >
+          <div className="text-4xl" aria-hidden="true">🎵</div>
           <p className="text-center">
             Select a file and process it to generate stems.
             <br />
@@ -128,7 +142,11 @@ export function StemMixer() {
 
       {/* Stem Cards */}
       {hasStems && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div 
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          role="group"
+          aria-label="Stem controls"
+        >
           {currentStems.map((stem) => {
             const waveformData = player.stemWaveforms[stem.type];
             const hasWaveform = !!waveformData;
@@ -141,6 +159,8 @@ export function StemMixer() {
                   borderColor: `${stem.color}40`,
                   backgroundColor: `${stem.color}08`,
                 }}
+                role="group"
+                aria-label={`${stem.name} stem controls`}
               >
                 {/* Stem header */}
                 <div className="flex items-center justify-between">
@@ -148,10 +168,11 @@ export function StemMixer() {
                     <div
                       className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: stem.color }}
+                      aria-hidden="true"
                     />
                     <span className="font-medium">{stem.name}</span>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1" role="group" aria-label={`${stem.name} controls`}>
                     <button
                       onClick={() => handleStemSolo(stem.id, !stem.solo)}
                       className={cn(
@@ -160,9 +181,11 @@ export function StemMixer() {
                           ? 'bg-yellow-500/20 text-yellow-600'
                           : 'hover:bg-muted'
                       )}
+                      aria-pressed={stem.solo}
+                      aria-label={`Solo ${stem.name}`}
                       title="Solo"
                     >
-                      <Headphones className="h-4 w-4" />
+                      <Headphones className="h-4 w-4" aria-hidden="true" />
                     </button>
                     <button
                       onClick={() => handleStemMute(stem.id, !stem.muted)}
@@ -172,12 +195,14 @@ export function StemMixer() {
                           ? 'bg-red-500/20 text-red-600'
                           : 'hover:bg-muted'
                       )}
+                      aria-pressed={stem.muted}
+                      aria-label={`${stem.muted ? 'Unmute' : 'Mute'} ${stem.name}`}
                       title="Mute"
                     >
                       {stem.muted ? (
-                        <VolumeX className="h-4 w-4" />
+                        <VolumeX className="h-4 w-4" aria-hidden="true" />
                       ) : (
-                        <Volume2 className="h-4 w-4" />
+                        <Volume2 className="h-4 w-4" aria-hidden="true" />
                       )}
                     </button>
                   </div>
@@ -196,10 +221,13 @@ export function StemMixer() {
                 {/* Volume slider */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Volume</span>
-                    <span>{Math.round(stem.volume * 100)}%</span>
+                    <label htmlFor={`volume-${stem.id}`} className="text-muted-foreground">
+                      Volume
+                    </label>
+                    <span aria-hidden="true">{Math.round(stem.volume * 100)}%</span>
                   </div>
                   <input
+                    id={`volume-${stem.id}`}
                     type="range"
                     min="0"
                     max="100"
@@ -211,12 +239,13 @@ export function StemMixer() {
                     style={{
                       accentColor: stem.color,
                     }}
+                    aria-label={`${stem.name} volume, ${Math.round(stem.volume * 100)}%`}
                   />
                 </div>
 
                 {/* File name */}
                 {stem.file_path && (
-                  <p className="truncate text-xs text-muted-foreground">
+                  <p className="truncate text-xs text-muted-foreground" aria-hidden="true">
                     {stem.file_path.split(/[/\\]/).pop()}
                   </p>
                 )}
@@ -228,33 +257,43 @@ export function StemMixer() {
 
       {/* Playback Controls */}
       {hasStems && (
-        <div className="mt-auto rounded-lg border bg-card p-4">
-          <h3 className="mb-3 text-sm font-medium">Master Preview</h3>
+        <div 
+          className="mt-auto rounded-lg border bg-card p-4"
+          role="region"
+          aria-label="Playback controls"
+        >
+          <h3 className="mb-3 text-sm font-medium" id="playback-heading">Master Preview</h3>
 
           {/* Master Volume */}
-          <div className="mb-4 flex items-center gap-3">
-            <Volume2 className="h-4 w-4 text-muted-foreground" />
+          <div className="mb-4 flex items-center gap-3" role="group" aria-labelledby="master-volume-label">
+            <Volume2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <label htmlFor="master-volume" id="master-volume-label" className="sr-only">
+              Master volume
+            </label>
             <input
+              id="master-volume"
               type="range"
               min="0"
               max="100"
               value={masterVolume * 100}
               onChange={(e) => setMasterVolume(parseInt(e.target.value) / 100)}
               className="flex-1 accent-primary"
+              aria-label={`Master volume, ${Math.round(masterVolume * 100)}%`}
             />
-            <span className="w-12 text-right text-sm">
+            <span className="w-12 text-right text-sm" aria-hidden="true">
               {Math.round(masterVolume * 100)}%
             </span>
           </div>
 
           {/* Playback controls */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4" role="group" aria-label="Transport controls">
             <button
               onClick={() => handleSeek(0)}
               className="rounded-md p-2 hover:bg-muted"
+              aria-label="Restart playback"
               title="Restart"
             >
-              <SkipBack className="h-4 w-4" />
+              <SkipBack className="h-4 w-4" aria-hidden="true" />
             </button>
 
             <button
@@ -265,35 +304,52 @@ export function StemMixer() {
                 'bg-primary text-primary-foreground hover:bg-primary/90',
                 'disabled:opacity-50 disabled:cursor-not-allowed'
               )}
+              aria-label={player.state.isPlaying ? 'Pause' : 'Play'}
+              aria-pressed={player.state.isPlaying}
               title={player.state.isPlaying ? 'Pause' : 'Play'}
             >
               {player.state.isPlaying ? (
-                <Pause className="h-5 w-5" />
+                <Pause className="h-5 w-5" aria-hidden="true" />
               ) : (
-                <Play className="h-5 w-5 ml-0.5" />
+                <Play className="h-5 w-5 ml-0.5" aria-hidden="true" />
               )}
             </button>
 
             <button
               onClick={() => handleSeek(player.state.duration)}
               className="rounded-md p-2 hover:bg-muted"
+              aria-label="Skip to end"
               title="Skip to end"
             >
-              <SkipForward className="h-4 w-4" />
+              <SkipForward className="h-4 w-4" aria-hidden="true" />
             </button>
 
             {/* Time display */}
-            <div className="ml-auto flex items-center gap-2 font-mono text-sm">
-              <span>{formatTime(player.state.currentTime)}</span>
-              <span className="text-muted-foreground">/</span>
-              <span className="text-muted-foreground">
+            <div 
+              className="ml-auto flex items-center gap-2 font-mono text-sm"
+              role="timer"
+              aria-label={`Current time ${formatTime(player.state.currentTime)} of ${formatTime(player.state.duration)}`}
+            >
+              <span aria-hidden="true">{formatTime(player.state.currentTime)}</span>
+              <span className="text-muted-foreground" aria-hidden="true">/</span>
+              <span className="text-muted-foreground" aria-hidden="true">
                 {formatTime(player.state.duration)}
               </span>
             </div>
           </div>
 
           {/* Playback progress bar */}
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+          <div 
+            className="mt-3 h-2 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={player.state.duration > 0 
+              ? Math.round((player.state.currentTime / player.state.duration) * 100)
+              : 0}
+            aria-valuetext={`Playback progress: ${Math.round((player.state.currentTime / player.state.duration) * 100)}%`}
+            aria-label="Playback progress"
+          >
             <div
               className="h-full bg-primary transition-all"
               style={{
@@ -316,6 +372,7 @@ export function StemMixer() {
               <span
                 className="truncate max-w-[200px]"
                 title={selectedFile.name}
+                aria-label={`Currently selected file: ${selectedFile.name}`}
               >
                 {selectedFile.name}
               </span>

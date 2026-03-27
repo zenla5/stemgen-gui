@@ -1,6 +1,6 @@
 # Stemgen-GUI AI Agent Task List
 
-## Status: 60% Complete (6/10 Phases)
+## Status: 70% Complete (7/10 Phases)
 
 ## Completed Phases
 
@@ -50,11 +50,16 @@
 - Mac compatibility (Cmd+B for sidebar toggle)
 - Commit: `5d7ebbf`
 
-## Remaining Phases
+### Phase 7: i18n Infrastructure ✅
+- German (de) translation file with full UI strings
+- Enhanced i18n/index.ts with browser language detection
+- `supportedLanguages` array with native names
+- `changeLanguage` function
+- `SupportedLanguageCode` type for type safety
+- Settings integration with i18n
+- Commit: `9af7236`
 
-### Phase 7: i18n Infrastructure
-- i18next setup complete (already in project)
-- Additional language files needed (de, fr, es, ja translations)
+## Remaining Phases
 
 ### Phase 8: Accessibility (a11y)
 - ARIA labels on all interactive elements
@@ -86,3 +91,5 @@
 - `Stem` interface has: `id`, `type` (StemType), `name`, `color`, `volume`, `muted`, `solo`, `file_path?`
 - Theme type: `'light' | 'dark' | 'system'`
 - Processing queue tests use `getAllByText` for status strings that may appear multiple times
+- i18n uses `supportedLanguages` array from `@/stores/settingsStore`
+- `SupportedLanguageCode` = `'en' | 'de'`
