@@ -21,14 +21,28 @@ export default defineConfig({
         'node_modules/',
         'src/vitest-setup.ts',
         'src/__tests__/e2e/**',
+        'src/__tests__/integration/**',
         '*.config.*',
         '*.d.ts',
+        // Entry points — no testable logic
+        'src/main.tsx',
+        'src/App.tsx',
+        // Type-only files — zero runtime code
+        'src/lib/types.ts',
+        // i18n bootstrapping — config only
+        'src/i18n/index.ts',
+        // UI primitives — thin wrappers, tested via parent component
+        'src/components/ui/**',
+        // Audio visualization — wavesurfer.js DOM dependency
+        'src/components/audio/**',
+        // History barrel — re-exports only
+        'src/components/history/index.ts',
       ],
       thresholds: {
-        lines: 30,
-        functions: 30,
-        branches: 20,
-        statements: 30,
+        lines: 85,
+        functions: 85,
+        branches: 80,
+        statements: 85,
       },
     },
   },

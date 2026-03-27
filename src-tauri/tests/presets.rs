@@ -1,7 +1,6 @@
 //! Integration tests for DJ software presets.
 
 use stemgen_gui_lib::stems::presets::DJSoftware;
-use stemgen_gui_lib::stems::metadata::StemType;
 
 fn stem_order_names(software: DJSoftware) -> Vec<&'static str> {
     software

@@ -87,8 +87,16 @@ fn test_waveform_different_sample_rates() {
     assert!(!wf_44100.points.is_empty());
     assert!(!wf_22050.points.is_empty());
     
-    // 44100 Hz sample should have approximately twice the duration
-    assert!(wf_44100.duration_secs > wf_22050.duration_secs);
+    // Both should have approximately 1 second duration
+    // (frames / sample_rate = duration in seconds)
+    assert!((wf_44100.duration_secs - 1.0).abs() < 0.1, 
+        "44100 Hz waveform should be ~1s, got {}", wf_44100.duration_secs);
+    assert!((wf_22050.duration_secs - 1.0).abs() < 0.1, 
+        "22050 Hz waveform should be ~1s, got {}", wf_22050.duration_secs);
+    
+    // Sample rate should be preserved
+    assert_eq!(wf_44100.sample_rate, 44100);
+    assert_eq!(wf_22050.sample_rate, 22050);
 }
 
 #[test]
