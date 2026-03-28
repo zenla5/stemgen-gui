@@ -21,7 +21,8 @@
     "test:e2e:ui": "playwright test --ui",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "release:prep": "node scripts/release-prep.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
