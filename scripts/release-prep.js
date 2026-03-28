@@ -17,6 +17,7 @@
  *   - src-tauri/tauri.conf.json         (version field)
  *   - src/lib/constants.ts              (APP_VERSION constant)
  *   - README.md                         (download links)
+ *   - src/__tests__/regression.test.ts  (hardcoded APP_VERSION assertion)
  *   - CHANGELOG.md                      (new entry prepended)
  *
  * Note: README download link filenames are hardcoded because GitHub Actions
@@ -143,6 +144,30 @@ function updateReadmeLinks() {
   console.log(`  ✅ README.md`);
 }
 
+function updateRegressionTest() {
+  console.log(`\n🧪 Updating regression.test.ts...\n`);
+
+  const content = read('src/__tests__/regression.test.ts');
+
+  // Update the hardcoded APP_VERSION assertion inside the v1.0.8 Coverage Enhancement describe block.
+  // This test hardcodes the version string to guard against accidental version regressions.
+  // Pattern: it('APP_VERSION should be 1.0.x', () => { expect(APP_VERSION).toBe('1.0.x'); });
+  const pattern = /it\('APP_VERSION should be (\d+\.\d+\.\d+)', \(\) => \{\s*expect\(APP_VERSION\)\.toBe\('(\d+\.\d+\.\d+)'\);/;
+
+  if (!pattern.test(content)) {
+    console.error('  ❌ src/__tests__/regression.test.ts: Could not find hardcoded APP_VERSION assertion');
+    process.exit(1);
+  }
+
+  const updated = content.replace(
+    /it\('APP_VERSION should be (\d+\.\d+\.\d+)', \(\) => \{\s*expect\(APP_VERSION\)\.toBe\('(\d+\.\d+\.\d+)'\);/,
+    `it('APP_VERSION should be ${VERSION}', () => { expect(APP_VERSION).toBe('${VERSION}');`
+  );
+
+  write('src/__tests__/regression.test.ts', updated);
+  console.log(`  ✅ src/__tests__/regression.test.ts`);
+}
+
 function updateChangelog() {
   console.log(`\n📝 Updating CHANGELOG.md...\n`);
 
@@ -164,7 +189,7 @@ function gitCommit() {
   console.log(`\n📤 Committing changes...\n`);
 
   try {
-    execSync('git add package.json Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json src/lib/constants.ts README.md CHANGELOG.md', {
+    execSync('git add package.json Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json src/lib/constants.ts README.md src/__tests__/regression.test.ts CHANGELOG.md', {
       cwd: ROOT,
       stdio: 'inherit',
     });
@@ -208,6 +233,7 @@ console.log('══════════════════════�
 
 updateVersionStrings();
 updateReadmeLinks();
+updateRegressionTest();
 updateChangelog();
 gitCommit();
 
