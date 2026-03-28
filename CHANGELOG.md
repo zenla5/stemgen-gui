@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] — 2026-03-28 — CI Infrastructure & Quality Improvements
+
+### Fixed
+
+- **Node.js 20 deprecation warning** — Upgraded all GitHub Actions `actions/setup-node@v4` steps from `node-version: '20'` to `node-version: '22'` (current LTS) in both CI and Release workflows. Added `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` to the global `env:` block in both workflows to opt into Node.js 24 for runner infrastructure, eliminating the "Node.js 20 actions are deprecated" warning.
+- **Version consistency** — All version strings bumped to 1.0.7: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+
+### Changed
+
+- **Vitest coverage thresholds raised** — Increased all coverage thresholds from lines/statements 40% → 70%, functions 60% → 70%, branches 65% → 70% in `vitest.config.ts`. This brings the actual config in line with the coverage promise documented in recent changelog entries.
+
 ## [1.0.6] — 2026-03-28 — CI Pipeline Fixes
 
 ### Fixed
