@@ -194,7 +194,7 @@ export const KEYBOARD_SHORTCUTS = {
 
 /// App info
 // ⚠️ Keep in sync with package.json "version" field
-export const APP_VERSION = '1.0.5';
+export const APP_VERSION = '1.0.6';
 
 export const APP_INFO = {
   name: 'Stemgen-GUI',
