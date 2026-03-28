@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-03-28 — Stem Library Management
+
+### Added
+
+- **Provenance Metadata System** — Complete stem provenance tracking with schema versioning:
+  - Separation model name, version, and checkpoint hash
+  - stemgen and stemgen-gui version tracking
+  - Source file path and SHA-256 content hash
+  - Separation timestamp (ISO 8601 UTC)
+  - Quality preset and custom separation parameters
+  - Job ID and batch ID for grouping
+  - Freeform user notes (editable via GUI)
+
+- **Staleness Detection Engine** — Automatic detection of re-separation candidates:
+  - Source file modification detection (hash mismatch)
+  - Newer model version availability checks
+  - stemgen-gui version threshold checking
+  - Separation parameter drift detection
+  - Configurable staleness rules per installation
+
+- **Model Version Registry** — Local registry of known AI model releases:
+  - Maps model names to version identifiers
+  - Tracks release dates and semver information
+  - Persisted as JSON for easy inspection/editing
+
+- **Library Scan Commands** — Directory tree scanning for `.stem.mp4` files:
+  - `scan_library` — Full library staleness scan with filtering
+  - `find_duplicate_stems` — Group stems by source hash
+  - `export_library_report` — CSV, Markdown, and JSON export
+
+- **Sidecar File Support** — Non-destructive metadata storage:
+  - `.prov.json` sidecar for complete provenance metadata
+  - `.notes.json` sidecar for user annotations
+  - No modification to audio data (hash-verified integrity)
+
+- **Stem Integrity Checker** — Verify source files haven't changed:
+  - SHA-256 hash verification
+  - Missing source detection
+  - Integration with staleness engine
+
+- **TypeScript Type Definitions** — Full type coverage for new features:
+  - `StemProvenance`, `StalenessReport`, `StalenessRules`
+  - `LibraryScanResult`, `DuplicateEntry`
+  - Utility functions for status checking and formatting
+
+- **Zustand Store** — Reactive state management for library features:
+  - Scan results and progress tracking
+  - Staleness rules persistence
+  - Multi-select stem handling
+  - Export functionality
+
+### Changed
+
+- **Version bump** — All versions bumped to 1.1.0
+
 ## [1.0.10] — 2026-03-28 — Version Bump
 
 ### Changed

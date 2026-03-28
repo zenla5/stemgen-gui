@@ -4,10 +4,42 @@
 //! into stem files. Includes schema_version for forward/backward compatibility.
 
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+use thiserror::Error;
+use tracing::{debug, info};
 
 /// Schema version for the provenance structure.
 /// Bumped when fields are added/removed to enable migration handling.
 pub const PROVENANCE_SCHEMA_VERSION: u8 = 1;
+
+/// Errors that can occur when loading or saving provenance metadata.
+#[derive(Error, Debug)]
+pub enum ProvenanceError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("No provenance metadata found for: {0}")]
+    NotFound(String),
+}
+
+impl ProvenanceError {
+    /// Returns true if this error indicates the provenance file was not found.
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, ProvenanceError::NotFound(_))
+    }
+}
+
+/// User notes sidecar file extension.
+const USER_NOTES_EXTENSION: &str = "notes.json";
+
+/// User notes structure stored in sidecar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserNotes {
+    pub stem_path: String,
+    pub notes: String,
+    pub updated_at: String,
+}
 
 /// Stem provenance metadata
 ///
@@ -167,9 +199,127 @@ impl StemProvenance {
     ///
     /// For example: `/path/to/track.stem.mp4` → `/path/to/track.stem.mp4.prov.json`
     #[must_use]
-    pub fn sidecar_path(stem_path: &std::path::Path) -> std::path::PathBuf {
-        std::path::PathBuf::from(format!("{}.prov.json", stem_path.display()))
+    pub fn sidecar_path(stem_path: &Path) -> PathBuf {
+        PathBuf::from(format!("{}.prov.json", stem_path.display()))
     }
+
+    /// Get the user notes sidecar file path for a given stem file path.
+    ///
+    /// For example: `/path/to/track.stem.mp4` → `/path/to/track.stem.mp4.notes.json`
+    #[must_use]
+    pub fn notes_sidecar_path(stem_path: &Path) -> PathBuf {
+        PathBuf::from(format!("{}.{}", stem_path.display(), USER_NOTES_EXTENSION))
+    }
+
+    /// Load provenance metadata from the sidecar file for a given stem path.
+    ///
+    /// Returns `Ok(None)` if the sidecar file does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the sidecar file exists but cannot be parsed.
+    pub fn load_from_sidecar(stem_path: &Path) -> Result<Option<Self>, ProvenanceError> {
+        let sidecar_path = Self::sidecar_path(stem_path);
+
+        if !sidecar_path.exists() {
+            debug!("Provenance sidecar not found: {}", sidecar_path.display());
+            return Ok(None);
+        }
+
+        info!("Loading provenance from: {}", sidecar_path.display());
+        let content = std::fs::read_to_string(&sidecar_path)?;
+        let provenance: StemProvenance = serde_json::from_str(&content)?;
+
+        debug!(
+            "Loaded provenance for model '{}' (job {})",
+            provenance.separation_model, provenance.job_id
+        );
+
+        Ok(Some(provenance))
+    }
+
+    /// Save provenance metadata to the sidecar file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be written.
+    pub fn save_to_sidecar(&self, stem_path: &Path) -> Result<PathBuf, ProvenanceError> {
+        let sidecar_path = Self::sidecar_path(stem_path);
+
+        // Ensure parent directory exists
+        if let Some(parent) = sidecar_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::write(&sidecar_path, content)?;
+
+        info!("Provenance saved to: {}", sidecar_path.display());
+        Ok(sidecar_path)
+    }
+
+    /// Get the source hash field.
+    /// This is an alias for `source_content_hash` for convenience.
+    #[must_use]
+    pub fn source_hash(&self) -> &str {
+        &self.source_content_hash
+    }
+}
+
+// =============================================================================
+// Standalone functions for use by other modules
+// =============================================================================
+
+/// Load provenance from a sidecar file (standalone function).
+pub fn load_stem_provenance_sidecar(stem_path: &Path) -> Result<Option<StemProvenance>, ProvenanceError> {
+    StemProvenance::load_from_sidecar(stem_path)
+}
+
+/// Save provenance to a sidecar file (standalone function).
+pub fn save_stem_provenance_sidecar(
+    stem_path: &Path,
+    provenance: &StemProvenance,
+) -> Result<PathBuf, ProvenanceError> {
+    provenance.save_to_sidecar(stem_path)
+}
+
+/// Save user notes to a sidecar file (non-destructive write).
+///
+/// This writes only to a `.notes.json` sidecar file and does not modify
+/// the audio data or provenance metadata.
+pub fn save_stem_user_notes(stem_path: &Path, notes: &str) -> Result<PathBuf, ProvenanceError> {
+    let notes_path = StemProvenance::notes_sidecar_path(stem_path);
+
+    // Ensure parent directory exists
+    if let Some(parent) = notes_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let notes_data = UserNotes {
+        stem_path: stem_path.to_string_lossy().to_string(),
+        notes: notes.to_string(),
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    let content = serde_json::to_string_pretty(&notes_data)?;
+    std::fs::write(&notes_path, content)?;
+
+    info!("User notes saved to: {}", notes_path.display());
+    Ok(notes_path)
+}
+
+/// Load user notes from a sidecar file.
+pub fn load_stem_user_notes(stem_path: &Path) -> Result<Option<String>, ProvenanceError> {
+    let notes_path = StemProvenance::notes_sidecar_path(stem_path);
+
+    if !notes_path.exists() {
+        return Ok(None);
+    }
+
+    let content = std::fs::read_to_string(&notes_path)?;
+    let notes_data: UserNotes = serde_json::from_str(&content)?;
+
+    Ok(Some(notes_data.notes))
 }
 
 impl Default for StemProvenance {
@@ -357,8 +507,6 @@ mod tests {
 
     #[test]
     fn test_provenance_sidecar_path() {
-        use std::path::Path;
-
         let stem_path = Path::new("/music/track.stem.mp4");
         let sidecar = StemProvenance::sidecar_path(stem_path);
         assert_eq!(
@@ -480,5 +628,22 @@ mod tests {
         let json = prov.to_json_string().unwrap();
         let deserialized = StemProvenance::from_json_str(&json).unwrap();
         assert_eq!(deserialized.job_id, uuid_job);
+    }
+
+    #[test]
+    fn test_provenance_source_hash_alias() {
+        let prov = StemProvenance::new(
+            "bs_roformer".to_string(),
+            "1.0.9".to_string(),
+            "2026-03-28T12:00:00Z".to_string(),
+            "/path.mp3".to_string(),
+            "test_hash_value".to_string(),
+            60.0,
+            44100,
+            "job_1".to_string(),
+        );
+
+        assert_eq!(prov.source_hash(), "test_hash_value");
+        assert_eq!(prov.source_hash(), prov.source_content_hash);
     }
 }
