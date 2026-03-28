@@ -56,10 +56,17 @@ jobs:
             exit 1
           }
           echo "Binary found, creating installers..."
-          npx tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\tauri-build.log"
+          echo "=== Tauri version ==="
+          .\node_modules\.bin\tauri.cmd --version
           echo ""
-          echo "=== Tauri build log tail ==="
-          Get-Content "$env:TEMP\tauri-build.log" -Tail 30
+          $ErrorActionPreference = "Continue"
+          $env:TAURI_BUILD_NO_CARGO = "true"
+          .\node_modules\.bin\tauri.cmd build --bundles msi,nsis --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\tauri-build.log"
+          $exitCode = $LASTEXITCODE
+          echo ""
+          echo "=== Tauri build exit code: $exitCode ==="
+          Get-Content "$env:TEMP\tauri-build.log" -Tail 50
+          if ($exitCode -ne 0) { exit $exitCode }
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Verify build outputs
@@ -225,10 +232,15 @@ jobs:
           echo "Binary found: $(ls -lh src-tauri/target/release/stemgen-gui)"
           echo ""
           echo "=== Creating installers ==="
-          npx tauri build --bundles deb,appimage,rpm 2>&1 | tee /tmp/tauri-build.log
+          echo "=== Tauri version ==="
+          ./node_modules/.bin/tauri --version
           echo ""
-          echo "=== Tauri build log tail ==="
+          TAURI_BUILD_NO_CARGO=true ./node_modules/.bin/tauri build --bundles deb,appimage,rpm 2>&1 | tee /tmp/tauri-build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo ""
+          echo "=== Tauri build exit code: $EXIT_CODE ==="
           tail -50 /tmp/tauri-build.log
+          if [ $EXIT_CODE -ne 0 ]; then exit $EXIT_CODE; fi
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Verify build outputs
