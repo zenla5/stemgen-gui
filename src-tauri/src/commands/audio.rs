@@ -3,6 +3,104 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::info;
 
+// ============================================================
+// Unit Tests
+// ============================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_audio_info_serialization() {
+        let info = AudioInfo {
+            path: "/test/song.mp3".to_string(),
+            name: "song.mp3".to_string(),
+            size: 5_000_000,
+            duration: 180.5,
+            sample_rate: 44100,
+            bit_depth: 16,
+            channels: 2,
+            format: "MP3".to_string(),
+            metadata: std::collections::HashMap::new(),
+            cover_art_path: None,
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("/test/song.mp3"));
+        assert!(json.contains("180.5"));
+        assert!(json.contains("44100"));
+
+        let deserialized: AudioInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.path, "/test/song.mp3");
+        assert_eq!(deserialized.duration, 180.5);
+        assert_eq!(deserialized.sample_rate, 44100);
+    }
+
+    #[test]
+    fn test_audio_info_with_metadata() {
+        let mut meta = std::collections::HashMap::new();
+        meta.insert("title".to_string(), "My Song".to_string());
+        meta.insert("artist".to_string(), "Test Artist".to_string());
+
+        let info = AudioInfo {
+            path: "/test/track.flac".to_string(),
+            name: "track.flac".to_string(),
+            size: 30_000_000,
+            duration: 240.0,
+            sample_rate: 96000,
+            bit_depth: 24,
+            channels: 2,
+            format: "FLAC".to_string(),
+            metadata: meta,
+            cover_art_path: Some("/tmp/cover.jpg".to_string()),
+        };
+
+        assert_eq!(info.metadata.get("title").unwrap(), "My Song");
+        assert_eq!(info.metadata.get("artist").unwrap(), "Test Artist");
+        assert!(info.cover_art_path.is_some());
+    }
+
+    #[test]
+    fn test_audio_info_with_empty_metadata() {
+        let info = AudioInfo {
+            path: "/test/empty.mp3".to_string(),
+            name: "empty.mp3".to_string(),
+            size: 1000,
+            duration: 10.0,
+            sample_rate: 22050,
+            bit_depth: 8,
+            channels: 1,
+            format: "MP3".to_string(),
+            metadata: std::collections::HashMap::new(),
+            cover_art_path: None,
+        };
+
+        assert!(info.metadata.is_empty());
+        assert!(info.cover_art_path.is_none());
+    }
+
+    #[test]
+    fn test_audio_info_deserialization_with_missing_optional_fields() {
+        let json = r#"{
+            "path": "/test/file.wav",
+            "name": "file.wav",
+            "size": 1000000,
+            "duration": 60.0,
+            "sample_rate": 48000,
+            "bit_depth": 32,
+            "channels": 2,
+            "format": "WAV",
+            "metadata": {},
+            "cover_art_path": null
+        }"#;
+
+        let info: AudioInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.format, "WAV");
+        assert_eq!(info.channels, 2);
+        assert!(info.cover_art_path.is_none());
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AudioInfo {
     pub path: String,

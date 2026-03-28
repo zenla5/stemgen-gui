@@ -122,3 +122,54 @@ impl Default for AudioResampler {
         Self::new_44100()
     }
 }
+
+// ============================================================
+// Unit Tests
+// ============================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resampler_new_44100() {
+        let resampler = AudioResampler::new_44100();
+        assert_eq!(resampler.target_sample_rate, 44100);
+    }
+
+    #[test]
+    fn test_resampler_new_custom_rate() {
+        let resampler = AudioResampler::new(48000);
+        assert_eq!(resampler.target_sample_rate, 48000);
+    }
+
+    #[test]
+    fn test_resampler_default() {
+        let resampler = AudioResampler::default();
+        assert_eq!(resampler.target_sample_rate, 44100);
+    }
+
+    #[test]
+    fn test_resampler_at_same_rate_returns_original() {
+        use crate::audio::decoder::SampleData;
+
+        let samples = SampleData {
+            samples: vec![0.5f32; 1000],
+            sample_rate: 44100,
+            channels: 2,
+        };
+
+        let mut resampler = AudioResampler::new_44100();
+        let result = resampler.resample(&samples);
+
+        assert!(result.is_ok());
+        let resampled = result.unwrap();
+        // At same rate, should return equivalent data
+        assert_eq!(resampled.sample_rate, 44100);
+        assert_eq!(resampled.samples.len(), samples.samples.len());
+    }
+
+    #[test]
+    fn test_target_sample_rate_constant() {
+        assert_eq!(TARGET_SAMPLE_RATE, 44100);
+    }
+}

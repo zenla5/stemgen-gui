@@ -52,7 +52,7 @@ jobs:
       - name: Check coverage thresholds
         run: |
           echo "=== Coverage Report Summary ==="
-          echo "Thresholds: lines 40%, functions 60%, branches 65%, statements 40%"
+          echo "Thresholds: lines 40%, functions 60%, branches 85%, statements 40%"
           echo "If thresholds are not met, CI will fail here."
 
   # Frontend integration tests (React component tests)

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] — 2026-03-28 — Testing Enhancement & Release Hardening
+
+### Testing & Quality
+- Comprehensive test coverage enhancement (475+ unit tests, 31 test files)
+- Rust backend unit tests for audio, metadata, separation, and resampling modules
+- Staged coverage thresholds to prevent regressions (40% → 60% → 80%)
+- v1.0.8 regression tests for DJ software presets and plugin structures
+- Security tests documenting parameterized SQL query usage
+- Fixed stale CI coverage comment
+
+### Dependencies
+- Updated Rust audio processing stack (symphonia, rubato, audioadapter)
+- Updated TypeScript dependencies (vitest 2.1.4, @vitest/coverage-v8 2.1.4)
+
 ## [1.0.7] — 2026-03-28 — CI Infrastructure & Quality Improvements
 
 ### Fixed

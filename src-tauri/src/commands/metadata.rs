@@ -313,3 +313,175 @@ pub fn format_bpm(bpm: Option<f64>) -> Option<String> {
         }
     })
 }
+
+// ============================================================
+// Unit Tests
+// ============================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_audio_metadata_serialization() {
+        let meta = AudioMetadata {
+            path: "/test/song.flac".to_string(),
+            title: Some("Test Title".to_string()),
+            artist: Some("Test Artist".to_string()),
+            album: Some("Test Album".to_string()),
+            year: Some(2024),
+            genre: Some("Electronic".to_string()),
+            bpm: Some(128.0),
+            key: Some("Am".to_string()),
+            duration: 180.5,
+            sample_rate: 44100,
+            bit_depth: 24,
+            channels: 2,
+            cover_art_path: Some("/tmp/cover.jpg".to_string()),
+        };
+
+        let json = serde_json::to_string(&meta).unwrap();
+        assert!(json.contains("Test Title"));
+        assert!(json.contains("Test Artist"));
+        assert!(json.contains("128"));
+
+        let deserialized: AudioMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.title.unwrap(), "Test Title");
+        assert_eq!(deserialized.bpm.unwrap(), 128.0);
+    }
+
+    #[test]
+    fn test_audio_metadata_minimal() {
+        let meta = AudioMetadata {
+            path: "/test/minimal.mp3".to_string(),
+            title: None,
+            artist: None,
+            album: None,
+            year: None,
+            genre: None,
+            bpm: None,
+            key: None,
+            duration: 60.0,
+            sample_rate: 22050,
+            bit_depth: 16,
+            channels: 1,
+            cover_art_path: None,
+        };
+
+        assert!(meta.title.is_none());
+        assert!(meta.bpm.is_none());
+        assert!(meta.key.is_none());
+    }
+
+    #[test]
+    fn test_stem_file_metadata_serialization() {
+        use crate::stems::metadata::NIStemMetadata;
+
+        let ni_meta = NIStemMetadata::default();
+        let meta = StemFileMetadata {
+            path: "/test/track.stem.mp4".to_string(),
+            ni_metadata: Some(ni_meta),
+            track_count: 5,
+            dj_software: Some("Traktor Pro".to_string()),
+            audio: AudioMetadata {
+                path: "/test/track.stem.mp4".to_string(),
+                title: Some("My Track".to_string()),
+                artist: Some("DJ Test".to_string()),
+                album: None,
+                year: Some(2024),
+                genre: None,
+                bpm: Some(130.5),
+                key: Some("C#m".to_string()),
+                duration: 200.0,
+                sample_rate: 44100,
+                bit_depth: 16,
+                channels: 2,
+                cover_art_path: None,
+            },
+        };
+
+        let json = serde_json::to_string(&meta).unwrap();
+        assert!(json.contains("My Track"));
+        assert!(json.contains("DJ Test"));
+        assert!(json.contains("5")); // track_count
+
+        let deserialized: StemFileMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.track_count, 5);
+        assert!(deserialized.ni_metadata.is_some());
+    }
+
+    #[test]
+    fn test_format_bpm_whole_number() {
+        assert_eq!(format_bpm(Some(120.0)), Some("120".to_string()));
+        assert_eq!(format_bpm(Some(140.0)), Some("140".to_string()));
+        assert_eq!(format_bpm(Some(0.0)), Some("0".to_string()));
+    }
+
+    #[test]
+    fn test_format_bpm_decimal() {
+        assert_eq!(format_bpm(Some(128.5)), Some("128.5".to_string()));
+        assert_eq!(format_bpm(Some(99.9)), Some("99.9".to_string()));
+        assert_eq!(format_bpm(Some(120.1)), Some("120.1".to_string()));
+    }
+
+    #[test]
+    fn test_format_bpm_none() {
+        assert_eq!(format_bpm(None), None);
+    }
+
+    #[test]
+    fn test_infer_dj_software_traktor() {
+        use crate::stems::metadata::{MasterData, NIStemMetadata, StemData};
+
+        let stems = vec![
+            StemData { name: "Drums".to_string(), color: "#FF6B6B".to_string(), file_path: "drums.m4a".to_string() },
+            StemData { name: "Bass".to_string(), color: "#4ECDC4".to_string(), file_path: "bass.m4a".to_string() },
+            StemData { name: "Other".to_string(), color: "#FFE66D".to_string(), file_path: "other.m4a".to_string() },
+            StemData { name: "Vocals".to_string(), color: "#95E1D3".to_string(), file_path: "vocals.m4a".to_string() },
+        ];
+        let master = MasterData { name: "Master".to_string(), file_path: "master.m4a".to_string() };
+        let ni_meta = NIStemMetadata::new(stems, master);
+
+        let result = infer_dj_software(&Some(ni_meta));
+        assert_eq!(result, Some("Traktor Pro".to_string()));
+    }
+
+    #[test]
+    fn test_infer_dj_software_serato() {
+        use crate::stems::metadata::{MasterData, NIStemMetadata, StemData};
+
+        let stems = vec![
+            StemData { name: "Vocals".to_string(), color: "#95E1D3".to_string(), file_path: "vocals.m4a".to_string() },
+            StemData { name: "Drums".to_string(), color: "#FF6B6B".to_string(), file_path: "drums.m4a".to_string() },
+            StemData { name: "Bass".to_string(), color: "#4ECDC4".to_string(), file_path: "bass.m4a".to_string() },
+            StemData { name: "Other".to_string(), color: "#FFE66D".to_string(), file_path: "other.m4a".to_string() },
+        ];
+        let master = MasterData { name: "Master".to_string(), file_path: "master.m4a".to_string() };
+        let ni_meta = NIStemMetadata::new(stems, master);
+
+        let result = infer_dj_software(&Some(ni_meta));
+        assert_eq!(result, Some("Serato DJ".to_string()));
+    }
+
+    #[test]
+    fn test_infer_dj_software_unknown_order() {
+        use crate::stems::metadata::{MasterData, NIStemMetadata, StemData};
+
+        let stems = vec![
+            StemData { name: "Bass".to_string(), color: "#4ECDC4".to_string(), file_path: "bass.m4a".to_string() },
+            StemData { name: "Drums".to_string(), color: "#FF6B6B".to_string(), file_path: "drums.m4a".to_string() },
+            StemData { name: "Vocals".to_string(), color: "#95E1D3".to_string(), file_path: "vocals.m4a".to_string() },
+            StemData { name: "Other".to_string(), color: "#FFE66D".to_string(), file_path: "other.m4a".to_string() },
+        ];
+        let master = MasterData { name: "Master".to_string(), file_path: "master.m4a".to_string() };
+        let ni_meta = NIStemMetadata::new(stems, master);
+
+        let result = infer_dj_software(&Some(ni_meta));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_infer_dj_software_no_metadata() {
+        let result = infer_dj_software(&None);
+        assert_eq!(result, None);
+    }
+}

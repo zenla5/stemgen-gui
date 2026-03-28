@@ -354,6 +354,183 @@ pub async fn export_stem(request: ExportStemRequest) -> Result<ExportStemRespons
     })
 }
 
+// ============================================================
+// Unit Tests
+// ============================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_separation_settings_serialization() {
+        let settings = SeparationSettings {
+            model: "bs_roformer".to_string(),
+            device: "cuda".to_string(),
+            output_format: "alac".to_string(),
+            quality_preset: "standard".to_string(),
+            dj_preset: "traktor".to_string(),
+        };
+
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("bs_roformer"));
+        assert!(json.contains("cuda"));
+
+        let deserialized: SeparationSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.model, "bs_roformer");
+    }
+
+    #[test]
+    fn test_stem_info_serialization() {
+        let stem = StemInfo {
+            stem_type: "drums".to_string(),
+            file_path: Some("/path/to/drums.wav".to_string()),
+        };
+
+        let json = serde_json::to_string(&stem).unwrap();
+        assert!(json.contains("drums"));
+        assert!(json.contains("/path/to/drums.wav"));
+
+        let deserialized: StemInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.stem_type, "drums");
+    }
+
+    #[test]
+    fn test_stem_path_serialization() {
+        let stem = StemPath {
+            stem_type: "bass".to_string(),
+            path: "/path/to/bass.wav".to_string(),
+        };
+
+        let json = serde_json::to_string(&stem).unwrap();
+        assert!(json.contains("bass"));
+
+        let deserialized: StemPath = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.stem_type, "bass");
+    }
+
+    #[test]
+    fn test_pack_stems_request_serialization() {
+        let request = PackStemsRequest {
+            master_path: "/test/master.wav".to_string(),
+            stem_paths: vec![
+                StemPath { stem_type: "drums".to_string(), path: "/test/drums.wav".to_string() },
+                StemPath { stem_type: "bass".to_string(), path: "/test/bass.wav".to_string() },
+            ],
+            output_path: "/test/output.stem.mp4".to_string(),
+            dj_software: "traktor".to_string(),
+            output_format: "alac".to_string(),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("/test/master.wav"));
+        assert!(json.contains("/test/output.stem.mp4"));
+
+        let deserialized: PackStemsRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.stem_paths.len(), 2);
+    }
+
+    #[test]
+    fn test_pack_stems_response_serialization() {
+        let response = PackStemsResponse {
+            success: true,
+            output_path: "/test/output.stem.mp4".to_string(),
+            metadata_path: Some("/test/output.metadata.json".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("true"));
+        assert!(json.contains("output.stem.mp4"));
+
+        let deserialized: PackStemsResponse = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.success);
+        assert!(deserialized.metadata_path.is_some());
+    }
+
+    #[test]
+    fn test_export_stem_request_serialization() {
+        let request = ExportStemRequest {
+            stem_path: "/test/drums.wav".to_string(),
+            output_path: "/test/drums.mp3".to_string(),
+            format: "mp3".to_string(),
+            normalize: true,
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("mp3"));
+        assert!(json.contains("true")); // normalize
+
+        let deserialized: ExportStemRequest = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.normalize);
+    }
+
+    #[test]
+    fn test_batch_export_request_serialization() {
+        let request = BatchExportRequest {
+            stem_paths: vec![
+                StemPath { stem_type: "drums".to_string(), path: "/drums.wav".to_string() },
+                StemPath { stem_type: "bass".to_string(), path: "/bass.wav".to_string() },
+            ],
+            output_dir: "/output".to_string(),
+            format: "flac".to_string(),
+            normalize: false,
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("/output"));
+        assert!(json.contains("flac"));
+
+        let deserialized: BatchExportRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.stem_paths.len(), 2);
+    }
+
+    #[test]
+    fn test_batch_export_response_serialization() {
+        let response = BatchExportResponse {
+            success: true,
+            exported_files: vec![
+                "/output/drums.flac".to_string(),
+                "/output/bass.flac".to_string(),
+            ],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("drums.flac"));
+        assert!(json.contains("bass.flac"));
+
+        let deserialized: BatchExportResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.exported_files.len(), 2);
+    }
+
+    #[test]
+    fn test_separation_response_serialization() {
+        let response = SeparationResponse {
+            success: true,
+            stems: vec![
+                StemInfo { stem_type: "drums".to_string(), file_path: Some("/drums.wav".to_string()) },
+            ],
+            output_dir: "/stems/track".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("drums"));
+
+        let deserialized: SeparationResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.stems.len(), 1);
+    }
+
+    #[test]
+    fn test_stem_info_without_file_path() {
+        let stem = StemInfo {
+            stem_type: "vocals".to_string(),
+            file_path: None,
+        };
+
+        let json = serde_json::to_string(&stem).unwrap();
+        let deserialized: StemInfo = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.file_path.is_none());
+    }
+}
+
 /// Batch export multiple stems
 #[tauri::command]
 pub async fn batch_export_stems(
