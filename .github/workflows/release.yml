@@ -195,14 +195,29 @@ jobs:
 
       - name: List artifacts
         run: |
-          find artifacts -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) 2>/dev/null || true
+          echo "=== Listing all files in artifacts directory ==="
           ls -laR artifacts/ || true
+          echo ""
+          echo "=== Looking for build artifacts ==="
+          find artifacts -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) 2>/dev/null || echo "No artifacts found"
 
       - name: Generate SHA256 checksums
         run: |
+          echo "=== Generating SHA256 checksums ==="
           cd artifacts
-          find . -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) -exec shasum -a 256 {} \; > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          # Use find to locate all artifacts, then generate checksums
+          find . -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) > /tmp/artifacts.txt
+          if [ -s /tmp/artifacts.txt ]; then
+            while IFS= read -r file; do
+              shasum -a 256 "$file" >> SHA256SUMS.txt
+            done < /tmp/artifacts.txt
+            echo "Checksums generated:"
+            cat SHA256SUMS.txt || echo "No checksums generated"
+          else
+            echo "WARNING: No artifact files found to generate checksums for"
+            echo "Release will be created without checksums"
+            touch SHA256SUMS.txt
+          fi
 
       - name: Upload SHA256 checksums
         uses: actions/upload-artifact@v4
