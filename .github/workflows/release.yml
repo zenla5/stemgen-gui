@@ -38,31 +38,43 @@ jobs:
         run: npm ci
       - name: Build frontend
         run: npm run build
+      - name: Build Windows release
+        run: |
+          echo "=== Building release binary ==="
+          cargo build --release --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\cargo-build.log"
+          echo ""
+          echo "=== Cargo build tail ==="
+          Get-Content "$env:TEMP\cargo-build.log" -Tail 10
+        working-directory: src-tauri
+        env:
+          CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Build Windows installers
         run: |
-          echo "=== Tauri CLI version ==="
-          npx tauri --version
+          echo "=== Binary check ==="
+          if (!(Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe")) {
+            echo "ERROR: Binary not found"
+            exit 1
+          }
+          echo "Binary found, creating installers..."
+          npx tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\tauri-build.log"
           echo ""
-          echo "=== Running Tauri bundler ==="
-          npx tauri build --bundles msi,nsis 2>&1 | tee "$env:TEMP\tauri-build.log"
-          echo ""
-          echo "=== Tauri build log (last 30 lines) ==="
+          echo "=== Tauri build log tail ==="
           Get-Content "$env:TEMP\tauri-build.log" -Tail 30
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Verify build outputs
         run: |
           echo "=== Release binary ==="
-          if (Test-Path "src-tauri/target/release/Stemgen-GUI.exe") {
-            Get-Item "src-tauri/target/release/Stemgen-GUI.exe" | Select-Object Name, Length | Format-Table -AutoSize
+          if (Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe") {
+            Get-Item "src-tauri/target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe" | Select-Object Name, Length | Format-Table -AutoSize
           } else {
             Write-Host "WARNING: No Stemgen-GUI.exe found"
-            Get-ChildItem src-tauri/target/release -Filter "*.exe" -File | Select-Object Name, Length | Format-Table -AutoSize
+            Get-ChildItem src-tauri/target -Filter "*.exe" -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
           }
           echo ""
           echo "=== Bundle directory ==="
-          if (Test-Path "src-tauri/target/release/bundle") {
-            Get-ChildItem src-tauri/target/release/bundle -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+          if (Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle") {
+            Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
           } else {
             Write-Host "WARNING: No bundle directory found"
           }
@@ -71,9 +83,9 @@ jobs:
         with:
           name: windows-installer
           path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/Stemgen-GUI.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -98,31 +110,39 @@ jobs:
         run: npm ci
       - name: Build frontend
         run: npm run build
+      - name: Build macOS release
+        run: |
+          echo "=== Building release binary ==="
+          cargo build --release --target aarch64-apple-darwin 2>&1 | tee /tmp/cargo-build.log
+          echo ""
+          echo "=== Cargo build tail ==="
+          tail -10 /tmp/cargo-build.log
+        working-directory: src-tauri
+        env:
+          CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Build macOS .app bundle
         run: |
-          echo "=== Tauri CLI version ==="
-          npx tauri --version
+          echo "=== Binary check ==="
+          if [ ! -f "src-tauri/target/aarch64-apple-darwin/release/Stemgen GUI.app" ]; then
+            echo "WARNING: .app bundle not pre-built, Tauri will create it"
+          fi
+          echo "Creating .app bundle..."
+          npx tauri build --bundles app --target aarch64-apple-darwin 2>&1 | tee /tmp/tauri-build.log
           echo ""
-          echo "=== Running Tauri bundler ==="
-          npx tauri build --bundles app 2>&1 | tee /tmp/tauri-build.log
-          echo ""
-          echo "=== Tauri build log (last 30 lines) ==="
+          echo "=== Tauri build log tail ==="
           tail -30 /tmp/tauri-build.log
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Find and package .app bundle
         id: package
         run: |
-          echo "=== Listing target/release ==="
-          ls -la target/release/ 2>/dev/null || echo "No target/release"
-          echo ""
-          echo "=== Listing target/release/bundle ==="
-          ls -la target/release/bundle/ 2>/dev/null || echo "No bundle directory"
+          echo "=== Listing target/aarch64-apple-darwin/release ==="
+          ls -la target/aarch64-apple-darwin/release/ 2>/dev/null | head -20
           echo ""
           echo "=== Searching for .app bundle ==="
-          APP_DIR=$(find . -name "*.app" -type d 2>/dev/null | grep "target/release" | head -1)
+          APP_DIR=$(find . -name "*.app" -type d 2>/dev/null | grep "target/aarch64" | head -1)
           if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
-            echo "ERROR: No .app bundle found in target/release"
+            echo "ERROR: No .app bundle found"
             find . -name "*.app" -type d 2>/dev/null
             exit 1
           fi
@@ -150,8 +170,8 @@ jobs:
         with:
           name: macos-arm-artifacts
           path: |
-            src-tauri/target/release/bundle/macos/
-            src-tauri/target/release/Stemgen-GUI
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/
+            src-tauri/target/aarch64-apple-darwin/release/Stemgen-GUI
             ${{ github.workspace }}/${{ steps.package.outputs.dmg_file }}
           if-no-files-found: error
           retention-days: 7
@@ -184,15 +204,30 @@ jobs:
         run: npm ci
       - name: Build frontend
         run: npm run build
+      - name: Build Linux release
+        run: |
+          echo "=== Building release binary ==="
+          cargo build --release 2>&1 | tee /tmp/cargo-build.log
+          echo ""
+          echo "=== Cargo build tail ==="
+          tail -10 /tmp/cargo-build.log
+        working-directory: src-tauri
+        env:
+          CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Build Linux installers
         run: |
-          echo "=== Tauri CLI version ==="
-          npx tauri --version
+          echo "=== Binary check ==="
+          if [ ! -f "src-tauri/target/release/stemgen-gui" ]; then
+            echo "ERROR: Binary not found"
+            ls -la src-tauri/target/release/ 2>/dev/null | head -20
+            exit 1
+          fi
+          echo "Binary found: $(ls -lh src-tauri/target/release/stemgen-gui)"
           echo ""
-          echo "=== Running Tauri bundler ==="
+          echo "=== Creating installers ==="
           npx tauri build --bundles deb,appimage,rpm 2>&1 | tee /tmp/tauri-build.log
           echo ""
-          echo "=== Tauri build log (last 50 lines) ==="
+          echo "=== Tauri build log tail ==="
           tail -50 /tmp/tauri-build.log
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
@@ -205,9 +240,6 @@ jobs:
             echo "WARNING: No stemgen-gui binary found"
             ls -la src-tauri/target/release/ 2>/dev/null | head -20
           fi
-          echo ""
-          echo "=== Target release directory ==="
-          ls -la src-tauri/target/release/ 2>/dev/null || echo "No release directory"
           echo ""
           echo "=== Bundle directory ==="
           ls -la src-tauri/target/release/bundle/ 2>/dev/null || echo "No bundle directory"
