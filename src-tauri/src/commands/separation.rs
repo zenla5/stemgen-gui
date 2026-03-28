@@ -413,8 +413,14 @@ mod tests {
         let request = PackStemsRequest {
             master_path: "/test/master.wav".to_string(),
             stem_paths: vec![
-                StemPath { stem_type: "drums".to_string(), path: "/test/drums.wav".to_string() },
-                StemPath { stem_type: "bass".to_string(), path: "/test/bass.wav".to_string() },
+                StemPath {
+                    stem_type: "drums".to_string(),
+                    path: "/test/drums.wav".to_string(),
+                },
+                StemPath {
+                    stem_type: "bass".to_string(),
+                    path: "/test/bass.wav".to_string(),
+                },
             ],
             output_path: "/test/output.stem.mp4".to_string(),
             dj_software: "traktor".to_string(),
@@ -467,8 +473,14 @@ mod tests {
     fn test_batch_export_request_serialization() {
         let request = BatchExportRequest {
             stem_paths: vec![
-                StemPath { stem_type: "drums".to_string(), path: "/drums.wav".to_string() },
-                StemPath { stem_type: "bass".to_string(), path: "/bass.wav".to_string() },
+                StemPath {
+                    stem_type: "drums".to_string(),
+                    path: "/drums.wav".to_string(),
+                },
+                StemPath {
+                    stem_type: "bass".to_string(),
+                    path: "/bass.wav".to_string(),
+                },
             ],
             output_dir: "/output".to_string(),
             format: "flac".to_string(),
@@ -505,9 +517,10 @@ mod tests {
     fn test_separation_response_serialization() {
         let response = SeparationResponse {
             success: true,
-            stems: vec![
-                StemInfo { stem_type: "drums".to_string(), file_path: Some("/drums.wav".to_string()) },
-            ],
+            stems: vec![StemInfo {
+                stem_type: "drums".to_string(),
+                file_path: Some("/drums.wav".to_string()),
+            }],
             output_dir: "/stems/track".to_string(),
         };
 

@@ -433,12 +433,31 @@ mod tests {
         use crate::stems::metadata::{MasterData, NIStemMetadata, StemData};
 
         let stems = vec![
-            StemData { name: "Drums".to_string(), color: "#FF6B6B".to_string(), file_path: "drums.m4a".to_string() },
-            StemData { name: "Bass".to_string(), color: "#4ECDC4".to_string(), file_path: "bass.m4a".to_string() },
-            StemData { name: "Other".to_string(), color: "#FFE66D".to_string(), file_path: "other.m4a".to_string() },
-            StemData { name: "Vocals".to_string(), color: "#95E1D3".to_string(), file_path: "vocals.m4a".to_string() },
+            StemData {
+                name: "Drums".to_string(),
+                color: "#FF6B6B".to_string(),
+                file_path: "drums.m4a".to_string(),
+            },
+            StemData {
+                name: "Bass".to_string(),
+                color: "#4ECDC4".to_string(),
+                file_path: "bass.m4a".to_string(),
+            },
+            StemData {
+                name: "Other".to_string(),
+                color: "#FFE66D".to_string(),
+                file_path: "other.m4a".to_string(),
+            },
+            StemData {
+                name: "Vocals".to_string(),
+                color: "#95E1D3".to_string(),
+                file_path: "vocals.m4a".to_string(),
+            },
         ];
-        let master = MasterData { name: "Master".to_string(), file_path: "master.m4a".to_string() };
+        let master = MasterData {
+            name: "Master".to_string(),
+            file_path: "master.m4a".to_string(),
+        };
         let ni_meta = NIStemMetadata::new(stems, master);
 
         let result = infer_dj_software(&Some(ni_meta));
@@ -450,12 +469,31 @@ mod tests {
         use crate::stems::metadata::{MasterData, NIStemMetadata, StemData};
 
         let stems = vec![
-            StemData { name: "Vocals".to_string(), color: "#95E1D3".to_string(), file_path: "vocals.m4a".to_string() },
-            StemData { name: "Drums".to_string(), color: "#FF6B6B".to_string(), file_path: "drums.m4a".to_string() },
-            StemData { name: "Bass".to_string(), color: "#4ECDC4".to_string(), file_path: "bass.m4a".to_string() },
-            StemData { name: "Other".to_string(), color: "#FFE66D".to_string(), file_path: "other.m4a".to_string() },
+            StemData {
+                name: "Vocals".to_string(),
+                color: "#95E1D3".to_string(),
+                file_path: "vocals.m4a".to_string(),
+            },
+            StemData {
+                name: "Drums".to_string(),
+                color: "#FF6B6B".to_string(),
+                file_path: "drums.m4a".to_string(),
+            },
+            StemData {
+                name: "Bass".to_string(),
+                color: "#4ECDC4".to_string(),
+                file_path: "bass.m4a".to_string(),
+            },
+            StemData {
+                name: "Other".to_string(),
+                color: "#FFE66D".to_string(),
+                file_path: "other.m4a".to_string(),
+            },
         ];
-        let master = MasterData { name: "Master".to_string(), file_path: "master.m4a".to_string() };
+        let master = MasterData {
+            name: "Master".to_string(),
+            file_path: "master.m4a".to_string(),
+        };
         let ni_meta = NIStemMetadata::new(stems, master);
 
         let result = infer_dj_software(&Some(ni_meta));
@@ -467,12 +505,31 @@ mod tests {
         use crate::stems::metadata::{MasterData, NIStemMetadata, StemData};
 
         let stems = vec![
-            StemData { name: "Bass".to_string(), color: "#4ECDC4".to_string(), file_path: "bass.m4a".to_string() },
-            StemData { name: "Drums".to_string(), color: "#FF6B6B".to_string(), file_path: "drums.m4a".to_string() },
-            StemData { name: "Vocals".to_string(), color: "#95E1D3".to_string(), file_path: "vocals.m4a".to_string() },
-            StemData { name: "Other".to_string(), color: "#FFE66D".to_string(), file_path: "other.m4a".to_string() },
+            StemData {
+                name: "Bass".to_string(),
+                color: "#4ECDC4".to_string(),
+                file_path: "bass.m4a".to_string(),
+            },
+            StemData {
+                name: "Drums".to_string(),
+                color: "#FF6B6B".to_string(),
+                file_path: "drums.m4a".to_string(),
+            },
+            StemData {
+                name: "Vocals".to_string(),
+                color: "#95E1D3".to_string(),
+                file_path: "vocals.m4a".to_string(),
+            },
+            StemData {
+                name: "Other".to_string(),
+                color: "#FFE66D".to_string(),
+                file_path: "other.m4a".to_string(),
+            },
         ];
-        let master = MasterData { name: "Master".to_string(), file_path: "master.m4a".to_string() };
+        let master = MasterData {
+            name: "Master".to_string(),
+            file_path: "master.m4a".to_string(),
+        };
         let ni_meta = NIStemMetadata::new(stems, master);
 
         let result = infer_dj_software(&Some(ni_meta));
