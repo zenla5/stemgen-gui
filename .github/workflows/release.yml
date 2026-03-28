@@ -1,4 +1,3 @@
-# Stemgen-GUI Release Build Pipeline
 name: Release Build
 
 on:
@@ -18,7 +17,6 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # Build for Windows
   build-windows:
     name: Build Windows (x64)
     runs-on: windows-latest
@@ -26,32 +24,25 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
-
       - name: Install dependencies
         run: npm ci
-
       - name: Build frontend
         run: npm run build
-
-      - name: Build binary (no bundler)
+      - name: Build binary only
         run: npx tauri build --bundles none
-
-      - name: Build Windows installers (MSI + NSIS)
+      - name: Build Windows installers
         run: npx tauri build --bundles msi,nsis
-
-      - name: Diagnostic: list all build outputs
+      - name: List build outputs
         run: |
           echo "=== Release binary ==="
           Get-ChildItem src-tauri/target/release -Filter "*.exe" -File | Select-Object FullName, Length | Format-Table -AutoSize
@@ -61,7 +52,6 @@ jobs:
           echo ""
           echo "=== All installer files ==="
           Get-ChildItem src-tauri/target/release -Recurse -Include "*.msi","*.exe" | Select-Object FullName, Length | Format-Table -AutoSize
-
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -75,40 +65,32 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Build for macOS (Apple Silicon)
-  build-macos-arm:
+  build-macos:
     name: Build macOS (Apple Silicon)
     runs-on: macos-14
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: aarch64-apple-darwin
-
       - name: Install dependencies
         run: npm ci
-
       - name: Build frontend
         run: npm run build
-
-      - name: Build binary (no bundler)
+      - name: Build binary only
         run: npx tauri build --bundles none
-
-      - name: Build macOS bundle (.app)
+      - name: Build macOS bundle
         run: npx tauri build --bundles app
-
-      - name: Diagnostic: list all build outputs
+      - name: List build outputs
         run: |
           echo "=== Release binary ==="
           ls -la src-tauri/target/release/stemgen-gui 2>/dev/null || echo "No binary found"
@@ -118,12 +100,9 @@ jobs:
           echo ""
           echo "=== Looking for .app bundle ==="
           find src-tauri/target/release/bundle -name "*.app" -type d 2>/dev/null || echo "No .app found"
-
       - name: Package .app bundle as zip
         run: |
-          echo "=== Searching for .app bundle ==="
           APP_DIR=$(find src-tauri/target/release/bundle -name "*.app" -type d 2>/dev/null | head -1)
-          
           if [ -n "$APP_DIR" ]; then
             echo "Found: $APP_DIR"
             cd "$(dirname "$APP_DIR")"
@@ -136,7 +115,6 @@ jobs:
             find src-tauri/target/release/bundle -type d 2>/dev/null | head -20
             exit 1
           fi
-
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -149,7 +127,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Build for Linux (Ubuntu/Debian)
   build-linux:
     name: Build Linux
     runs-on: ubuntu-22.04
@@ -157,50 +134,32 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libssl-dev \
-            pkg-config \
-            libasound2-dev \
-            libgtk-3-dev \
-            libgdk-pixbuf2.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            libsoup-3.0-dev \
-            libwebkit2gtk-4.1-dev \
-            libglib2.0-dev \
-            libcairo2-dev \
-            libayatana-appindicator3-dev \
-            libdbus-1-dev \
-            ffmpeg \
-            zip
-
+            libssl-dev pkg-config libasound2-dev libgtk-3-dev \
+            libgdk-pixbuf2.0-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev libglib2.0-dev libcairo2-dev \
+            libayatana-appindicator3-dev libdbus-1-dev ffmpeg zip
       - name: Install dependencies
         run: npm ci
-
       - name: Build frontend
         run: npm run build
-
-      - name: Build binary (no bundler)
+      - name: Build binary only
         run: npx tauri build --bundles none
-
-      - name: Build Linux installers (deb + AppImage + rpm)
+      - name: Build Linux installers
         run: npx tauri build --bundles deb,appimage,rpm
-
-      - name: Diagnostic: list all build outputs
+      - name: List build outputs
         run: |
           echo "=== Release binary ==="
           ls -la src-tauri/target/release/stemgen-gui 2>/dev/null || echo "No binary found"
@@ -210,7 +169,6 @@ jobs:
           echo ""
           echo "=== All package files ==="
           find src-tauri/target/release -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" 2>/dev/null | head -20
-
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -226,18 +184,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Create GitHub Release
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [build-windows, build-macos-arm, build-linux]
+    needs: [build-windows, build-macos, build-linux]
     permissions:
       contents: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Version consistency check (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -247,33 +202,28 @@ jobs:
             echo "Error: package.json version does not match tag $VERSION"
             exit 1
           fi
-          echo "✓ package.json version matches tag"
+          echo "package.json version matches tag"
           if ! grep -q "version = \"$VERSION\"" src-tauri/Cargo.toml; then
             echo "Error: src-tauri/Cargo.toml version does not match tag $VERSION"
             exit 1
           fi
-          echo "✓ src-tauri/Cargo.toml version matches tag"
-
+          echo "src-tauri/Cargo.toml version matches tag"
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-
       - name: List artifacts
         run: |
           echo "=== All artifact files ==="
           find artifacts -type f 2>/dev/null || echo "No artifacts found"
-
       - name: Generate SHA256 checksums
         run: |
           echo "=== Generating SHA256 checksums ==="
           if [ ! -d "artifacts" ]; then
-            echo "ERROR: artifacts directory does not exist — build jobs may have failed"
+            echo "ERROR: artifacts directory does not exist"
             exit 1
           fi
-
           cd artifacts || exit 1
-
           find . -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.zip" -o -name "stemgen-gui" \) > /tmp/artifacts.txt
           if [ -s /tmp/artifacts.txt ]; then
             while IFS= read -r file; do
@@ -282,17 +232,15 @@ jobs:
             echo "Checksums generated:"
             cat SHA256SUMS.txt
           else
-            echo "ERROR: No artifact files found — cannot generate checksums"
+            echo "ERROR: No artifact files found"
             exit 1
           fi
-
       - name: Upload SHA256 checksums
         uses: actions/upload-artifact@v4
         with:
           name: sha256-checksums
           path: artifacts/SHA256SUMS.txt
           retention-days: 30
-
       - name: Determine version
         id: version
         run: |
@@ -303,44 +251,32 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
-
       - name: Generate Tauri update manifests
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          echo "Generating update manifests for version: $VERSION"
-
           mkdir -p artifacts
-
           MANIFEST="{\"name\":\"Stemgen GUI\",\"version\":\"$VERSION\",\"notes\":\"Stemgen GUI v$VERSION\",\"date\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"apple\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_aarch64.dmg\",\"isDarkModeSupported\":true},\"windows\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_x64-setup.exe\",\"isDarkModeSupported\":true},\"linux\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_amd64.AppImage\"}}"
-
           echo "$MANIFEST" > artifacts/latest.json
           echo "Latest manifest:"
           cat artifacts/latest.json
-
       - name: Sign update manifests (if secrets available)
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PASSWORD }}
         run: |
           if [ -n "$TAURI_PRIVATE_KEY" ] && [ -n "$TAURI_SIGNING_PASSWORD" ]; then
-            echo "Signing update manifests with Tauri..."
-            npx @tauri-apps/cli@latest signer sign \
-              --private-key "$TAURI_PRIVATE_KEY" \
-              --password "$TAURI_SIGNING_PASSWORD" \
-              artifacts/latest.json
-            echo "Manifest signed successfully."
+            echo "Signing update manifests..."
+            npx @tauri-apps/cli@latest signer sign --private-key "$TAURI_PRIVATE_KEY" --password "$TAURI_SIGNING_PASSWORD" artifacts/latest.json
+            echo "Manifest signed."
           else
-            echo "WARNING: TAURI_PRIVATE_KEY or TAURI_SIGNING_PASSWORD not set."
-            echo "Update manifests are unsigned — only for testing."
+            echo "WARNING: TAURI_PRIVATE_KEY or TAURI_SIGNING_PASSWORD not set — manifests unsigned."
           fi
-
       - name: Upload update manifests
         uses: actions/upload-artifact@v4
         with:
           name: update-manifests
           path: artifacts/latest.json
           retention-days: 365
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
