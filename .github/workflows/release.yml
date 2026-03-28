@@ -86,6 +86,7 @@ jobs:
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Find and package .app bundle
+        id: package
         run: |
           echo "=== Searching for .app bundle ==="
           APP_DIR=$(find . -name "*.app" -type d 2>/dev/null | grep "target/release" | head -1)
@@ -107,14 +108,19 @@ jobs:
           fi
           ls -lh "$ZIP_NAME"
           unzip -l "$ZIP_NAME" | head -5
+          echo ""
+          echo "=== Copy zip to workspace root ==="
+          cp "$ZIP_NAME" "$GITHUB_WORKSPACE/"
+          echo "Copied to: $GITHUB_WORKSPACE/$ZIP_NAME"
+          echo "zip_file=$ZIP_NAME" >> "$GITHUB_OUTPUT"
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm-artifacts
           path: |
-            src-tauri/target/release/bundle/macos/*.app/
+            src-tauri/target/release/bundle/macos/
             src-tauri/target/release/Stemgen-GUI
-            src-tauri/target/release/bundle/macos/*.zip
+            ${{ github.workspace }}/${{ steps.package.outputs.zip_file }}
           if-no-files-found: error
           retention-days: 7
 
