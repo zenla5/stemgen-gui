@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // Test suite for Stemgen-GUI E2E tests
 
-test.describe('App Shell', () => {
+test.describe.serial('App Shell', () => {
   test.beforeEach(async ({ page }) => {
     // Wait for the app to be fully loaded
     await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30000 });
