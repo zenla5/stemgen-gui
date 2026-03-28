@@ -299,7 +299,7 @@ jobs:
         with:
           draft: true
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-          generate_release_notes: true
+          generate_release_notes: false
           files: |
             artifacts/**/*.exe
             artifacts/**/*.msi
