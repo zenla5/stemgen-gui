@@ -115,37 +115,41 @@ Audio File (MP3/FLAC/WAV/OGG)
 - **HTDemucs (fine-tuned)** - Highest quality, slow
 - **Demucs v4** - Medium quality, fast
 
-## 📥 Downloads (Latest Release)
+## 📥 Downloads
 
-> **⚠️ Important Notice - Unsigned Code:**
-> 
-> This project does **not** use paid code signing certificates for Windows (.exe/.msi) or macOS (.dmg) applications. This means:
-> - **Windows SmartScreen** may show a warning: *"Windows protected your PC"*. Click "More info" → "Run anyway" to proceed.
-> - **macOS Gatekeeper** may block the app on first launch. To allow: System Settings → Privacy & Security → scroll down → click "Open Anyway".
+> **⚠️ Unsigned Code Notice:**
+>
+> This project does **not** use paid code-signing certificates for Windows (.exe/.msi) or macOS (.dmg) applications. This means:
+> - **Windows SmartScreen** may show a warning. Click "More info" → "Run anyway" to proceed.
+> - **macOS Gatekeeper** may block the app on first launch. Allow via System Settings → Privacy & Security → "Open Anyway".
 > - Linux AppImages may require `chmod +x` before execution.
 >
-> The binaries are built via GitHub Actions and are cryptographically signed with the repository's commit hash. SHA256 checksums are provided for verification.
+> Binaries are built via GitHub Actions. SHA256 checksums are provided with every release for verification.
 
-> **Note:** After your first release tag (`v1.0.0`), installers for all platforms will be available here. Once published, the links below will point to the latest GitHub release with ready-to-run installers.
+### Latest Release (v1.0.9)
 
-| Platform | Installer | Requirements |
-|----------|-----------|-------------|
-| **Windows** | [.exe (NSIS)](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.1_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.1_x64-setup.msi) | Windows 10/11 |
-| **macOS Apple Silicon** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.1_aarch64.dmg) | macOS 11+ (Apple Silicon) |
-| **Linux** | [.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.1_amd64.AppImage) · [.deb](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui_1.0.1_amd64.deb) · [.rpm](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui-1.0.1-1.x86_64.rpm) | Ubuntu 20.04+ / compatible distros |
+Download the installer for your platform below. All links point to the **latest GitHub release** — they are always up to date.
+
+| Platform | Download |
+|---|---|
+| **Windows** | [.exe (NSIS installer)](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.9_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.9_x64-setup.msi) |
+| **macOS (Apple Silicon)** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.9_aarch64.dmg) |
+| **Linux** | [.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_1.0.9_amd64.AppImage) · [.deb](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui_1.0.9_amd64.deb) · [.rpm](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui-1.0.9-1.x86_64.rpm) |
 
 📌 **All releases:** [github.com/zenla5/stemgen-gui/releases](https://github.com/zenla5/stemgen-gui/releases)
 
 ### Verifying Downloads
 
-SHA256 checksums are provided with every release in `SHA256SUMS.txt`. To verify:
+Every release includes a `SHA256SUMS.txt` file listing the hash of each binary. Verify your download:
 
 ```bash
-# Linux/macOS
-shasum -a 256 Stemgen-GUI_x.x.x_amd64.AppImage
+# Linux / macOS
+shasum -a 256 Stemgen-GUI_1.0.9_amd64.AppImage
+# Compare the output against the entry in SHA256SUMS.txt
 
 # Windows (PowerShell)
-Get-FileHash Stemgen-GUI_x.x.x_x64-setup.exe -Algorithm SHA256
+Get-FileHash Stemgen-GUI_1.0.9_x64-setup.exe -Algorithm SHA256
+# Compare against SHA256SUMS.txt
 ```
 
 ---

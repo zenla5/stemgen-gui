@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] — 2026-03-28 — Release Artifact & Download Link Repair
+
+### Fixed
+
+- **README download links** — All download URLs hardcoded version `1.0.1` in filenames, causing 404s on every subsequent release. Updated to `1.0.9` and restructured the downloads table to use the version-agnostic `/releases/latest` redirect, so links remain valid on future releases without further edits.
+- **Release workflow: build jobs on every push** — `build-windows`, `build-macos-arm`, and `build-linux` ran on every `git push`, wasting CI minutes and uploading orphaned artifacts. Added `if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'` to restrict them to tag pushes and manual dispatch only.
+- **Release workflow: silent artifact-missing failures** — All three build jobs used `if-no-files-found: ignore`, causing the job to turn green even when Tauri produced no binaries. Changed to `if-no-files-found: error` so the workflow fails loudly on missing artifacts.
+- **Release workflow: workflow_dispatch never created releases** — The standalone `version-check` job was skipped on `workflow_dispatch` (because it had `if: startsWith(github.ref, 'refs/tags/')`). Since `release` depended on it via `needs: [version-check, …]`, GitHub Actions skipped the entire `release` job. Removed the standalone job and inlined the version check as a conditional step inside `release` that only runs on tag pushes.
+- **Release workflow: draft release never published** — `softprops/action-gh-release` was called with `draft: true` but no subsequent step promoted the draft to published, leaving releases invisible to users. Changed to `draft: false` so releases go live atomically once all artifacts are confirmed present locally.
+
 ## [1.0.9] — 2026-03-28 — Version Consistency Fix
 
 ### Fixed

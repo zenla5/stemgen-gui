@@ -17,39 +17,17 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # Validate version consistency before any builds
-  # Only runs on tag pushes, not workflow_dispatch
-  version-check:
-    name: Version Consistency Check
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}">>$GITHUB_OUTPUT
-        
-      - name: Verify package.json version matches tag
-        run: |
-          if ! grep -q "\"version\": \"${{ steps.version.outputs.VERSION }}\"" package.json; then
-            echo "Error: package.json version does not match tag ${{ steps.version.outputs.VERSION }}"
-            exit 1
-          fi
-          echo "✓ package.json version matches tag"
-      
-      - name: Verify src-tauri/Cargo.toml version matches tag
-        run: |
-          if ! grep -q "version = \"${{ steps.version.outputs.VERSION }}\"" src-tauri/Cargo.toml; then
-            echo "Error: src-tauri/Cargo.toml version does not match tag ${{ steps.version.outputs.VERSION }}"
-            exit 1
-          fi
-          echo "✓ src-tauri/Cargo.toml version matches tag"
+  # ─── Inline version check (runs inside release job on tag pushes) ───────────
+  # This replaces the standalone version-check job so that workflow_dispatch
+  # (which sets github.ref to refs/heads/main) does not skip the release job.
+  # The release job itself gates on version consistency only when triggered by a tag.
 
   # Build for Windows
   build-windows:
     name: Build Windows (x64)
     runs-on: windows-latest
+    # Only run on tag pushes or manual workflow_dispatch — not on every push
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -82,13 +60,16 @@ jobs:
           path: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
-          if-no-files-found: ignore
+          # TASK 2: Fail loudly if no artifacts are produced — never silently pass
+          if-no-files-found: error
           retention-days: 7
 
   # Build for macOS (Apple Silicon)
   build-macos-arm:
     name: Build macOS (Apple Silicon)
     runs-on: macos-14
+    # Only run on tag pushes or manual workflow_dispatch — not on every push
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -120,13 +101,16 @@ jobs:
           name: macos-arm-dmg
           path: |
             src-tauri/target/release/bundle/dmg/*.dmg
-          if-no-files-found: ignore
+          # TASK 2: Fail loudly if no artifacts are produced
+          if-no-files-found: error
           retention-days: 7
 
   # Build for Linux (Ubuntu/Debian)
   build-linux:
     name: Build Linux
     runs-on: ubuntu-22.04
+    # Only run on tag pushes or manual workflow_dispatch — not on every push
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -175,21 +159,41 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/appimage/*.AppImage
             src-tauri/target/release/bundle/rpm/*.rpm
-          if-no-files-found: ignore
+          # TASK 2: Fail loudly if no artifacts are produced
+          if-no-files-found: error
           retention-days: 7
 
   # Create GitHub Release with Tauri action
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [version-check, build-windows, build-macos-arm, build-linux]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # TASK 3: Depend only on build jobs — not on version-check — so that
+    # workflow_dispatch (which skips version-check) can still create a release.
+    needs: [build-windows, build-macos-arm, build-linux]
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # TASK 3: Inline version check — only enforced when triggered by a tag push.
+      # workflow_dispatch callers pass the version explicitly so we skip the check.
+      - name: Version consistency check (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Tagged version: $VERSION"
+          if ! grep -q "\"version\": \"$VERSION\"" package.json; then
+            echo "Error: package.json version does not match tag $VERSION"
+            exit 1
+          fi
+          echo "✓ package.json version matches tag"
+          if ! grep -q "version = \"$VERSION\"" src-tauri/Cargo.toml; then
+            echo "Error: src-tauri/Cargo.toml version does not match tag $VERSION"
+            exit 1
+          fi
+          echo "✓ src-tauri/Cargo.toml version matches tag"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -207,19 +211,13 @@ jobs:
       - name: Generate SHA256 checksums
         run: |
           echo "=== Generating SHA256 checksums ==="
-          # Check if artifacts directory exists
           if [ ! -d "artifacts" ]; then
-            echo "WARNING: artifacts directory does not exist"
-            echo "Build jobs may have failed or not uploaded artifacts"
-            echo "Creating empty SHA256SUMS.txt"
-            mkdir -p artifacts
-            echo "# No artifacts available for checksum generation" > SHA256SUMS.txt
-            exit 0
+            echo "ERROR: artifacts directory does not exist — build jobs may have failed"
+            exit 1
           fi
-          
+
           cd artifacts || exit 1
-          
-          # Use find to locate all artifacts, then generate checksums
+
           find . -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) > /tmp/artifacts.txt
           if [ -s /tmp/artifacts.txt ]; then
             while IFS= read -r file; do
@@ -228,9 +226,8 @@ jobs:
             echo "Checksums generated:"
             cat SHA256SUMS.txt || echo "No checksums generated"
           else
-            echo "WARNING: No artifact files found to generate checksums for"
-            echo "Release will be created without checksums"
-            echo "# No artifacts available" > SHA256SUMS.txt
+            echo "ERROR: No artifact files found — cannot generate checksums"
+            exit 1
           fi
 
       - name: Upload SHA256 checksums
@@ -257,17 +254,14 @@ jobs:
 
       - name: Generate Tauri update manifests
         run: |
-          # Extract version from tag
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "Generating update manifests for version: $VERSION"
-          
-          # Ensure artifacts directory exists
+
           mkdir -p artifacts
-          
+
           # Build the latest.json update manifest
-          # This tells the Tauri updater where to find new versions
           MANIFEST="{\"name\":\"Stemgen GUI\",\"version\":\"$VERSION\",\"notes\":\"Stemgen GUI v$VERSION\",\"date\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"apple\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_x64.dmg\",\"isDarkModeSupported\":true},\"windows\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_x64-setup.exe\",\"isDarkModeSupported\":true},\"linux\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_amd64.AppImage\"}}"
-          
+
           echo "$MANIFEST" > artifacts/latest.json
           echo "Latest manifest:"
           cat artifacts/latest.json
@@ -296,10 +290,15 @@ jobs:
           path: artifacts/latest.json
           retention-days: 365
 
+      # TASK 4: Publish immediately — draft is set to false so the release is
+      # public as soon as softprops/action-gh-release creates it. All artifacts
+      # are already downloaded and globbed locally before this step runs, so
+      # there is no risk of a partially-populated release becoming visible:
+      # the action atomically creates the release with ALL files or fails.
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
           generate_release_notes: false
           files: |
