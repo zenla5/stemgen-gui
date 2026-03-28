@@ -5,8 +5,10 @@
 pub mod metadata;
 pub mod packer;
 pub mod presets;
+pub mod provenance;
 
 // Re-exports for convenience access
 pub use metadata::{MasterData, NIStemMetadata, StemData, StemInfo, StemType};
 pub use packer::StemPacker;
 pub use presets::{all_dj_software, DJSoftware, ExportSettings, OutputFormat, QualityPreset};
+pub use provenance::{StemProvenance, PROVENANCE_SCHEMA_VERSION};
