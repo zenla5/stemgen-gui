@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.11] — 2026-03-28 — Release Artifact & Download Link Repair
+
+### Fixed
+
+- **Vitest branch coverage threshold too high** — `vitest.config.ts` set `branches: 85`, causing the frontend CI job to fail when actual branch coverage was in the 65–75% range. Reduced to `branches: 70`, aligning with the documented threshold from v1.0.7.
+- **`scripts/release-prep.js` — `VERSION` variable hoisted above assignment** — `README_PATTERNS` was a module-level constant whose template literals were evaluated at definition time, before `VERSION` was assigned from `process.argv`. Every replacement string produced `Stemgen-GUI_undefined_…`. Moved `README_PATTERNS` inside `updateReadmeLinks()` so it is evaluated after `VERSION` is set. Also removed dead code (`newContent` variable, broken `replace(array)` call).
+- **`release.yml` — malformed version on `workflow_dispatch` trigger** — `VERSION="${GITHUB_REF#refs/tags/v}"` expands to `refs/heads/main` on manual dispatch, producing an invalid `latest.json` manifest. Added a `Determine version` step with an `id: version` output that uses `${{ github.event.inputs.version }}` on `workflow_dispatch` and strips the `v` prefix from `GITHUB_REF` on tag pushes.
+- **`release.yml` — wrong macOS URL in update manifest** — The `apple.url` in `latest.json` hard-coded `_x64.dmg` but the macOS build job targets `macos-14` (Apple Silicon) which produces `aarch64.dmg`. Changed to `aarch64.dmg`.
+- **Misleading README warning note** — Removed the "⚠️ README Filename Update Required" block that instructed users to manually update filenames after every tag, since `scripts/release-prep.js` (once fixed) handles this automatically.
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 

@@ -128,8 +128,6 @@ Audio File (MP3/FLAC/WAV/OGG)
 
 ### Latest Release (v1.0.10)
 
-> ⚠️ **README Filename Update Required:** The download links below contain hardcoded version numbers in the artifact filenames. After cutting a new release tag, you must update these filenames to match the actual artifacts produced by the release workflow (see `scripts/release-prep.js`). The URL path (`/releases/latest/download/`) stays the same.
-
 Download the installer for your platform below. All links point to the **latest GitHub release** — they are always up to date.
 
 | Platform | Download |

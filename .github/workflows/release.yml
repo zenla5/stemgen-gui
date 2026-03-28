@@ -252,15 +252,26 @@ jobs:
       # generated without signatures (for testing only).
       # ─────────────────────────────────────────────────────────────────────────
 
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION"
+
       - name: Generate Tauri update manifests
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
           echo "Generating update manifests for version: $VERSION"
 
           mkdir -p artifacts
 
           # Build the latest.json update manifest
-          MANIFEST="{\"name\":\"Stemgen GUI\",\"version\":\"$VERSION\",\"notes\":\"Stemgen GUI v$VERSION\",\"date\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"apple\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_x64.dmg\",\"isDarkModeSupported\":true},\"windows\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_x64-setup.exe\",\"isDarkModeSupported\":true},\"linux\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_amd64.AppImage\"}}"
+          MANIFEST="{\"name\":\"Stemgen GUI\",\"version\":\"$VERSION\",\"notes\":\"Stemgen GUI v$VERSION\",\"date\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"apple\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_aarch64.dmg\",\"isDarkModeSupported\":true},\"windows\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_x64-setup.exe\",\"isDarkModeSupported\":true},\"linux\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_amd64.AppImage\"}}"
 
           echo "$MANIFEST" > artifacts/latest.json
           echo "Latest manifest:"

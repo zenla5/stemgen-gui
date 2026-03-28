@@ -66,25 +66,6 @@ const FILES_TO_UPDATE = [
   },
 ];
 
-// README download link patterns (Windows .exe, .msi; macOS .dmg; Linux .AppImage, .deb, .rpm)
-const README_PATTERNS = [
-  // Windows NSIS
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen-GUI_${VERSION}_x64-setup.exe`],
-  // Windows MSI
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.msi/g, `Stemgen-GUI_${VERSION}_x64-setup.msi`],
-  // macOS
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_aarch64\.dmg/g, `Stemgen-GUI_${VERSION}_aarch64.dmg`],
-  // Linux AppImage
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen-GUI_${VERSION}_amd64.AppImage`],
-  // Linux DEB
-  [/stemgen-gui_(\d+\.\d+\.\d+)_amd64\.deb/g, `stemgen-gui_${VERSION}_amd64.deb`],
-  // Linux RPM
-  [/stemgen-gui-(\d+\.\d+\.\d+)-1\.x86_64\.rpm/g, `stemgen-gui-${VERSION}-1.x86_64.rpm`],
-  // Verification examples in README
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen-GUI_${VERSION}_amd64.AppImage`],
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen-GUI_${VERSION}_x64-setup.exe`],
-];
-
 // Changelog entry template
 const CHANGELOG_ENTRY = (version, date) => `## [${version}] — ${date} — Version Bump
 
@@ -100,7 +81,7 @@ function read(path) {
 }
 
 function write(path, content) {
-  writeFileSync(join(ROOT, path), content, 'utf-8');
+  writeFileSync(join(ROOT, path), 'utf-8', content);
 }
 
 function updateVersionStrings() {
@@ -125,19 +106,31 @@ function updateReadmeLinks() {
 
   const content = read('README.md');
 
-  // Update the section header (e.g., "### Latest Release (v1.0.9)" -> "### Latest Release (v1.0.10)")
+  // README download link patterns (Windows .exe, .msi; macOS .dmg; Linux .AppImage, .deb, .rpm)
+  // NOTE: defined inside the function so VERSION is in scope.
+  const README_PATTERNS = [
+    // Windows NSIS
+    [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen-GUI_${VERSION}_x64-setup.exe`],
+    // Windows MSI
+    [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.msi/g, `Stemgen-GUI_${VERSION}_x64-setup.msi`],
+    // macOS
+    [/Stemgen-GUI_(\d+\.\d+\.\d+)_aarch64\.dmg/g, `Stemgen-GUI_${VERSION}_aarch64.dmg`],
+    // Linux AppImage
+    [/Stemgen-GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen-GUI_${VERSION}_amd64.AppImage`],
+    // Linux DEB
+    [/stemgen-gui_(\d+\.\d+\.\d+)_amd64\.deb/g, `stemgen-gui_${VERSION}_amd64.deb`],
+    // Linux RPM
+    [/stemgen-gui-(\d+\.\d+\.\d+)-1\.x86_64\.rpm/g, `stemgen-gui-${VERSION}-1.x86_64.rpm`],
+    // Verification examples in README (AppImage)
+    [/Stemgen-GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen-GUI_${VERSION}_amd64.AppImage`],
+    // Verification examples in README (exe)
+    [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen-GUI_${VERSION}_x64-setup.exe`],
+  ];
+
+  // Section header pattern
   const headerPattern = /### Latest Release \(v\d+\.\d+\.\d+\)/;
-  const newContent = content
-    .replace(headerPattern, `### Latest Release (v${VERSION})`)
-    .replace(README_PATTERNS.map(([pattern, replacement]) => [pattern, replacement]), (match) => match);
 
-  for (const [pattern, replacement] of README_PATTERNS) {
-    if (pattern.test(newContent)) {
-      console.error(`  ❌ README.md: Pattern ${pattern} not found (may already be updated)`);
-    }
-  }
-
-  // Apply replacements
+  // Apply all replacements
   let updated = content;
   for (const [pattern, replacement] of README_PATTERNS) {
     updated = updated.replace(pattern, replacement);
@@ -154,7 +147,6 @@ function updateChangelog() {
   console.log(`\n📝 Updating CHANGELOG.md...\n`);
 
   const content = read('CHANGELOG.md');
-  const date = new Date().toISOString().split('T')[0].replace(/-/g, '/').replace(/^/, '');
   const formattedDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -187,7 +179,8 @@ function gitCommit() {
       stdio: 'inherit',
     });
 
-    console.log(`\n  ✅ Commit: $(git rev-parse HEAD | cut -c1-7)`);
+    const hash = execSync('git rev-parse HEAD | cut -c1-7', { cwd: ROOT, encoding: 'utf-8' }).trim();
+    console.log(`\n  ✅ Commit: ${hash}`);
     console.log(`  ✅ Tag: v${VERSION}`);
     console.log(`\n⚠️  Run 'git push && git push --tags' to push the release.`);
   } catch (error) {

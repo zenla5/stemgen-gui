@@ -167,8 +167,8 @@ describe('Regression: Model Card Button Selection (J7)', () => {
 // Regression: v1.0.8 — Testing Enhancement & E2E Hardening
 // ============================================================
 describe('Regression: v1.0.8 Coverage Enhancement', () => {
-  it('APP_VERSION should be 1.0.8', () => {
-    expect(APP_VERSION).toBe('1.0.8');
+  it('APP_VERSION should be 1.0.11', () => {
+    expect(APP_VERSION).toBe('1.0.11');
   });
 
   it('APP_VERSION should match package.json', () => {
