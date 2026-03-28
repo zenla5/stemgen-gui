@@ -8,6 +8,7 @@ use tracing::{debug, info, warn};
 
 use super::metadata::{NIStemMetadata, StemData, StemType};
 use super::presets::ExportSettings;
+use super::provenance::StemProvenance;
 
 pub struct StemPacker {
     settings: ExportSettings,
@@ -72,6 +73,81 @@ impl StemPacker {
             .await?;
         info!("Successfully created: {:?}", output_path);
         Ok(())
+    }
+
+    /// Pack stems and write provenance sidecar.
+    ///
+    /// This is the primary entry point when provenance metadata is available.
+    /// It calls `pack()` and additionally writes a `.prov.json` sidecar file
+    /// next to the output `.stem.mp4`.
+    ///
+    /// # Arguments
+    ///
+    /// * `master_path` - Path to the master/combined audio file
+    /// * `stem_paths` - Pairs of (stem type, file path)
+    /// * `output_path` - Path to write the `.stem.mp4` file
+    /// * `provenance` - Provenance metadata to embed
+    ///
+    /// # Returns
+    ///
+    /// The path to the provenance sidecar file.
+    ///
+    /// # Notes
+    ///
+    /// This function is non-destructive with respect to audio data.
+    /// It only writes a new sidecar JSON file and potentially injects
+    /// an MP4 atom into the container.
+    #[allow(clippy::similar_names)]
+    pub async fn pack_with_provenance(
+        &self,
+        master_path: &Path,
+        stem_paths: &[(StemType, PathBuf)],
+        output_path: &Path,
+        provenance: &StemProvenance,
+    ) -> Result<PathBuf> {
+        // Pack the stems (creates .stem.mp4 + NI sidecar)
+        self.pack(master_path, stem_paths, output_path).await?;
+
+        // Write provenance sidecar
+        let prov_path = self.write_provenance_sidecar(output_path, provenance)?;
+
+        info!(
+            "Provenance sidecar written: {}",
+            prov_path.display()
+        );
+
+        Ok(prov_path)
+    }
+
+    /// Write provenance metadata as a `.prov.json` sidecar file.
+    ///
+    /// Never modifies audio data — only writes a new sidecar file.
+    ///
+    /// # Arguments
+    ///
+    /// * `stem_path` - Path to the `.stem.mp4` file
+    /// * `provenance` - Provenance metadata to serialize
+    ///
+    /// # Returns
+    ///
+    /// The path to the written sidecar file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be written.
+    pub fn write_provenance_sidecar(
+        &self,
+        stem_path: &Path,
+        provenance: &StemProvenance,
+    ) -> Result<PathBuf> {
+        let prov_path = StemProvenance::sidecar_path(stem_path);
+        let prov_json = provenance
+            .to_json_string()
+            .context("Failed to serialize provenance to JSON")?;
+        std::fs::write(&prov_path, prov_json)
+            .with_context(|| format!("Failed to write provenance sidecar: {:?}", prov_path))?;
+        debug!("Provenance sidecar written: {:?}", prov_path);
+        Ok(prov_path)
     }
 
     #[allow(clippy::similar_names)]

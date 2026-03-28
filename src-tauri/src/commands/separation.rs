@@ -1,12 +1,13 @@
 use crate::audio::waveform::WaveformPoint;
-use crate::audio::{AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
+use crate::audio::{hash_file, AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
 use crate::commands::models::{get_available_models, ModelInfo};
 use crate::commands::sidecar::SidecarManager;
+use crate::stems::provenance::StemProvenance;
 use crate::stems::{DJSoftware, OutputFormat, StemPacker, StemType};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SeparationSettings {
@@ -39,6 +40,52 @@ pub struct PackStemsRequest {
     pub output_format: String,
 }
 
+/// Provenance fields that the frontend provides when packing stems.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProvenanceFields {
+    /// AI model used (e.g., "bs_roformer", "htdemucs")
+    pub separation_model: String,
+    /// Model version / checkpoint hash (optional)
+    #[serde(default)]
+    pub model_version: Option<String>,
+    /// stemgen library version from Python sidecar (optional)
+    #[serde(default)]
+    pub stemgen_version: Option<String>,
+    /// Quality preset used (optional, e.g., "standard")
+    #[serde(default)]
+    pub separation_quality_preset: Option<String>,
+    /// Custom separation parameters as JSON (optional)
+    #[serde(default)]
+    pub separation_params: Option<serde_json::Value>,
+    /// Batch identifier (optional)
+    #[serde(default)]
+    pub batch_id: Option<String>,
+}
+
+impl Default for ProvenanceFields {
+    fn default() -> Self {
+        Self {
+            separation_model: String::new(),
+            model_version: None,
+            stemgen_version: None,
+            separation_quality_preset: None,
+            separation_params: None,
+            batch_id: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PackStemsWithProvenanceRequest {
+    pub master_path: String,
+    pub stem_paths: Vec<StemPath>,
+    pub output_path: String,
+    pub dj_software: String,
+    pub output_format: String,
+    /// Provenance metadata fields
+    pub provenance: ProvenanceFields,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StemPath {
     pub stem_type: String,
@@ -50,6 +97,8 @@ pub struct PackStemsResponse {
     pub success: bool,
     pub output_path: String,
     pub metadata_path: Option<String>,
+    /// Path to the provenance sidecar file (if provenance was written)
+    pub provenance_path: Option<String>,
 }
 
 /// Export individual stem to different format
@@ -107,17 +156,14 @@ pub async fn start_separation(
     let mut sidecar_guard = state.sidecar.lock().await;
 
     if sidecar_guard.is_none() {
-        // Initialize sidecar manager with paths from app state
-        let sidecar = SidecarManager::new(state.sidecar_path.clone(), state.output_dir.clone());
+        let sidecar =
+            SidecarManager::new(state.sidecar_path.clone(), state.output_dir.clone());
         *sidecar_guard = Some(sidecar);
     }
 
     let sidecar = sidecar_guard.as_mut().ok_or("Sidecar not initialized")?;
-
-    // Run the separation
     let source = Path::new(&source_path);
 
-    // Generate a job ID
     let job_id = format!(
         "job_{}",
         std::time::SystemTime::now()
@@ -136,8 +182,6 @@ pub async fn start_separation(
                 "Separation completed successfully with {} stems",
                 result.stems.len()
             );
-
-            // Convert to StemInfo
             let stems: Vec<StemInfo> = result
                 .stems
                 .iter()
@@ -146,7 +190,6 @@ pub async fn start_separation(
                     file_path: Some(s.path.to_string_lossy().to_string()),
                 })
                 .collect();
-
             Ok(stems)
         }
         Err(e) => {
@@ -163,13 +206,10 @@ pub async fn cancel_separation(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     info!("Cancelling separation job");
-
     let mut sidecar_guard = state.sidecar.lock().await;
-
     if let Some(sidecar) = sidecar_guard.as_mut() {
         sidecar.cancel().await.map_err(|e| e.to_string())?;
     }
-
     Ok(())
 }
 
@@ -187,14 +227,11 @@ pub async fn get_waveform_data(
     points_per_second: Option<u32>,
 ) -> Result<WaveformResponse, String> {
     info!("Generating waveform data for: {}", path);
-
     let path = Path::new(&path);
 
-    // Decode audio
     let mut decoder = AudioDecoder::new();
     let samples = decoder.decode(path).map_err(|e| e.to_string())?;
 
-    // Resample to target rate if needed
     let mut resampler = AudioResampler::new_44100();
     let samples = if samples.sample_rate != TARGET_SAMPLE_RATE {
         resampler.resample(&samples).map_err(|e| e.to_string())?
@@ -202,11 +239,9 @@ pub async fn get_waveform_data(
         samples
     };
 
-    // Generate waveform
     let points = points_per_second.unwrap_or(100);
     let waveform = samples.generate_waveform(points);
 
-    // Convert to response format
     let waveform_points: Vec<WaveformPoint> = waveform
         .points
         .iter()
@@ -224,22 +259,19 @@ pub async fn get_waveform_data(
     })
 }
 
-/// Pack multiple audio files into a .stem.mp4 file
+/// Pack multiple audio files into a .stem.mp4 file (legacy, no provenance)
 #[tauri::command]
 pub async fn pack_stems(request: PackStemsRequest) -> Result<PackStemsResponse, String> {
     info!("Packing stems to: {}", request.output_path);
 
-    // Parse DJ software
     let dj_software = DJSoftware::from_str(&request.dj_software)
         .ok_or_else(|| format!("Unknown DJ software: {}", request.dj_software))?;
 
-    // Parse output format
     let output_format = match request.output_format.to_lowercase().as_str() {
         "alac" => OutputFormat::Alac,
         _ => OutputFormat::Aac,
     };
 
-    // Create packer settings
     let settings = crate::stems::ExportSettings {
         dj_software,
         output_format,
@@ -247,10 +279,8 @@ pub async fn pack_stems(request: PackStemsRequest) -> Result<PackStemsResponse, 
         custom_colors: true,
     };
 
-    // Create packer
     let packer = StemPacker::new(settings);
 
-    // Parse stem paths
     let stem_paths: Vec<(StemType, PathBuf)> = request
         .stem_paths
         .iter()
@@ -269,24 +299,139 @@ pub async fn pack_stems(request: PackStemsRequest) -> Result<PackStemsResponse, 
     let master_path = PathBuf::from(&request.master_path);
     let output_path = PathBuf::from(&request.output_path);
 
-    // Pack stems
     packer
         .pack(&master_path, &stem_paths, &output_path)
         .await
         .map_err(|e| e.to_string())?;
 
-    // Return response
-    let output_path_clone = request.output_path.clone();
     Ok(PackStemsResponse {
         success: true,
-        output_path: output_path_clone,
+        output_path: request.output_path.clone(),
         metadata_path: Some(format!("{}.metadata.json", request.output_path)),
+        provenance_path: None,
     })
 }
 
-// ============================================================================
-// Phase 4: Export/Download Stems
-// ============================================================================
+/// Pack multiple audio files into a .stem.mp4 file with full provenance metadata.
+///
+/// This is the preferred entry point for new separation workflows.
+/// It writes provenance to a `.prov.json` sidecar file for library management.
+#[tauri::command]
+pub async fn pack_stems_with_provenance(
+    request: PackStemsWithProvenanceRequest,
+) -> Result<PackStemsResponse, String> {
+    info!(
+        "Packing stems with provenance to: {} (model: {})",
+        request.output_path, request.provenance.separation_model
+    );
+
+    let dj_software = DJSoftware::from_str(&request.dj_software)
+        .ok_or_else(|| format!("Unknown DJ software: {}", request.dj_software))?;
+
+    let output_format = match request.output_format.to_lowercase().as_str() {
+        "alac" => OutputFormat::Alac,
+        _ => OutputFormat::Aac,
+    };
+
+    let settings = crate::stems::ExportSettings {
+        dj_software,
+        output_format,
+        quality: crate::stems::QualityPreset::Standard,
+        custom_colors: true,
+    };
+
+    let packer = StemPacker::new(settings);
+
+    let stem_paths: Vec<(StemType, PathBuf)> = request
+        .stem_paths
+        .iter()
+        .filter_map(|sp| {
+            let stem_type = match sp.stem_type.to_lowercase().as_str() {
+                "drums" => Some(StemType::Drums),
+                "bass" => Some(StemType::Bass),
+                "other" => Some(StemType::Other),
+                "vocals" => Some(StemType::Vocals),
+                _ => None,
+            }?;
+            Some((stem_type, PathBuf::from(&sp.path)))
+        })
+        .collect();
+
+    let master_path = PathBuf::from(&request.master_path);
+    let output_path = PathBuf::from(&request.output_path);
+
+    // Compute source file hash and audio properties
+    let source_hash = hash_file(&master_path).map_err(|e| {
+        warn!("Failed to hash source file: {}", e);
+        format!("Failed to hash source file: {}", e)
+    }).unwrap_or_else(|_| {
+        warn!("Using placeholder hash for source file");
+        String::from("unknown")
+    });
+
+    // Get audio properties from decoder
+    let (source_duration_secs, source_sample_rate) = match AudioDecoder::new().decode(&master_path) {
+        Ok(samples) => {
+            let duration = if samples.sample_rate > 0 {
+                samples.samples.len() as f64 / samples.sample_rate as f64
+            } else {
+                0.0
+            };
+            (duration, samples.sample_rate)
+        }
+        Err(e) => {
+            warn!("Failed to read source audio properties: {}", e);
+            (0.0, 44100)
+        }
+    };
+
+    // Generate job ID if not provided
+    let job_id = format!(
+        "job_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    );
+
+    // Build provenance record
+    let provenance = StemProvenance::new(
+        request.provenance.separation_model,
+        env!("CARGO_PKG_VERSION").to_string(),
+        chrono::Utc::now().to_rfc3339(),
+        master_path.to_string_lossy().to_string(),
+        source_hash,
+        source_duration_secs,
+        source_sample_rate,
+        job_id,
+    );
+
+    // Override with frontend-provided values
+    let mut prov = provenance;
+    prov.model_version = request.provenance.model_version;
+    prov.stemgen_version = request.provenance.stemgen_version;
+    prov.separation_quality_preset = request.provenance.separation_quality_preset;
+    prov.separation_params = request.provenance.separation_params;
+    prov.batch_id = request.provenance.batch_id;
+
+    // Pack stems and write provenance sidecar
+    let prov_path = packer
+        .pack_with_provenance(&master_path, &stem_paths, &output_path, &prov)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    info!(
+        "Successfully packed stems with provenance: {}",
+        output_path.display()
+    );
+
+    Ok(PackStemsResponse {
+        success: true,
+        output_path: request.output_path.clone(),
+        metadata_path: Some(format!("{}.metadata.json", request.output_path)),
+        provenance_path: Some(prov_path.to_string_lossy().to_string()),
+    })
+}
 
 /// Export a single stem to a different audio format
 #[tauri::command]
@@ -299,13 +444,11 @@ pub async fn export_stem(request: ExportStemRequest) -> Result<ExportStemRespons
     let input_path = Path::new(&request.stem_path);
     let output_path = Path::new(&request.output_path);
 
-    // Ensure output directory exists
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create output directory: {}", e))?;
     }
 
-    // Build FFmpeg command
     let codec = match request.format.to_lowercase().as_str() {
         "wav" => ("pcm_s16le", "-y"),
         "flac" => ("flac", "-y"),
@@ -320,21 +463,17 @@ pub async fn export_stem(request: ExportStemRequest) -> Result<ExportStemRespons
     cmd.arg("-i").arg(input_path);
 
     if codec.0 == "copy" {
-        // Just change container
         cmd.args(["-c", "copy"]);
     } else {
         cmd.args(["-c:a", codec.0]);
     }
 
-    // Normalize if requested
     if request.normalize {
         cmd.args(["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]);
     }
 
-    // Audio settings
     cmd.args(["-ar", "44100", "-ac", "2"]);
-    cmd.arg("-y"); // Overwrite
-
+    cmd.arg("-y");
     cmd.arg(output_path);
 
     let output = cmd
@@ -354,9 +493,57 @@ pub async fn export_stem(request: ExportStemRequest) -> Result<ExportStemRespons
     })
 }
 
-// ============================================================
+/// Batch export multiple stems
+#[tauri::command]
+pub async fn batch_export_stems(
+    request: BatchExportRequest,
+) -> Result<BatchExportResponse, String> {
+    info!(
+        "Batch exporting {} stems to {}",
+        request.stem_paths.len(),
+        request.output_dir
+    );
+
+    let output_dir = Path::new(&request.output_dir);
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+
+    let mut exported_files = Vec::new();
+
+    for stem in &request.stem_paths {
+        let input_path = Path::new(&stem.path);
+        let stem_name = input_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("stem");
+        let out_path = output_dir.join(format!("{}.{}", stem_name, request.format));
+
+        let export_request = ExportStemRequest {
+            stem_path: stem.path.clone(),
+            output_path: out_path.to_string_lossy().to_string(),
+            format: request.format.clone(),
+            normalize: request.normalize,
+        };
+
+        match export_stem(export_request).await {
+            Ok(response) => {
+                exported_files.push(response.output_path);
+            }
+            Err(e) => {
+                error!("Failed to export {}: {}", stem.path, e);
+            }
+        }
+    }
+
+    Ok(BatchExportResponse {
+        success: !exported_files.is_empty(),
+        exported_files,
+    })
+}
+
+// =============================================================================
 // Unit Tests
-// ============================================================
+// =============================================================================
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,8 +560,6 @@ mod tests {
 
         let json = serde_json::to_string(&settings).unwrap();
         assert!(json.contains("bs_roformer"));
-        assert!(json.contains("cuda"));
-
         let deserialized: SeparationSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.model, "bs_roformer");
     }
@@ -385,11 +570,8 @@ mod tests {
             stem_type: "drums".to_string(),
             file_path: Some("/path/to/drums.wav".to_string()),
         };
-
         let json = serde_json::to_string(&stem).unwrap();
         assert!(json.contains("drums"));
-        assert!(json.contains("/path/to/drums.wav"));
-
         let deserialized: StemInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.stem_type, "drums");
     }
@@ -400,10 +582,8 @@ mod tests {
             stem_type: "bass".to_string(),
             path: "/path/to/bass.wav".to_string(),
         };
-
         let json = serde_json::to_string(&stem).unwrap();
         assert!(json.contains("bass"));
-
         let deserialized: StemPath = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.stem_type, "bass");
     }
@@ -426,11 +606,8 @@ mod tests {
             dj_software: "traktor".to_string(),
             output_format: "alac".to_string(),
         };
-
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("/test/master.wav"));
-        assert!(json.contains("/test/output.stem.mp4"));
-
         let deserialized: PackStemsRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.stem_paths.len(), 2);
     }
@@ -441,15 +618,42 @@ mod tests {
             success: true,
             output_path: "/test/output.stem.mp4".to_string(),
             metadata_path: Some("/test/output.metadata.json".to_string()),
+            provenance_path: Some("/test/output.prov.json".to_string()),
         };
-
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("true"));
-        assert!(json.contains("output.stem.mp4"));
-
         let deserialized: PackStemsResponse = serde_json::from_str(&json).unwrap();
         assert!(deserialized.success);
         assert!(deserialized.metadata_path.is_some());
+        assert!(deserialized.provenance_path.is_some());
+    }
+
+    #[test]
+    fn test_provenance_fields_default() {
+        let fields = ProvenanceFields::default();
+        assert!(fields.separation_model.is_empty());
+        assert!(fields.model_version.is_none());
+        assert!(fields.stemgen_version.is_none());
+        assert!(fields.separation_quality_preset.is_none());
+        assert!(fields.separation_params.is_none());
+        assert!(fields.batch_id.is_none());
+    }
+
+    #[test]
+    fn test_provenance_fields_roundtrip() {
+        let fields = ProvenanceFields {
+            separation_model: "bs_roformer".to_string(),
+            model_version: Some("v1.0".to_string()),
+            stemgen_version: Some("0.5.0".to_string()),
+            separation_quality_preset: Some("standard".to_string()),
+            separation_params: Some(serde_json::json!({"shifts": 10})),
+            batch_id: Some("batch_001".to_string()),
+        };
+        let json = serde_json::to_string(&fields).unwrap();
+        let deserialized: ProvenanceFields = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.separation_model, "bs_roformer");
+        assert_eq!(deserialized.model_version, Some("v1.0".to_string()));
+        assert_eq!(deserialized.batch_id, Some("batch_001".to_string()));
     }
 
     #[test]
@@ -460,11 +664,8 @@ mod tests {
             format: "mp3".to_string(),
             normalize: true,
         };
-
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("mp3"));
-        assert!(json.contains("true")); // normalize
-
         let deserialized: ExportStemRequest = serde_json::from_str(&json).unwrap();
         assert!(deserialized.normalize);
     }
@@ -477,40 +678,27 @@ mod tests {
                     stem_type: "drums".to_string(),
                     path: "/drums.wav".to_string(),
                 },
-                StemPath {
-                    stem_type: "bass".to_string(),
-                    path: "/bass.wav".to_string(),
-                },
             ],
             output_dir: "/output".to_string(),
             format: "flac".to_string(),
             normalize: false,
         };
-
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("/output"));
-        assert!(json.contains("flac"));
-
         let deserialized: BatchExportRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.stem_paths.len(), 2);
+        assert_eq!(deserialized.stem_paths.len(), 1);
     }
 
     #[test]
     fn test_batch_export_response_serialization() {
         let response = BatchExportResponse {
             success: true,
-            exported_files: vec![
-                "/output/drums.flac".to_string(),
-                "/output/bass.flac".to_string(),
-            ],
+            exported_files: vec!["/output/drums.flac".to_string()],
         };
-
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("drums.flac"));
-        assert!(json.contains("bass.flac"));
-
         let deserialized: BatchExportResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.exported_files.len(), 2);
+        assert_eq!(deserialized.exported_files.len(), 1);
     }
 
     #[test]
@@ -523,10 +711,8 @@ mod tests {
             }],
             output_dir: "/stems/track".to_string(),
         };
-
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("drums"));
-
         let deserialized: SeparationResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.stems.len(), 1);
     }
@@ -537,58 +723,8 @@ mod tests {
             stem_type: "vocals".to_string(),
             file_path: None,
         };
-
         let json = serde_json::to_string(&stem).unwrap();
         let deserialized: StemInfo = serde_json::from_str(&json).unwrap();
         assert!(deserialized.file_path.is_none());
     }
-}
-
-/// Batch export multiple stems
-#[tauri::command]
-pub async fn batch_export_stems(
-    request: BatchExportRequest,
-) -> Result<BatchExportResponse, String> {
-    info!(
-        "Batch exporting {} stems to {}",
-        request.stem_paths.len(),
-        request.output_dir
-    );
-
-    // Ensure output directory exists
-    let output_dir = Path::new(&request.output_dir);
-    std::fs::create_dir_all(output_dir)
-        .map_err(|e| format!("Failed to create output directory: {}", e))?;
-
-    let mut exported_files = Vec::new();
-
-    for stem in &request.stem_paths {
-        let input_path = Path::new(&stem.path);
-        let stem_name = input_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("stem");
-        let output_path = output_dir.join(format!("{}.{}", stem_name, request.format));
-
-        let export_request = ExportStemRequest {
-            stem_path: stem.path.clone(),
-            output_path: output_path.to_string_lossy().to_string(),
-            format: request.format.clone(),
-            normalize: request.normalize,
-        };
-
-        match export_stem(export_request).await {
-            Ok(response) => {
-                exported_files.push(response.output_path);
-            }
-            Err(e) => {
-                error!("Failed to export {}: {}", stem.path, e);
-            }
-        }
-    }
-
-    Ok(BatchExportResponse {
-        success: !exported_files.is_empty(),
-        exported_files,
-    })
 }

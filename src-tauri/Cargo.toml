@@ -43,6 +43,7 @@ reqwest.workspace = true
 which.workspace = true
 sha2.workspace = true
 hex.workspace = true
+chrono.workspace = true
 
 # Audio processing
 symphonia.workspace = true
