@@ -78,9 +78,10 @@ fn model_download_url(model_id: &str) -> Option<String> {
                 suffix
             ))
         }
-        "bs_roformer" => {
-            Some("https://huggingface.co/datasets/zenla5/bs_roformer/resolve/main/bs_roformer.onnx".to_string())
-        }
+        "bs_roformer" => Some(
+            "https://huggingface.co/datasets/zenla5/bs_roformer/resolve/main/bs_roformer.onnx"
+                .to_string(),
+        ),
         _ => None,
     }
 }
@@ -150,8 +151,8 @@ pub fn get_available_models() -> Vec<ModelInfo> {
 pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), String> {
     info!("Starting model download: {}", model_id);
 
-    let url = model_download_url(&model_id)
-        .ok_or_else(|| format!("Unknown model: {}", model_id))?;
+    let url =
+        model_download_url(&model_id).ok_or_else(|| format!("Unknown model: {}", model_id))?;
 
     let models_dir = get_models_dir();
     std::fs::create_dir_all(&models_dir)
@@ -192,10 +193,7 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
         .map_err(|e| format!("Download request failed: {}", e))?;
 
     if !bytes.status().is_success() {
-        return Err(format!(
-            "Download server returned HTTP {}",
-            bytes.status()
-        ));
+        return Err(format!("Download server returned HTTP {}", bytes.status()));
     }
 
     let _total_size = bytes.content_length().unwrap_or(total_bytes);
@@ -463,10 +461,14 @@ mod tests {
     fn test_gpu_models_require_gpu() {
         let models = get_available_models();
         let gpu_models = ["bs_roformer", "htdemucs", "htdemucs_ft"];
-        
+
         for gpu_model_id in gpu_models {
             let model = models.iter().find(|m| m.id == gpu_model_id).unwrap();
-            assert!(model.gpu_required, "Model {} should require GPU", gpu_model_id);
+            assert!(
+                model.gpu_required,
+                "Model {} should require GPU",
+                gpu_model_id
+            );
         }
     }
 
