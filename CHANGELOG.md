@@ -1,7 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [1.0.12] — Mar 28 2026 — Version Bump
+
+## [1.0.13] — 2026-03-28 — Release Artifact & Download Link Repair (Phase 2)
+
+### Fixed
+
+- **`release.yml` — bundler exits 0 but produces no files** — On Windows and Linux, `npx tauri build --bundles …` could exit with code 0 even when the bundler produced no installer files (e.g., missing bundler toolchain, `--ci` flag side effects). The workflow would then pass the `Upload … artifacts` step silently because `actions/upload-artifact` received an empty file set. Added an explicit post-build file-existence check on both the Windows (`Build Windows installers`) and Linux (`Build Linux installers`) steps that verifies `.msi`/`.exe` (Windows) or `.deb`/`.AppImage`/`.rpm` (Linux) files actually exist before declaring the step successful. If no bundles are found, the step now fails with `exit 1` and prints the full bundle directory tree for debugging.
+
+## [1.0.12] — Mar 28 2026 — Version Bump
 
 ### Changed
 
