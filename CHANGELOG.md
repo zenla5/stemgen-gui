@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] — 2026-03-28 — Version Consistency Fixes
+
+### Fixed
+
+- **APP_VERSION consistency** — Fixed APP_VERSION in constants.ts to match package.json (was still 1.0.3)
+- **Regression tests** — Updated to use dynamic version comparison instead of hardcoded version strings
+
 ## [1.0.4] — 2026-03-28 — CI/CD Pipeline Fixes
 
 ### Fixed
