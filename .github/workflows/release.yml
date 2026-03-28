@@ -56,6 +56,22 @@ jobs:
           echo ""
           echo "=== Tauri build exit code: $exitCode ==="
           Get-Content "$env:TEMP\tauri-build.log" -Tail 80
+          echo ""
+          echo "=== Checking for produced bundles ==="
+          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" -Filter "*.msi" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          $nsisFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis" -Filter "*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $msiFile -and -not $nsisFile) {
+            echo "ERROR: No bundle files produced!"
+            if (Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle") {
+              Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle" -Recurse -File | Select-Object FullName
+            } else {
+              echo "No bundle directory found"
+            }
+            exit 1
+          }
+          echo "Bundles found:"
+          if ($msiFile) { echo "  MSI: $($msiFile.FullName)" }
+          if ($nsisFile) { echo "  NSIS: $($nsisFile.FullName)" }
           if ($exitCode -ne 0) { exit $exitCode }
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
@@ -219,6 +235,20 @@ jobs:
           echo ""
           echo "=== Tauri build exit code: $EXIT_CODE ==="
           tail -80 /tmp/tauri-build.log
+          echo ""
+          echo "=== Checking for produced bundles ==="
+          DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" 2>/dev/null | head -1)
+          APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" 2>/dev/null | head -1)
+          RPM_FILE=$(find src-tauri/target/release/bundle/rpm -name "*.rpm" 2>/dev/null | head -1)
+          if [ -z "$DEB_FILE" ] && [ -z "$APPIMAGE_FILE" ] && [ -z "$RPM_FILE" ]; then
+            echo "ERROR: No bundle files produced!"
+            ls -la src-tauri/target/release/bundle/ 2>/dev/null || echo "No bundle directory"
+            exit 1
+          fi
+          echo "Bundles found:"
+          [ -n "$DEB_FILE" ] && echo "  DEB: $DEB_FILE"
+          [ -n "$APPIMAGE_FILE" ] && echo "  AppImage: $APPIMAGE_FILE"
+          [ -n "$RPM_FILE" ] && echo "  RPM: $RPM_FILE"
           if [ $EXIT_CODE -ne 0 ]; then exit $EXIT_CODE; fi
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
