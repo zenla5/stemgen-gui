@@ -41,6 +41,8 @@ lofty.workspace = true
 rusqlite.workspace = true
 reqwest.workspace = true
 which.workspace = true
+sha2.workspace = true
+hex.workspace = true
 
 # Audio processing
 symphonia.workspace = true
@@ -51,6 +53,9 @@ audioadapter-buffers.workspace = true
 
 # MP4/Stem format
 mp4.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [features]
 default = ["custom-protocol"]

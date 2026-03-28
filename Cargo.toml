@@ -60,6 +60,13 @@ tracing-appender = "0.2"
 directories = "5"
 which = "6"
 
+# Cryptography / hashing
+sha2 = "0.10"
+hex = "0.4"
+
+# Testing utilities
+tempfile = "3"
+
 [profile.release]
 panic = "abort"
 codegen-units = 1
