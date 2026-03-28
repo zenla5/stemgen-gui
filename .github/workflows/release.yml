@@ -59,9 +59,7 @@ jobs:
           echo "=== Tauri version ==="
           .\node_modules\.bin\tauri.cmd --version
           echo ""
-          $ErrorActionPreference = "Continue"
-          $env:TAURI_BUILD_NO_CARGO = "true"
-          .\node_modules\.bin\tauri.cmd build --bundles msi,nsis --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\tauri-build.log"
+          .\node_modules\.bin\tauri.cmd build --ci --bundles msi,nsis --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\tauri-build.log"
           $exitCode = $LASTEXITCODE
           echo ""
           echo "=== Tauri build exit code: $exitCode ==="
@@ -235,7 +233,7 @@ jobs:
           echo "=== Tauri version ==="
           ./node_modules/.bin/tauri --version
           echo ""
-          TAURI_BUILD_NO_CARGO=true ./node_modules/.bin/tauri build --bundles deb,appimage,rpm 2>&1 | tee /tmp/tauri-build.log
+          ./node_modules/.bin/tauri build --ci --bundles deb,appimage,rpm 2>&1 | tee /tmp/tauri-build.log
           EXIT_CODE=${PIPESTATUS[0]}
           echo ""
           echo "=== Tauri build exit code: $EXIT_CODE ==="
