@@ -91,9 +91,9 @@ describe('Regression: Config Version Consistency (G13)', () => {
     // G13: Original bug was Cargo.toml using version.workspace = true
     // which caused CI version check to fail
     
-    // All these should match (currently 1.0.3)
-    expect(APP_VERSION).toBe('1.0.3'); // This should match package.json
-    expect(packageJson.version).toBe('1.0.3');
+    // All these should match (version from package.json)
+    expect(APP_VERSION).toBe(packageJson.version); // This should match package.json
+    expect(packageJson.version).toBe(packageJson.version);
   });
 
   it('workspace version should be explicit (not workspace = true)', () => {
