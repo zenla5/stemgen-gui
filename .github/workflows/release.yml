@@ -216,7 +216,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: '*-installer|macos-*-artifacts|linux-packages'
           merge-multiple: true
       - name: List artifacts
         run: |
