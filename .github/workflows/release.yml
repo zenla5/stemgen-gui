@@ -58,12 +58,12 @@ jobs:
           Get-Content "$env:TEMP\tauri-build.log" -Tail 80
           echo ""
           echo "=== Checking for produced bundles ==="
-          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" -Filter "*.msi" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          $nsisFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis" -Filter "*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          $msiFile = Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/msi" -Filter "*.msi" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          $nsisFile = Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/nsis" -Filter "*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $msiFile -and -not $nsisFile) {
             echo "ERROR: No bundle files produced!"
-            if (Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle") {
-              Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle" -Recurse -File | Select-Object FullName
+            if (Test-Path "target/x86_64-pc-windows-msvc/release/bundle") {
+              Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle" -Recurse -File | Select-Object FullName
             } else {
               echo "No bundle directory found"
             }
@@ -78,16 +78,16 @@ jobs:
       - name: Verify build outputs
         run: |
           echo "=== Release binary ==="
-          if (Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe") {
-            Get-Item "src-tauri/target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe" | Select-Object Name, Length | Format-Table -AutoSize
+          if (Test-Path "target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe") {
+            Get-Item "target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe" | Select-Object Name, Length | Format-Table -AutoSize
           } else {
             Write-Host "WARNING: No Stemgen-GUI.exe found"
-            Get-ChildItem src-tauri/target -Filter "*.exe" -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+            Get-ChildItem target -Filter "*.exe" -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
           }
           echo ""
           echo "=== Bundle directory ==="
-          if (Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle") {
-            Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+          if (Test-Path "target/x86_64-pc-windows-msvc/release/bundle") {
+            Get-ChildItem target/x86_64-pc-windows-msvc/release/bundle -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
           } else {
             Write-Host "WARNING: No bundle directory found"
           }
@@ -96,9 +96,9 @@ jobs:
         with:
           name: windows-installer
           path: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-            src-tauri/target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe
+            target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -237,12 +237,12 @@ jobs:
           tail -80 /tmp/tauri-build.log
           echo ""
           echo "=== Checking for produced bundles ==="
-          DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" 2>/dev/null | head -1)
-          APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" 2>/dev/null | head -1)
-          RPM_FILE=$(find src-tauri/target/release/bundle/rpm -name "*.rpm" 2>/dev/null | head -1)
+          DEB_FILE=$(find target/release/bundle/deb -name "*.deb" 2>/dev/null | head -1)
+          APPIMAGE_FILE=$(find target/release/bundle/appimage -name "*.AppImage" 2>/dev/null | head -1)
+          RPM_FILE=$(find target/release/bundle/rpm -name "*.rpm" 2>/dev/null | head -1)
           if [ -z "$DEB_FILE" ] && [ -z "$APPIMAGE_FILE" ] && [ -z "$RPM_FILE" ]; then
             echo "ERROR: No bundle files produced!"
-            ls -la src-tauri/target/release/bundle/ 2>/dev/null || echo "No bundle directory"
+            ls -la target/release/bundle/ 2>/dev/null || echo "No bundle directory"
             exit 1
           fi
           echo "Bundles found:"
@@ -255,27 +255,27 @@ jobs:
       - name: Verify build outputs
         run: |
           echo "=== Release binary ==="
-          if [ -f "src-tauri/target/release/stemgen-gui" ]; then
-            ls -lh src-tauri/target/release/stemgen-gui
+          if [ -f "target/release/stemgen-gui" ]; then
+            ls -lh target/release/stemgen-gui
           else
             echo "WARNING: No stemgen-gui binary found"
-            ls -la src-tauri/target/release/ 2>/dev/null | head -20
+            ls -la target/release/ 2>/dev/null | head -20
           fi
           echo ""
           echo "=== Bundle directory ==="
-          ls -la src-tauri/target/release/bundle/ 2>/dev/null || echo "No bundle directory"
+          ls -la target/release/bundle/ 2>/dev/null || echo "No bundle directory"
           echo ""
           echo "=== Package files (glob search) ==="
-          find src-tauri/target/release -type f \( -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" \) -exec ls -lh {} \; 2>/dev/null || echo "No package files found"
+          find target/release -type f \( -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" \) -exec ls -lh {} \; 2>/dev/null || echo "No package files found"
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-packages
           path: |
-            src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/bundle/appimage/*.AppImage
-            src-tauri/target/release/bundle/rpm/*.rpm
-            src-tauri/target/release/stemgen-gui
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/rpm/*.rpm
+            target/release/stemgen-gui
           if-no-files-found: error
           retention-days: 7
 
