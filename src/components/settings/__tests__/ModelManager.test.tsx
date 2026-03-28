@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { ModelManager } from '../ModelManager';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ModelInfo = Record<string, any>;
+
+type ModelInfo = Record<string, unknown>;
 
 // ─── Mock Tauri APIs ───────────────────────────────────────────────────────────
 

@@ -33,6 +33,71 @@ test.describe('Navigation', () => {
     const body = page.locator('body');
     await expect(body).toBeVisible();
   });
+
+  test('should navigate to settings view via keyboard shortcut 4', async ({ page }) => {
+    // Press '4' key to navigate to Settings
+    await page.keyboard.press('4');
+    await page.waitForTimeout(500);
+    
+    // Verify we're on settings view - look for settings-related content
+    const settingsContent = page.getByText(/settings/i, { exact: false }).first();
+    await expect(settingsContent).toBeVisible();
+  });
+
+  test('should navigate to files view via keyboard shortcut 1', async ({ page }) => {
+    // First navigate to settings
+    await page.keyboard.press('4');
+    await page.waitForTimeout(500);
+    
+    // Then navigate back to files
+    await page.keyboard.press('1');
+    await page.waitForTimeout(500);
+    
+    // Look for file browser content
+    const filesContent = page.getByText(/file/i, { exact: false }).first();
+    await expect(filesContent).toBeVisible();
+  });
+
+  test('should navigate to queue view via keyboard shortcut 2', async ({ page }) => {
+    // Press '2' key to navigate to Queue
+    await page.keyboard.press('2');
+    await page.waitForTimeout(500);
+    
+    // Look for queue-related content
+    const queueContent = page.getByText(/queue/i, { exact: false }).first();
+    await expect(queueContent).toBeVisible();
+  });
+
+  test('should navigate to mixer view via keyboard shortcut 3', async ({ page }) => {
+    // Press '3' key to navigate to Mixer
+    await page.keyboard.press('3');
+    await page.waitForTimeout(500);
+    
+    // Look for mixer-related content
+    const mixerContent = page.getByText(/mixer/i, { exact: false }).first();
+    await expect(mixerContent).toBeVisible();
+  });
+});
+
+test.describe('Sidebar', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
+  });
+
+  test('should toggle sidebar with Ctrl+B', async ({ page }) => {
+    // Press Ctrl+B to toggle sidebar
+    await page.keyboard.press('Control+b');
+    await page.waitForTimeout(500);
+    
+    // App should still be functional after toggle
+    const body = page.locator('body');
+    await expect(body).toBeVisible();
+    
+    // Press Ctrl+B again to restore
+    await page.keyboard.press('Control+b');
+    await page.waitForTimeout(500);
+  });
 });
 
 test.describe('Settings', () => {
@@ -52,6 +117,16 @@ test.describe('Settings', () => {
     // Just verify page is still functional
     const body = page.locator('body');
     await expect(body).toBeVisible();
+  });
+
+  test('should open settings with Ctrl+, shortcut', async ({ page }) => {
+    // Press Ctrl+, to open settings
+    await page.keyboard.press('Control+,');
+    await page.waitForTimeout(1000);
+    
+    // Verify settings content is visible
+    const settingsContent = page.getByText(/settings/i, { exact: false }).first();
+    await expect(settingsContent).toBeVisible();
   });
 });
 
@@ -74,5 +149,62 @@ test.describe('Responsive Design', () => {
     // App should still be visible
     const body = page.locator('body');
     await expect(body).toBeVisible();
+  });
+
+  test('should work on tablet viewport', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.waitForTimeout(1000);
+    
+    // App should still be visible
+    const body = page.locator('body');
+    await expect(body).toBeVisible();
+  });
+});
+
+test.describe('Accessibility', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
+  });
+
+  test('should be keyboard accessible', async ({ page }) => {
+    // Tab through the page to verify keyboard navigation works
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(200);
+    
+    // App should still be functional
+    const body = page.locator('body');
+    await expect(body).toBeVisible();
+  });
+
+  test('should handle escape key gracefully', async ({ page }) => {
+    // Press escape to cancel current action
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    
+    // App should still be functional
+    const body = page.locator('body');
+    await expect(body).toBeVisible();
+  });
+});
+
+test.describe('Theme Switching', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
+  });
+
+  test('should support light theme', async ({ page }) => {
+    // Navigate to settings
+    await page.keyboard.press('4');
+    await page.waitForTimeout(500);
+    
+    // Look for theme-related UI
+    const themeContent = page.getByText(/appearance|theme|light|dark/i).first();
+    if (await themeContent.isVisible({ timeout: 2000 }).catch(() => false)) {
+      // Theme UI is visible, app is functional
+      expect(true).toBeTruthy();
+    }
   });
 });

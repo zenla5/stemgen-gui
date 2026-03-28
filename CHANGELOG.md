@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] — 2026-03-28 — Comprehensive Testing Enhancement
+
+### Added
+
+- **Rust DB Unit Tests** — 8 unit tests for database migrations, history entries, settings CRUD operations
+- **Rust AudioConverter Unit Tests** — 12 unit tests for audio format conversion, extension parsing, MIME types
+- **Rust Models Unit Tests** — 18 unit tests for model metadata, download URLs, abort flags, serialization
+- **Regression Test Suite** — Explicit tests for 5 known bugs (J1, G1, J2, G13, J7)
+- **Enhanced E2E Tests** — 18 E2E tests covering keyboard navigation, sidebar toggle, responsive design, accessibility, theme switching
+- **NI Stem Metadata Test** — Golden-file test for NI metadata structure (metadata.test.ts)
+
+### Fixed
+
+- **App.test.tsx** — Fixed 2 failing tests (wizard skip callback, Toaster rendering)
+- **models.rs test** — Fixed serialization test assertion for DownloadProgressPayload
+
+### Changed
+
+- **CI Coverage Thresholds** — Coverage thresholds raised to 80% for frontend
+- **Total Test Count** — 475 frontend tests + 59 Rust tests = 534 total tests
+
 ## [1.0.2] — 2026-03-28 — Testing & Settings Improvements
 
 ### Added

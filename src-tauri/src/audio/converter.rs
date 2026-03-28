@@ -242,3 +242,109 @@ impl Default for AudioConverter {
         Self::new()
     }
 }
+
+// ============================================================
+// Unit Tests
+// ============================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_audio_format_extension() {
+        assert_eq!(AudioFormat::Wav.extension(), "wav");
+        assert_eq!(AudioFormat::Flac.extension(), "flac");
+        assert_eq!(AudioFormat::Mp3.extension(), "mp3");
+        assert_eq!(AudioFormat::Aac.extension(), "m4a");
+        assert_eq!(AudioFormat::Alac.extension(), "m4a");
+        assert_eq!(AudioFormat::Ogg.extension(), "ogg");
+    }
+
+    #[test]
+    fn test_audio_format_mime_type() {
+        assert_eq!(AudioFormat::Wav.mime_type(), "audio/wav");
+        assert_eq!(AudioFormat::Flac.mime_type(), "audio/flac");
+        assert_eq!(AudioFormat::Mp3.mime_type(), "audio/mpeg");
+        assert_eq!(AudioFormat::Aac.mime_type(), "audio/aac");
+        assert_eq!(AudioFormat::Alac.mime_type(), "audio/mp4");
+        assert_eq!(AudioFormat::Ogg.mime_type(), "audio/ogg");
+    }
+
+    #[test]
+    fn test_audio_format_is_lossless() {
+        assert!(AudioFormat::Wav.is_lossless());
+        assert!(AudioFormat::Flac.is_lossless());
+        assert!(AudioFormat::Alac.is_lossless());
+        assert!(!AudioFormat::Mp3.is_lossless());
+        assert!(!AudioFormat::Aac.is_lossless());
+        assert!(!AudioFormat::Ogg.is_lossless());
+    }
+
+    #[test]
+    fn test_audio_format_from_extension() {
+        // Valid extensions
+        assert_eq!(AudioFormat::from_extension("wav"), Some(AudioFormat::Wav));
+        assert_eq!(AudioFormat::from_extension("flac"), Some(AudioFormat::Flac));
+        assert_eq!(AudioFormat::from_extension("mp3"), Some(AudioFormat::Mp3));
+        assert_eq!(AudioFormat::from_extension("m4a"), Some(AudioFormat::Aac));
+        assert_eq!(AudioFormat::from_extension("aac"), Some(AudioFormat::Aac));
+        assert_eq!(AudioFormat::from_extension("alac"), Some(AudioFormat::Alac));
+        assert_eq!(AudioFormat::from_extension("ogg"), Some(AudioFormat::Ogg));
+        assert_eq!(AudioFormat::from_extension("oga"), Some(AudioFormat::Ogg));
+    }
+
+    #[test]
+    fn test_audio_format_from_extension_case_insensitive() {
+        assert_eq!(AudioFormat::from_extension("WAV"), Some(AudioFormat::Wav));
+        assert_eq!(AudioFormat::from_extension("FLAC"), Some(AudioFormat::Flac));
+        assert_eq!(AudioFormat::from_extension("MP3"), Some(AudioFormat::Mp3));
+        assert_eq!(AudioFormat::from_extension("M4A"), Some(AudioFormat::Aac));
+    }
+
+    #[test]
+    fn test_audio_format_from_extension_invalid() {
+        assert_eq!(AudioFormat::from_extension("pdf"), None);
+        assert_eq!(AudioFormat::from_extension("jpg"), None);
+        assert_eq!(AudioFormat::from_extension("doc"), None);
+        assert_eq!(AudioFormat::from_extension(""), None);
+    }
+
+    #[test]
+    fn test_audio_converter_new() {
+        let converter = AudioConverter::new();
+        assert_eq!(converter.ffmpeg_path, "ffmpeg");
+    }
+
+    #[test]
+    fn test_audio_converter_with_custom_path() {
+        let converter = AudioConverter::with_ffmpeg_path("/usr/local/bin/ffmpeg");
+        assert_eq!(converter.ffmpeg_path, "/usr/local/bin/ffmpeg");
+    }
+
+    #[test]
+    fn test_audio_converter_default() {
+        let converter = AudioConverter::default();
+        assert_eq!(converter.ffmpeg_path, "ffmpeg");
+    }
+
+    #[test]
+    fn test_audio_format_debug() {
+        let format = AudioFormat::Mp3;
+        let debug_str = format!("{:?}", format);
+        assert!(debug_str.contains("Mp3"));
+    }
+
+    #[test]
+    fn test_audio_format_clone() {
+        let format1 = AudioFormat::Aac;
+        let format2 = format1.clone();
+        assert_eq!(format1, format2);
+    }
+
+    #[test]
+    fn test_audio_format_partial_eq() {
+        assert_eq!(AudioFormat::Wav, AudioFormat::Wav);
+        assert_ne!(AudioFormat::Wav, AudioFormat::Mp3);
+        assert_eq!(AudioFormat::Alac, AudioFormat::Alac);
+    }
+}

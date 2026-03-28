@@ -281,3 +281,201 @@ pub fn cancel_download(model_id: String) -> Result<(), String> {
     set_abort();
     Ok(())
 }
+
+// ============================================================
+// Unit Tests
+// ============================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_available_models_returns_4_models() {
+        let models = get_available_models();
+        assert_eq!(models.len(), 4);
+    }
+
+    #[test]
+    fn test_get_available_models_has_valid_ids() {
+        let models = get_available_models();
+        let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
+        assert!(ids.contains(&"demucs"));
+        assert!(ids.contains(&"bs_roformer"));
+        assert!(ids.contains(&"htdemucs"));
+        assert!(ids.contains(&"htdemucs_ft"));
+    }
+
+    #[test]
+    fn test_get_available_models_has_required_fields() {
+        let models = get_available_models();
+        for model in models {
+            assert!(!model.id.is_empty());
+            assert!(!model.name.is_empty());
+            assert!(!model.description.is_empty());
+            assert!(!model.quality.is_empty());
+            assert!(!model.speed.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_model_info_serialization() {
+        let model = ModelInfo {
+            id: "test-model".to_string(),
+            name: "Test Model".to_string(),
+            description: "A test model".to_string(),
+            quality: "high".to_string(),
+            speed: "fast".to_string(),
+            gpu_required: true,
+            size_mb: Some(100),
+        };
+
+        let json = serde_json::to_string(&model).unwrap();
+        assert!(json.contains("test-model"));
+        assert!(json.contains("high"));
+        assert!(json.contains("true")); // gpu_required
+    }
+
+    #[test]
+    fn test_model_info_deserialization() {
+        let json = r#"{
+            "id": "bs_roformer",
+            "name": "BS-RoFormer",
+            "description": "High quality model",
+            "quality": "high",
+            "speed": "medium",
+            "gpu_required": true,
+            "size_mb": 350
+        }"#;
+
+        let model: ModelInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(model.id, "bs_roformer");
+        assert_eq!(model.quality, "high");
+        assert!(model.gpu_required);
+        assert_eq!(model.size_mb, Some(350));
+    }
+
+    #[test]
+    fn test_download_progress_payload_serialization() {
+        let payload = DownloadProgressPayload {
+            model_id: "test-model".to_string(),
+            status: "downloading".to_string(),
+            progress: 50.0,
+            downloaded_mb: 50.0,
+            total_mb: 100.0,
+        };
+
+        let json = serde_json::to_string(&payload).unwrap();
+        // Should use camelCase for modelId
+        assert!(json.contains("modelId"));
+        assert!(json.contains("\"progress\":50"));
+        assert!(!json.contains("model_id")); // snake_case not in output
+    }
+
+    #[test]
+    fn test_model_download_url_demucs() {
+        assert!(model_download_url("demucs").is_some());
+        let url = model_download_url("demucs").unwrap();
+        assert!(url.contains("demucs"));
+        assert!(url.contains("dl.fbaipublicfiles.com"));
+    }
+
+    #[test]
+    fn test_model_download_url_htdemucs() {
+        assert!(model_download_url("htdemucs").is_some());
+        let url = model_download_url("htdemucs").unwrap();
+        assert!(url.contains("htdemucs"));
+    }
+
+    #[test]
+    fn test_model_download_url_htdemucs_ft() {
+        assert!(model_download_url("htdemucs_ft").is_some());
+        let url = model_download_url("htdemucs_ft").unwrap();
+        assert!(url.contains("htdemucs_ft"));
+    }
+
+    #[test]
+    fn test_model_download_url_bs_roformer() {
+        assert!(model_download_url("bs_roformer").is_some());
+        let url = model_download_url("bs_roformer").unwrap();
+        assert!(url.contains("bs_roformer"));
+        assert!(url.contains("huggingface.co"));
+    }
+
+    #[test]
+    fn test_model_download_url_invalid() {
+        assert!(model_download_url("invalid-model").is_none());
+        assert!(model_download_url("").is_none());
+        assert!(model_download_url("unknown").is_none());
+    }
+
+    #[test]
+    fn test_model_size_mb_all_models() {
+        assert_eq!(model_size_mb("demucs"), 830);
+        assert_eq!(model_size_mb("htdemucs"), 1040);
+        assert_eq!(model_size_mb("htdemucs_ft"), 1040);
+        assert_eq!(model_size_mb("bs_roformer"), 350);
+    }
+
+    #[test]
+    fn test_model_size_mb_unknown_defaults_to_1000() {
+        assert_eq!(model_size_mb("unknown"), 1000);
+        assert_eq!(model_size_mb(""), 1000);
+    }
+
+    #[test]
+    fn test_abort_flag_default_is_false() {
+        // Reset and check default state
+        reset_abort();
+        assert!(!should_abort());
+    }
+
+    #[test]
+    fn test_abort_flag_set_and_check() {
+        // Reset first
+        reset_abort();
+        assert!(!should_abort());
+
+        // Set abort
+        set_abort();
+        assert!(should_abort());
+
+        // Reset again
+        reset_abort();
+        assert!(!should_abort());
+    }
+
+    #[test]
+    fn test_get_models_dir_returns_path() {
+        let models_dir = get_models_dir();
+        assert!(models_dir.to_string_lossy().contains("stemgen-gui"));
+        assert!(models_dir.to_string_lossy().contains("models"));
+    }
+
+    #[test]
+    fn test_demucs_model_info_has_no_gpu_requirement() {
+        let models = get_available_models();
+        let demucs = models.iter().find(|m| m.id == "demucs").unwrap();
+        assert!(!demucs.gpu_required);
+        assert_eq!(demucs.size_mb, Some(830));
+    }
+
+    #[test]
+    fn test_gpu_models_require_gpu() {
+        let models = get_available_models();
+        let gpu_models = ["bs_roformer", "htdemucs", "htdemucs_ft"];
+        
+        for gpu_model_id in gpu_models {
+            let model = models.iter().find(|m| m.id == gpu_model_id).unwrap();
+            assert!(model.gpu_required, "Model {} should require GPU", gpu_model_id);
+        }
+    }
+
+    #[test]
+    fn test_all_models_have_size_info() {
+        let models = get_available_models();
+        for model in models {
+            assert!(model.size_mb.is_some());
+            assert!(model.size_mb.unwrap() > 0);
+        }
+    }
+}
