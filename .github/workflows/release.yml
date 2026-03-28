@@ -50,20 +50,12 @@ jobs:
           CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Build Windows installers
         run: |
-          echo "=== Binary check ==="
-          if (!(Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe")) {
-            echo "ERROR: Binary not found"
-            exit 1
-          }
-          echo "Binary found, creating installers..."
-          echo "=== Tauri version ==="
-          .\node_modules\.bin\tauri.cmd --version
-          echo ""
-          .\node_modules\.bin\tauri.cmd build --ci --bundles msi,nsis --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\tauri-build.log"
+          echo "=== Creating Windows installers ==="
+          npx tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\tauri-build.log"
           $exitCode = $LASTEXITCODE
           echo ""
           echo "=== Tauri build exit code: $exitCode ==="
-          Get-Content "$env:TEMP\tauri-build.log" -Tail 50
+          Get-Content "$env:TEMP\tauri-build.log" -Tail 80
           if ($exitCode -ne 0) { exit $exitCode }
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
@@ -221,23 +213,12 @@ jobs:
           CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Build Linux installers
         run: |
-          echo "=== Binary check ==="
-          if [ ! -f "src-tauri/target/release/stemgen-gui" ]; then
-            echo "ERROR: Binary not found"
-            ls -la src-tauri/target/release/ 2>/dev/null | head -20
-            exit 1
-          fi
-          echo "Binary found: $(ls -lh src-tauri/target/release/stemgen-gui)"
-          echo ""
-          echo "=== Creating installers ==="
-          echo "=== Tauri version ==="
-          ./node_modules/.bin/tauri --version
-          echo ""
-          ./node_modules/.bin/tauri build --ci --bundles deb,appimage,rpm 2>&1 | tee /tmp/tauri-build.log
+          echo "=== Creating Linux installers ==="
+          npx tauri build --bundles deb,appimage,rpm 2>&1 | tee /tmp/tauri-build.log
           EXIT_CODE=${PIPESTATUS[0]}
           echo ""
           echo "=== Tauri build exit code: $EXIT_CODE ==="
-          tail -50 /tmp/tauri-build.log
+          tail -80 /tmp/tauri-build.log
           if [ $EXIT_CODE -ne 0 ]; then exit $EXIT_CODE; fi
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
