@@ -132,7 +132,7 @@ Download the installer for your platform below. All links point to the **latest 
 
 | Platform | Download |
 |---|---|
-| **Windows** | [.exe (NSIS installer)](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x64-setup.msi) |
+| **Windows** | [.exe installer](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x64-setup.msi) |
 | **macOS (Apple Silicon)** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_aarch64.dmg) |
 | **Linux** | [.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_amd64.AppImage) · [.deb](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui_amd64.deb) · [.rpm](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui.x86_64.rpm) |
 
