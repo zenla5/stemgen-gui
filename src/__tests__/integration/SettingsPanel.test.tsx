@@ -11,6 +11,12 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
+// ─── Mock ModelManager to avoid Tauri API complexity ───────────────────────────
+
+vi.mock('@/components/settings/ModelManager', () => ({
+  ModelManager: () => <div data-testid="model-manager">ModelManager</div>,
+}));
+
 // ─── Store reset helper ────────────────────────────────────────────────────────
 
 function resetStores() {

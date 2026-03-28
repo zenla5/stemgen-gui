@@ -143,9 +143,9 @@ export function ProcessingHistory() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   {/* Cover art thumbnail */}
-                  {entry.metadata?.audio.cover_art_path && (
+                  {entry.metadata?.audio?.cover_art_path && (
                     <img
-                      src={`asset://localhost/${entry.metadata.audio.cover_art_path}`}
+                      src={`asset://localhost/${entry.metadata?.audio?.cover_art_path}`}
                       alt="Cover"
                       className="h-10 w-10 rounded object-cover"
                       onError={(e) => {
@@ -155,11 +155,11 @@ export function ProcessingHistory() {
                   )}
                   <div className="flex flex-col">
                     <span className="truncate font-medium">
-                      {entry.metadata?.audio.title || getFileName(entry.source_path)}
+                      {entry.metadata?.audio?.title || getFileName(entry.source_path)}
                     </span>
-                    {entry.metadata?.audio.artist && (
+                    {entry.metadata?.audio?.artist && (
                       <span className="text-sm text-muted-foreground">
-                        {entry.metadata.audio.artist}
+                        {entry.metadata?.audio?.artist}
                       </span>
                     )}
                   </div>
@@ -175,26 +175,26 @@ export function ProcessingHistory() {
                 
                 {/* Metadata row: BPM, key, format */}
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                  {entry.metadata?.audio.bpm && (
+                  {entry.metadata?.audio?.bpm && (
                     <span className="flex items-center gap-1" title="BPM">
                       <Music className="h-3 w-3" />
-                      {formatBpm(entry.metadata.audio.bpm)} BPM
+                      {formatBpm(entry.metadata?.audio?.bpm)}
                     </span>
                   )}
-                  {entry.metadata?.audio.key && (
+                  {entry.metadata?.audio?.key && (
                     <span className="flex items-center gap-1" title="Key">
                       <Disc className="h-3 w-3" />
-                      {entry.metadata.audio.key}
+                      {entry.metadata?.audio?.key}
                     </span>
                   )}
                   {entry.metadata?.dj_software && (
                     <span className="flex items-center gap-1">
-                      {entry.metadata.dj_software}
+                      {entry.metadata?.dj_software}
                     </span>
                   )}
-                  {entry.metadata?.track_count && entry.metadata.track_count > 1 && (
+                  {entry.metadata?.track_count && entry.metadata?.track_count > 1 && (
                     <span className="flex items-center gap-1">
-                      {entry.metadata.track_count} tracks
+                      {entry.metadata?.track_count} tracks
                     </span>
                   )}
                   <span className="flex items-center gap-1">

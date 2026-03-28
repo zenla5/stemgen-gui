@@ -8,7 +8,11 @@ type AudioContextState = 'suspended' | 'running' | 'closed';
 vi.mock('@tauri-apps/api', () => ({
   invoke: vi.fn(),
   emit: vi.fn(),
-  listen: vi.fn(),
+  listen: vi.fn(() => Promise.resolve(vi.fn())),
+}));
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(() => Promise.resolve(vi.fn())),
 }));
 
 // Mock window.matchMedia

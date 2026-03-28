@@ -1,9 +1,10 @@
-import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles, RefreshCw, CheckCircle, XCircle, AlertCircle, Package } from 'lucide-react';
+import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles, RefreshCw, CheckCircle, XCircle, AlertCircle, Package, HardDrive } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useSettingsStore, supportedLanguages } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
 import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
+import { ModelManager } from './ModelManager';
 
 export function SettingsPanel() {
   const settings = useSettingsStore();
@@ -269,6 +270,18 @@ export function SettingsPanel() {
             </button>
           ))}
         </div>
+      </section>
+
+      {/* Model Downloads */}
+      <section className="space-y-3 rounded-lg border border-muted p-4">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          <HardDrive className="h-4 w-4" />
+          Model Downloads
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Download and manage AI models for stem separation. Downloaded models are stored locally.
+        </p>
+        <ModelManager />
       </section>
 
       {/* Device */}

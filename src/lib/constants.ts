@@ -164,7 +164,7 @@ export const DEVICE_OPTIONS = [
 // Default processing settings
 export const DEFAULT_PROCESSING_SETTINGS = {
   model: 'bs_roformer' as AIModel,
-  device: 'cuda' as const,
+  device: 'cpu' as const,
   outputFormat: 'alac' as const,
   qualityPreset: 'standard' as const,
   djPreset: 'traktor' as DJSoftware,
@@ -192,8 +192,9 @@ export const KEYBOARD_SHORTCUTS = {
   'escape': 'Cancel current action',
 };
 
-// App info
-export const APP_VERSION = '0.1.0';
+/// App info
+// ⚠️ Keep in sync with package.json "version" field
+export const APP_VERSION = '1.0.2';
 
 export const APP_INFO = {
   name: 'Stemgen-GUI',

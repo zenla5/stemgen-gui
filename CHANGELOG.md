@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] — 2026-03-28 — Testing & Settings Improvements
+
+### Added
+
+- **ModelManager integration** — AI Model download manager integrated into SettingsPanel with download buttons
+- **ModelManager tests** — Comprehensive unit tests for ModelManager component (15+ tests)
+- **SettingsPanel tests** — Expanded unit tests covering interactions, conditional rendering, and all sections
+- **FileBrowser tests** — Integration tests covering drag-drop, keyboard navigation, file selection (29 tests)
+- **ProcessingHistory tests** — Functional tests for history display with Tauri API mocking
+
+### Fixed
+
+- **Default device** — Changed default processing device from 'cuda' to 'cpu' (safer default, CUDA requires GPU)
+- **APP_VERSION** — Version bumped from 0.1.0 to 1.0.1 to match release
+- **Integration test mock** — Fixed SettingsPanel integration test by properly mocking ModelManager component
+- **Constants test** — Updated default device expectation from 'cuda' to 'cpu'
+
+### Changed
+
+- **Vitest coverage thresholds** — Raised to 80% line coverage for frontend, 60% for backend
+
 ## [1.0.1] — 2026-03-28 — Bugfix Release
 
 ### Fixed
