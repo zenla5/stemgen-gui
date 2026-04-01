@@ -17,6 +17,7 @@
  *   - src-tauri/tauri.conf.json         (version field)
  *   - src/lib/constants.ts              (APP_VERSION constant)
  *   - README.md                         (download links)
+ *   - src/__tests__/regression.test.ts  (hardcoded APP_VERSION assertion)
  *   - CHANGELOG.md                      (new entry prepended)
  *
  * Note: README download link filenames are hardcoded because GitHub Actions
@@ -66,25 +67,6 @@ const FILES_TO_UPDATE = [
   },
 ];
 
-// README download link patterns (Windows .exe, .msi; macOS .dmg; Linux .AppImage, .deb, .rpm)
-const README_PATTERNS = [
-  // Windows NSIS
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen-GUI_${VERSION}_x64-setup.exe`],
-  // Windows MSI
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.msi/g, `Stemgen-GUI_${VERSION}_x64-setup.msi`],
-  // macOS
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_aarch64\.dmg/g, `Stemgen-GUI_${VERSION}_aarch64.dmg`],
-  // Linux AppImage
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen-GUI_${VERSION}_amd64.AppImage`],
-  // Linux DEB
-  [/stemgen-gui_(\d+\.\d+\.\d+)_amd64\.deb/g, `stemgen-gui_${VERSION}_amd64.deb`],
-  // Linux RPM
-  [/stemgen-gui-(\d+\.\d+\.\d+)-1\.x86_64\.rpm/g, `stemgen-gui-${VERSION}-1.x86_64.rpm`],
-  // Verification examples in README
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen-GUI_${VERSION}_amd64.AppImage`],
-  [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen-GUI_${VERSION}_x64-setup.exe`],
-];
-
 // Changelog entry template
 const CHANGELOG_ENTRY = (version, date) => `## [${version}] — ${date} — Version Bump
 
@@ -125,19 +107,28 @@ function updateReadmeLinks() {
 
   const content = read('README.md');
 
-  // Update the section header (e.g., "### Latest Release (v1.0.9)" -> "### Latest Release (v1.0.10)")
+  // README download link patterns (Windows .exe, .msi; macOS .dmg; Linux .AppImage, .deb, .rpm)
+  // NOTE: defined inside the function so VERSION is in scope.
+  // These match the actual Tauri bundler output filenames.
+  const README_PATTERNS = [
+    // Windows NSIS (note: Tauri uses dot in product name: Stemgen.GUI)
+    [/Stemgen\.GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen.GUI_${VERSION}_x64-setup.exe`],
+    // Windows MSI
+    [/Stemgen\.GUI_(\d+\.\d+\.\d+)_x64_en-US\.msi/g, `Stemgen.GUI_${VERSION}_x64_en-US.msi`],
+    // macOS (uses hyphen: Stemgen-GUI, no version in current builds)
+    [/Stemgen-GUI_(?:\d+\.\d+\.\d+_)?aarch64\.dmg/g, `Stemgen-GUI_${VERSION}_aarch64.dmg`],
+    // Linux AppImage
+    [/Stemgen\.GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen.GUI_${VERSION}_amd64.AppImage`],
+    // Linux DEB
+    [/Stemgen\.GUI_(\d+\.\d+\.\d+)_amd64\.deb/g, `Stemgen.GUI_${VERSION}_amd64.deb`],
+    // Linux RPM
+    [/Stemgen\.GUI-(\d+\.\d+\.\d+)-1\.x86_64\.rpm/g, `Stemgen.GUI-${VERSION}-1.x86_64.rpm`],
+  ];
+
+  // Section header pattern
   const headerPattern = /### Latest Release \(v\d+\.\d+\.\d+\)/;
-  const newContent = content
-    .replace(headerPattern, `### Latest Release (v${VERSION})`)
-    .replace(README_PATTERNS.map(([pattern, replacement]) => [pattern, replacement]), (match) => match);
 
-  for (const [pattern, replacement] of README_PATTERNS) {
-    if (pattern.test(newContent)) {
-      console.error(`  ❌ README.md: Pattern ${pattern} not found (may already be updated)`);
-    }
-  }
-
-  // Apply replacements
+  // Apply all replacements
   let updated = content;
   for (const [pattern, replacement] of README_PATTERNS) {
     updated = updated.replace(pattern, replacement);
@@ -150,11 +141,34 @@ function updateReadmeLinks() {
   console.log(`  ✅ README.md`);
 }
 
+function updateRegressionTest() {
+  console.log(`\n🧪 Updating regression.test.ts...\n`);
+
+  const content = read('src/__tests__/regression.test.ts');
+
+  // Update the hardcoded APP_VERSION assertion inside the v1.0.8 Coverage Enhancement describe block.
+  // This test hardcodes the version string to guard against accidental version regressions.
+  // Pattern: it('APP_VERSION should be 1.0.x', () => { expect(APP_VERSION).toBe('1.0.x'); });
+  const pattern = /it\('APP_VERSION should be (\d+\.\d+\.\d+)', \(\) => \{\s*expect\(APP_VERSION\)\.toBe\('(\d+\.\d+\.\d+)'\);/;
+
+  if (!pattern.test(content)) {
+    console.error('  ❌ src/__tests__/regression.test.ts: Could not find hardcoded APP_VERSION assertion');
+    process.exit(1);
+  }
+
+  const updated = content.replace(
+    /it\('APP_VERSION should be (\d+\.\d+\.\d+)', \(\) => \{\s*expect\(APP_VERSION\)\.toBe\('(\d+\.\d+\.\d+)'\);/,
+    `it('APP_VERSION should be ${VERSION}', () => { expect(APP_VERSION).toBe('${VERSION}');`
+  );
+
+  write('src/__tests__/regression.test.ts', updated);
+  console.log(`  ✅ src/__tests__/regression.test.ts`);
+}
+
 function updateChangelog() {
   console.log(`\n📝 Updating CHANGELOG.md...\n`);
 
   const content = read('CHANGELOG.md');
-  const date = new Date().toISOString().split('T')[0].replace(/-/g, '/').replace(/^/, '');
   const formattedDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -172,7 +186,7 @@ function gitCommit() {
   console.log(`\n📤 Committing changes...\n`);
 
   try {
-    execSync('git add package.json Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json src/lib/constants.ts README.md CHANGELOG.md', {
+    execSync('git add package.json Cargo.toml src-tauri/Cargo.toml src-tauri/tauri.conf.json src/lib/constants.ts README.md src/__tests__/regression.test.ts CHANGELOG.md', {
       cwd: ROOT,
       stdio: 'inherit',
     });
@@ -187,7 +201,8 @@ function gitCommit() {
       stdio: 'inherit',
     });
 
-    console.log(`\n  ✅ Commit: $(git rev-parse HEAD | cut -c1-7)`);
+    const hash = execSync('git rev-parse HEAD | cut -c1-7', { cwd: ROOT, encoding: 'utf-8' }).trim();
+    console.log(`\n  ✅ Commit: ${hash}`);
     console.log(`  ✅ Tag: v${VERSION}`);
     console.log(`\n⚠️  Run 'git push && git push --tags' to push the release.`);
   } catch (error) {
@@ -215,6 +230,7 @@ console.log('══════════════════════�
 
 updateVersionStrings();
 updateReadmeLinks();
+updateRegressionTest();
 updateChangelog();
 gitCommit();
 

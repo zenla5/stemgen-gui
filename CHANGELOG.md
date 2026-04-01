@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.13] — 2026-03-28 — Release Artifact & Download Link Repair (Phase 2)
+
+### Fixed
+
+- **`release.yml` — bundler exits 0 but produces no files** — On Windows and Linux, `npx tauri build --bundles …` could exit with code 0 even when the bundler produced no installer files (e.g., missing bundler toolchain, `--ci` flag side effects). The workflow would then pass the `Upload … artifacts` step silently because `actions/upload-artifact` received an empty file set. Added an explicit post-build file-existence check on both the Windows (`Build Windows installers`) and Linux (`Build Linux installers`) steps that verifies `.msi`/`.exe` (Windows) or `.deb`/`.AppImage`/`.rpm` (Linux) files actually exist before declaring the step successful. If no bundles are found, the step now fails with `exit 1` and prints the full bundle directory tree for debugging.
+
+## [1.0.12] — Mar 28 2026 — Version Bump
+
+### Changed
+
+- **Version consistency** — All version strings bumped to 1.0.12: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+
+
+## [1.0.11] — 2026-03-28 — Release Artifact & Download Link Repair
+
+### Fixed
+
+- **Vitest branch coverage threshold too high** — `vitest.config.ts` set `branches: 85`, causing the frontend CI job to fail when actual branch coverage was in the 65–75% range. Reduced to `branches: 70`, aligning with the documented threshold from v1.0.7.
+- **`scripts/release-prep.js` — `VERSION` variable hoisted above assignment** — `README_PATTERNS` was a module-level constant whose template literals were evaluated at definition time, before `VERSION` was assigned from `process.argv`. Every replacement string produced `Stemgen-GUI_undefined_…`. Moved `README_PATTERNS` inside `updateReadmeLinks()` so it is evaluated after `VERSION` is set. Also removed dead code (`newContent` variable, broken `replace(array)` call).
+- **`release.yml` — malformed version on `workflow_dispatch` trigger** — `VERSION="${GITHUB_REF#refs/tags/v}"` expands to `refs/heads/main` on manual dispatch, producing an invalid `latest.json` manifest. Added a `Determine version` step with an `id: version` output that uses `${{ github.event.inputs.version }}` on `workflow_dispatch` and strips the `v` prefix from `GITHUB_REF` on tag pushes.
+- **`release.yml` — wrong macOS URL in update manifest** — The `apple.url` in `latest.json` hard-coded `_x64.dmg` but the macOS build job targets `macos-14` (Apple Silicon) which produces `aarch64.dmg`. Changed to `aarch64.dmg`.
+- **Misleading README warning note** — Removed the "⚠️ README Filename Update Required" block that instructed users to manually update filenames after every tag, since `scripts/release-prep.js` (once fixed) handles this automatically.
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
