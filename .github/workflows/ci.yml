@@ -193,8 +193,15 @@ jobs:
 
       - name: Build release
         run: |
-          cd src-tauri && cargo build --release
+          cd src-tauri && cargo build --release --features devtools
           echo "Build exit code: $?"
+
+      - name: Upload release binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-binary
+          path: src-tauri/target/release/stemgen-gui
+          retention-days: 1
 
       - name: Run Rust tests
         run: |
@@ -225,12 +232,59 @@ jobs:
         run: cargo install cargo-audit && cargo audit || true
         continue-on-error: true
 
+  # Binary E2E tests — drives the compiled Tauri binary via CDP
+  e2e-binary:
+    name: Binary E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [backend]
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Download built binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-binary
+          path: src-tauri/target/release/
+
+      - name: Make binary executable
+        run: chmod +x src-tauri/target/release/stemgen-gui
+
+      - name: Run binary E2E tests
+        run: xvfb-run --auto-servernum npx playwright test --project=binary
+        env:
+          CI: true
+          CDP_PORT: 9515
+
+      - name: Upload binary test results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: binary-e2e-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   # Final check
   check:
     name: All Checks Passed
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, security]
+    needs: [frontend, integration, backend, e2e, e2e-binary, security]
     if: always()
 
     steps:
@@ -252,6 +306,10 @@ jobs:
             echo "E2E tests failed"
             exit 1
           fi
+          if [[ "${{ needs.e2e-binary.result }}" == "failure" ]]; then
+            echo "Binary E2E tests failed"
+            exit 1
+          fi
           echo "All critical checks passed!"
 
   # Failure notification via Telegram
@@ -259,7 +317,7 @@ jobs:
     name: Notify on Failure
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e]
+    needs: [frontend, integration, backend, e2e, e2e-binary]
     if: failure()
     steps:
       - name: Send Telegram notification
