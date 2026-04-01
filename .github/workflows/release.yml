@@ -163,7 +163,7 @@ jobs:
           unzip -l "$ZIP_NAME" | head -5
           echo ""
           echo "=== Copy zip to workspace root with .dmg extension ==="
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(node -p "require('$GITHUB_WORKSPACE/package.json').version")
           DMG_NAME="Stemgen-GUI_${VERSION}_aarch64.dmg"
           cp "$ZIP_NAME" "$GITHUB_WORKSPACE/$DMG_NAME"
           echo "Copied to: $GITHUB_WORKSPACE/$DMG_NAME"
