@@ -117,22 +117,27 @@ jobs:
         run: |
           echo "=== Building macOS installer ==="
           npx tauri build --bundles app --target aarch64-apple-darwin 2>&1 | tee /tmp/tauri-build.log
+          EXIT_CODE=${PIPESTATUS[0]}
           echo ""
-          echo "=== Tauri build log tail ==="
-          tail -30 /tmp/tauri-build.log
+          echo "=== Tauri build exit code: $EXIT_CODE ==="
+          tail -80 /tmp/tauri-build.log
+          echo ""
+          echo "=== Checking for .app bundle ==="
+          find "$GITHUB_WORKSPACE/target" -name "*.app" -type d 2>/dev/null | head -10
+          if [ $EXIT_CODE -ne 0 ]; then exit $EXIT_CODE; fi
         env:
           CARGO_HOME: ${{ github.workspace }}/.cargo
       - name: Find and package .app bundle
         id: package
         run: |
-          echo "=== Listing target/aarch64-apple-darwin/release ==="
-          ls -la target/aarch64-apple-darwin/release/ 2>/dev/null | head -20
-          echo ""
           echo "=== Searching for .app bundle ==="
-          APP_DIR=$(find . -name "*.app" -type d 2>/dev/null | grep "target/aarch64" | head -1)
+          APP_DIR=$(find "$GITHUB_WORKSPACE/target" -name "*.app" -type d 2>/dev/null | head -1)
           if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
             echo "ERROR: No .app bundle found"
-            find . -name "*.app" -type d 2>/dev/null
+            echo "=== Listing target directory ==="
+            ls -la "$GITHUB_WORKSPACE/target/" 2>/dev/null | head -20
+            echo "=== Full target tree ==="
+            find "$GITHUB_WORKSPACE/target" -type d 2>/dev/null | head -40
             exit 1
           fi
           echo "Found: $APP_DIR"
