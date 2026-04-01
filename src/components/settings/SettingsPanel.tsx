@@ -8,6 +8,7 @@ import { ModelManager } from './ModelManager';
 import { InstallProgress } from '@/components/ui/InstallProgress';
 import { Button } from '@/components/ui/Button';
 import type { AvailableInstaller } from '@/lib/types';
+import { hasPackageStatusKey } from '@/lib/types';
 
 function formatTimeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -75,13 +76,13 @@ export function SettingsPanel() {
       const validation = environmentValidation;
       // Check if this dep is missing
       const isMissing = depKey === 'ffmpeg'
-        ? (!validation?.ffmpeg || !('available' in validation.ffmpeg))
+        ? (!validation?.ffmpeg || !hasPackageStatusKey(validation.ffmpeg, 'available'))
         : depKey === 'python'
-        ? (!validation?.python || !('available' in validation.python))
+        ? (!validation?.python || !hasPackageStatusKey(validation.python, 'available'))
         : depKey === 'pytorch'
-        ? (!validation?.pytorch || !('available' in validation.pytorch))
+        ? (!validation?.pytorch || !hasPackageStatusKey(validation.pytorch, 'available'))
         : depKey === 'demucs'
-        ? (!validation?.demucs || !('available' in validation.demucs))
+        ? (!validation?.demucs || !hasPackageStatusKey(validation.demucs, 'available'))
         : false;
 
       if (!isMissing) continue;
@@ -104,27 +105,27 @@ export function SettingsPanel() {
     environmentValidation?.python,
     environmentValidation?.pytorch,
     environmentValidation?.demucs,
-  ].filter(s => s && !('available' in s)).length;
+  ].filter(s => s && !hasPackageStatusKey(s, 'available')).length;
 
   const isPackageAvailable = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null) => {
     if (!status) return false;
-    return 'available' in status;
+    return hasPackageStatusKey(status, 'available');
   };
 
   const getPackageIcon = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null): ReactNode => {
     if (!status) return <XCircle className="h-4 w-4 text-muted-foreground" />;
     if (isPackageAvailable(status)) return <CheckCircle className="h-4 w-4 text-green-500" />;
-    if ('warning' in status) return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-    if ('unavailable' in status) return <AlertCircle className="h-4 w-4 text-orange-500" />;
+    if (hasPackageStatusKey(status, 'warning')) return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+    if (hasPackageStatusKey(status, 'unavailable')) return <AlertCircle className="h-4 w-4 text-orange-500" />;
     return <XCircle className="h-4 w-4 text-red-500" />;
   };
 
   const getPackageLabel = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null): string => {
     if (!status) return 'Not checked';
-    if ('available' in status) return 'Available';
-    if ('warning' in status) return status.warning;
-    if ('unavailable' in status) return status.unavailable;
-    if ('missing' in status) return status.missing;
+    if (hasPackageStatusKey(status, 'available')) return 'Available';
+    if (hasPackageStatusKey(status, 'warning')) return (status as { warning: string }).warning;
+    if (hasPackageStatusKey(status, 'unavailable')) return (status as { unavailable: string }).unavailable;
+    if (hasPackageStatusKey(status, 'missing')) return (status as { missing: string }).missing;
     return 'Unknown';
   };
 

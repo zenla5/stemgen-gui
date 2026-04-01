@@ -18,6 +18,36 @@ import type {
   InstallProgressEvent,
   InstallResult,
 } from '@/lib/types';
+import { hasPackageStatusKey } from '@/lib/types';
+
+// Fields that should be PackageStatus objects
+const PACKAGE_STATUS_FIELDS = [
+  'python', 'pytorch', 'torchaudio', 'demucs', 'cuda', 'ffmpeg', 'ffprobe', 'sidecarScript',
+] as const;
+
+/**
+ * Validate that all PackageStatus fields in an EnvironmentValidation
+ * response are objects, not primitives. Logs warnings for malformed fields.
+ */
+function validateEnvironmentResponse(data: unknown): EnvironmentValidation {
+  if (!data || typeof data !== 'object') {
+    console.error('[validateEnvironment] Response is not an object:', typeof data, data);
+    return { isReady: false, warnings: ['Invalid environment validation response'] };
+  }
+  const record = data as Record<string, unknown>;
+  for (const field of PACKAGE_STATUS_FIELDS) {
+    const val = record[field];
+    if (val !== undefined && val !== null && !hasPackageStatusKey(val, 'available')
+        && !hasPackageStatusKey(val, 'unavailable') && !hasPackageStatusKey(val, 'warning')
+        && !hasPackageStatusKey(val, 'missing')) {
+      console.error(
+        `[validateEnvironment] Malformed PackageStatus for "${field}":`,
+        `type=${typeof val}, value=${JSON.stringify(val)}`
+      );
+    }
+  }
+  return record as unknown as EnvironmentValidation;
+}
 import { DEFAULT_PROCESSING_SETTINGS, STEM_COLORS, STEM_DEFAULT_NAMES } from '@/lib/constants';
 
 // Helper to generate unique IDs
@@ -521,7 +551,8 @@ export const useAppStore = create<AppState>()(
           return;
         }
         try {
-          const validation = await invoke<EnvironmentValidation>('validate_environment');
+          const raw = await invoke<unknown>('validate_environment');
+          const validation = validateEnvironmentResponse(raw);
           set({ environmentValidation: validation, environmentValidated: true, environmentValidatedAt: now });
         } catch (error) {
           console.error('Failed to validate environment:', error);

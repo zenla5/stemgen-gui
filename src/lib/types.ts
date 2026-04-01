@@ -279,10 +279,36 @@ export interface PackageStatusMissing {
 }
 
 export type PackageStatus =
-  | PackageStatusAvailable 
-  | PackageStatusUnavailable 
-  | PackageStatusWarning 
+  | PackageStatusAvailable
+  | PackageStatusUnavailable
+  | PackageStatusWarning
   | PackageStatusMissing;
+
+/**
+ * Safely check if a PackageStatus value has a given key.
+ * Guards against primitives (strings, null, undefined) that would
+ * cause "Cannot use 'in' operator" errors.
+ */
+export function hasPackageStatusKey(
+  status: unknown,
+  key: string
+): status is Record<string, unknown> {
+  return typeof status === 'object' && status !== null && key in status;
+}
+
+/**
+ * Safely extract a string value from a PackageStatus field.
+ * Returns the string value if the key exists, or undefined if the
+ * status is not a valid object.
+ */
+export function getPackageStatusValue(
+  status: unknown,
+  key: string
+): string | undefined {
+  if (!hasPackageStatusKey(status, key)) return undefined;
+  const val = (status as Record<string, unknown>)[key];
+  return typeof val === 'string' ? val : undefined;
+}
 
 // Full environment validation result
 export interface EnvironmentValidation {

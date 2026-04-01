@@ -21,6 +21,7 @@ import { describe, it, expect } from 'vitest';
 import { DEFAULT_PROCESSING_SETTINGS, APP_VERSION, DJ_SOFTWARE_PRESETS, AI_MODELS, DEVICE_OPTIONS, QUALITY_PRESETS } from '@/lib/constants';
 import { BUILT_IN_FORMATS } from '@/lib/plugin';
 import { PROVENANCE_SCHEMA_VERSION, isStemCurrent, isStemStale, isStemUnknown } from '@/lib/types/library';
+import { hasPackageStatusKey, getPackageStatusValue } from '@/lib/types';
 import packageJson from '../../package.json';
 
 // ============================================================
@@ -253,5 +254,83 @@ describe('Regression: v1.1.0 — Library Types', () => {
     // Cross-checks
     expect(isStemCurrent({ status: 'Stale', reasons: [] })).toBe(false);
     expect(isStemStale({ status: 'Current' })).toBe(false);
+  });
+});
+
+// ============================================================
+// Regression: v1.1.5 — PackageStatus type guard prevents "in" operator crash
+// ============================================================
+describe('Regression: PackageStatus type guard (v1.1.5)', () => {
+  // Bug: "Cannot use 'in' operator to search for 'available' in available"
+  // The 'in' operator throws TypeError when the right operand is a primitive.
+  // Root cause: a PackageStatus field arriving as a string instead of an object.
+  // Fix: hasPackageStatusKey() guards against non-object values.
+
+  it('should not throw when given a plain string', () => {
+    // This was the crash: 'available' in "available" → TypeError
+    expect(() => hasPackageStatusKey('available', 'available')).not.toThrow();
+    expect(hasPackageStatusKey('available', 'available')).toBe(false);
+  });
+
+  it('should not throw when given null', () => {
+    expect(() => hasPackageStatusKey(null, 'available')).not.toThrow();
+    expect(hasPackageStatusKey(null, 'available')).toBe(false);
+  });
+
+  it('should not throw when given undefined', () => {
+    expect(() => hasPackageStatusKey(undefined, 'available')).not.toThrow();
+    expect(hasPackageStatusKey(undefined, 'available')).toBe(false);
+  });
+
+  it('should not throw when given a number', () => {
+    expect(() => hasPackageStatusKey(42, 'available')).not.toThrow();
+    expect(hasPackageStatusKey(42, 'available')).toBe(false);
+  });
+
+  it('should return true for a valid PackageStatusAvailable object', () => {
+    const pkg = { available: null };
+    expect(hasPackageStatusKey(pkg, 'available')).toBe(true);
+  });
+
+  it('should return true for a valid PackageStatusMissing object', () => {
+    const pkg = { missing: 'not found' };
+    expect(hasPackageStatusKey(pkg, 'missing')).toBe(true);
+    expect(hasPackageStatusKey(pkg, 'available')).toBe(false);
+  });
+
+  it('should return true for a valid PackageStatusWarning object', () => {
+    const pkg = { warning: 'version mismatch' };
+    expect(hasPackageStatusKey(pkg, 'warning')).toBe(true);
+  });
+
+  it('should return true for a valid PackageStatusUnavailable object', () => {
+    const pkg = { unavailable: 'CUDA not found' };
+    expect(hasPackageStatusKey(pkg, 'unavailable')).toBe(true);
+  });
+
+  it('getPackageStatusValue should extract string from valid object', () => {
+    expect(getPackageStatusValue({ missing: 'not found' }, 'missing')).toBe('not found');
+    expect(getPackageStatusValue({ warning: 'warn' }, 'warning')).toBe('warn');
+  });
+
+  it('getPackageStatusValue should return undefined for primitives', () => {
+    expect(getPackageStatusValue('available', 'available')).toBeUndefined();
+    expect(getPackageStatusValue(null, 'missing')).toBeUndefined();
+    expect(getPackageStatusValue(undefined, 'warning')).toBeUndefined();
+  });
+
+  it('simulates the exact crash scenario without throwing', () => {
+    // Simulate: env.ffmpeg = "available" (string, not object)
+    const env = { ffmpeg: 'available', python: { available: null } };
+
+    // Old code: 'available' in env.ffmpeg → TypeError
+    // New code: hasPackageStatusKey(env.ffmpeg, 'available') → false
+    expect(() => {
+      const isAvailable = hasPackageStatusKey(env.ffmpeg, 'available');
+      expect(isAvailable).toBe(false);
+    }).not.toThrow();
+
+    // Valid field still works
+    expect(hasPackageStatusKey(env.python, 'available')).toBe(true);
   });
 });

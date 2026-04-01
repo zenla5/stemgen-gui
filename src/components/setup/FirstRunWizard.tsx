@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/Button';
 import { Progress } from '@/components/ui/Progress';
 import { InstallProgress } from '@/components/ui/InstallProgress';
 import { useAppStore } from '@/stores/appStore';
-import type { PackageStatus, AvailableInstaller } from '@/lib/types';
+import type { PackageStatus, PackageStatusAvailable, AvailableInstaller } from '@/lib/types';
+import { hasPackageStatusKey, getPackageStatusValue } from '@/lib/types';
 import { Download, Loader2 } from 'lucide-react';
 
 interface DependencyCheck {
@@ -28,13 +29,25 @@ interface FirstRunWizardProps {
 }
 
 /** Check a PackageStatus discriminated union and return our dependency check status */
-function getDepStatus(pkg: PackageStatus | undefined, successMsg?: string): { status: DependencyCheck['status']; message?: string } {
-  if (!pkg) return { status: 'missing', message: 'Not configured' };
-  if ('available' in pkg && pkg.available === null) return { status: 'ok', message: successMsg ?? 'Ready' };
-  if ('available' in pkg) return { status: 'missing', message: `Status: ${JSON.stringify(pkg)}` };
-  if ('unavailable' in pkg) return { status: 'warning', message: pkg.unavailable };
-  if ('warning' in pkg) return { status: 'warning', message: pkg.warning };
-  if ('missing' in pkg) return { status: 'missing', message: pkg.missing };
+function getDepStatus(pkg: PackageStatus | unknown, successMsg?: string): { status: DependencyCheck['status']; message?: string } {
+  if (!pkg || typeof pkg !== 'object') {
+    if (typeof pkg === 'string') {
+      console.error('[getDepStatus] Expected PackageStatus object but received string:', JSON.stringify(pkg));
+    }
+    return { status: 'missing', message: 'Not configured' };
+  }
+  if (hasPackageStatusKey(pkg, 'available') && (pkg as unknown as PackageStatusAvailable).available === null) {
+    return { status: 'ok', message: successMsg ?? 'Ready' };
+  }
+  if (hasPackageStatusKey(pkg, 'available')) {
+    return { status: 'missing', message: `Status: ${JSON.stringify(pkg)}` };
+  }
+  const unavailable = getPackageStatusValue(pkg, 'unavailable');
+  if (unavailable !== undefined) return { status: 'warning', message: unavailable };
+  const warning = getPackageStatusValue(pkg, 'warning');
+  if (warning !== undefined) return { status: 'warning', message: warning };
+  const missing = getPackageStatusValue(pkg, 'missing');
+  if (missing !== undefined) return { status: 'missing', message: missing };
   return { status: 'warning', message: 'Unknown status' };
 }
 
