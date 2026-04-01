@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [main, develop, '**']
 
+# SHA-pinned actions should be updated periodically (e.g., quarterly or via Dependabot).
+# Current pin date: 2026-04-01
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -15,37 +25,38 @@ jobs:
   frontend:
     name: Frontend (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-    
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
-      
+
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Type check
         run: npm run check
-      
+
       - name: Lint
         run: npm run lint
-      
+
       - name: Run unit tests with coverage
         run: npm run test:unit -- --coverage
 
@@ -59,24 +70,25 @@ jobs:
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Run integration tests (component rendering tests)
         run: npm run test:integration
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: integration-test-results
@@ -88,29 +100,30 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      
+
       - name: Run E2E tests
         run: npx playwright test --project=chromium
         env:
           CI: true
-      
+
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: playwright-results
@@ -123,25 +136,26 @@ jobs:
   backend:
     name: Backend (Rust)
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
-      
+
       - name: Install frontend dependencies
         run: npm ci
-      
+
       - name: Build frontend
         run: npm run build
-      
+
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-      
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
       - name: Install system dependencies (Tauri + FFmpeg for tests)
         run: |
           sudo apt-get update
@@ -159,35 +173,35 @@ jobs:
             libdbus-1-dev \
             ffmpeg \
             libayatana-appindicator3-dev
-      
+
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           workspaces: src-tauri
-      
+
       - name: Check Rust formatting
         run: |
           cd src-tauri && cargo fmt --check
         env:
           RUST_BACKTRACE: 1
-      
+
       - name: Clippy linting (blocking)
         run: |
           cd src-tauri && cargo clippy --lib --bins -- -D warnings
         env:
           RUST_BACKTRACE: 1
-      
+
       - name: Build release
         run: |
           cd src-tauri && cargo build --release
           echo "Build exit code: $?"
-      
+
       - name: Run Rust tests
         run: |
           echo "=== Running cargo test --lib (library tests only) ==="
           cd src-tauri && cargo test --lib 2>&1
           echo "Test exit code: $?"
-      
+
       - name: Run Rust integration tests
         run: |
           echo "=== Running cargo test --tests (integration tests) ==="
@@ -198,14 +212,15 @@ jobs:
   security:
     name: Security Audit
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 10
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
       - name: Run npm audit
         run: npm audit --audit-level=high || true
         continue-on-error: true
-      
+
       - name: Run cargo-audit
         run: cargo install cargo-audit && cargo audit || true
         continue-on-error: true
@@ -214,9 +229,10 @@ jobs:
   check:
     name: All Checks Passed
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [frontend, integration, backend, e2e, security]
     if: always()
-    
+
     steps:
       - name: Verify core jobs passed
         run: |
@@ -237,3 +253,30 @@ jobs:
             exit 1
           fi
           echo "All critical checks passed!"
+
+  # Failure notification (requires WEBHOOK_URL secret)
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [frontend, integration, backend, e2e]
+    if: failure() && vars.WEBHOOK_URL != ''
+    steps:
+      - name: Send failure notification
+        run: |
+          curl -sS -X POST "$WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"text\": \":x: CI Failed on \`${{ github.ref_name }}\` by ${{ github.actor }}\",
+              \"blocks\": [
+                {
+                  \"type\": \"section\",
+                  \"text\": {
+                    \"type\": \"mrkdwn\",
+                    \"text\": \":x: *CI Failed* — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Run #${{ github.run_number }}>\n*Branch:* \`${{ github.ref_name }}\`\n*Actor:* ${{ github.actor }}\"
+                  }
+                }
+              ]
+            }" || echo "WARNING: Notification webhook failed (non-blocking)"
+        env:
+          WEBHOOK_URL: ${{ vars.WEBHOOK_URL }}

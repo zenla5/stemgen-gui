@@ -11,6 +11,12 @@ on:
     tags:
       - 'v*'
 
+# SHA-pinned actions should be updated periodically (e.g., quarterly or via Dependabot).
+# Current pin date: 2026-04-01
+
+permissions:
+  contents: write
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -20,17 +26,18 @@ jobs:
   build-windows:
     name: Build Windows (x64)
     runs-on: windows-latest
+    timeout-minutes: 45
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
@@ -84,7 +91,7 @@ jobs:
             Write-Host "WARNING: No bundle directory found"
           }
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-installer
           path: |
@@ -97,17 +104,18 @@ jobs:
   build-macos:
     name: Build macOS (Apple Silicon)
     runs-on: macos-14
+    timeout-minutes: 45
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: stable
           targets: aarch64-apple-darwin
@@ -161,7 +169,7 @@ jobs:
           echo "Copied to: $GITHUB_WORKSPACE/$DMG_NAME"
           echo "dmg_file=$DMG_NAME" >> "$GITHUB_OUTPUT"
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos-arm-artifacts
           path: |
@@ -174,17 +182,18 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: stable
       - name: Install Linux dependencies
@@ -250,7 +259,7 @@ jobs:
           echo "=== Package files ==="
           find "$GITHUB_WORKSPACE/target/release" -type f \( -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" \) -exec ls -lh {} \; 2>/dev/null || echo "No package files found"
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: linux-packages
           path: |
@@ -264,12 +273,13 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [build-windows, build-macos, build-linux]
     permissions:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Version consistency check (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -286,7 +296,7 @@ jobs:
           fi
           echo "src-tauri/Cargo.toml version matches tag"
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
           merge-multiple: true
@@ -315,7 +325,7 @@ jobs:
             exit 1
           fi
       - name: Upload SHA256 checksums
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sha256-checksums
           path: artifacts/SHA256SUMS.txt
@@ -351,13 +361,13 @@ jobs:
             echo "WARNING: TAURI_PRIVATE_KEY or TAURI_SIGNING_PASSWORD not set — manifests unsigned."
           fi
       - name: Upload update manifests
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: update-manifests
           path: artifacts/latest.json
           retention-days: 365
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
@@ -374,3 +384,30 @@ jobs:
             artifacts/**/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Failure notification (requires WEBHOOK_URL secret)
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build-windows, build-macos, build-linux, release]
+    if: failure() && vars.WEBHOOK_URL != ''
+    steps:
+      - name: Send failure notification
+        run: |
+          curl -sS -X POST "$WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"text\": \":x: Release Failed: \`${{ github.ref_name }}\` by ${{ github.actor }}\",
+              \"blocks\": [
+                {
+                  \"type\": \"section\",
+                  \"text\": {
+                    \"type\": \"mrkdwn\",
+                    \"text\": \":x: *Release Build Failed* — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Run #${{ github.run_number }}>\n*Ref:* \`${{ github.ref_name }}\`\n*Actor:* ${{ github.actor }}\"
+                  }
+                }
+              ]
+            }" || echo "WARNING: Notification webhook failed (non-blocking)"
+        env:
+          WEBHOOK_URL: ${{ vars.WEBHOOK_URL }}
