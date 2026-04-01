@@ -82,7 +82,7 @@ function read(path) {
 }
 
 function write(path, content) {
-  writeFileSync(join(ROOT, path), 'utf-8', content);
+  writeFileSync(join(ROOT, path), content, 'utf-8');
 }
 
 function updateVersionStrings() {

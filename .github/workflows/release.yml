@@ -36,19 +36,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - name: Install dependencies
         run: npm ci
-      - name: Build frontend
-        run: npm run build
       - name: Build Windows release
-        run: |
-          echo "=== Building release binary ==="
-          cargo build --release --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\cargo-build.log"
-          echo ""
-          echo "=== Cargo build tail ==="
-          Get-Content "$env:TEMP\cargo-build.log" -Tail 10
-        working-directory: src-tauri
-        env:
-          CARGO_HOME: ${{ github.workspace }}/.cargo
-      - name: Build Windows installers
         run: |
           echo "=== Creating Windows installers ==="
           npx tauri build --bundles msi,nsis --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -File "$env:TEMP\tauri-build.log"
@@ -58,14 +46,16 @@ jobs:
           Get-Content "$env:TEMP\tauri-build.log" -Tail 80
           echo ""
           echo "=== Checking for produced bundles ==="
-          $msiFile = Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/msi" -Filter "*.msi" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          $nsisFile = Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/nsis" -Filter "*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          $msiFile = Get-ChildItem "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\bundle\msi" -Filter "*.msi" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          $nsisFile = Get-ChildItem "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\bundle\nsis" -Filter "*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $msiFile -and -not $nsisFile) {
             echo "ERROR: No bundle files produced!"
-            if (Test-Path "target/x86_64-pc-windows-msvc/release/bundle") {
-              Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle" -Recurse -File | Select-Object FullName
+            if (Test-Path "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\bundle") {
+              Get-ChildItem "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\bundle" -Recurse -File | Select-Object FullName
             } else {
               echo "No bundle directory found"
+              echo "=== Listing target directory ==="
+              Get-ChildItem "${{ github.workspace }}\target" -Recurse -Directory -ErrorAction SilentlyContinue | Select-Object FullName
             }
             exit 1
           }
@@ -78,16 +68,18 @@ jobs:
       - name: Verify build outputs
         run: |
           echo "=== Release binary ==="
-          if (Test-Path "target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe") {
-            Get-Item "target/x86_64-pc-windows-msvc/release/Stemgen-GUI.exe" | Select-Object Name, Length | Format-Table -AutoSize
+          $exe = "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\Stemgen-GUI.exe"
+          if (Test-Path $exe) {
+            Get-Item $exe | Select-Object Name, Length | Format-Table -AutoSize
           } else {
             Write-Host "WARNING: No Stemgen-GUI.exe found"
-            Get-ChildItem target -Filter "*.exe" -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+            Get-ChildItem "${{ github.workspace }}\target" -Filter "*.exe" -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
           }
           echo ""
           echo "=== Bundle directory ==="
-          if (Test-Path "target/x86_64-pc-windows-msvc/release/bundle") {
-            Get-ChildItem target/x86_64-pc-windows-msvc/release/bundle -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+          $bundleDir = "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\bundle"
+          if (Test-Path $bundleDir) {
+            Get-ChildItem $bundleDir -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
           } else {
             Write-Host "WARNING: No bundle directory found"
           }
@@ -121,25 +113,9 @@ jobs:
           targets: aarch64-apple-darwin
       - name: Install dependencies
         run: npm ci
-      - name: Build frontend
-        run: npm run build
       - name: Build macOS release
         run: |
-          echo "=== Building release binary ==="
-          cargo build --release --target aarch64-apple-darwin 2>&1 | tee /tmp/cargo-build.log
-          echo ""
-          echo "=== Cargo build tail ==="
-          tail -10 /tmp/cargo-build.log
-        working-directory: src-tauri
-        env:
-          CARGO_HOME: ${{ github.workspace }}/.cargo
-      - name: Build macOS .app bundle
-        run: |
-          echo "=== Binary check ==="
-          if [ ! -f "src-tauri/target/aarch64-apple-darwin/release/Stemgen GUI.app" ]; then
-            echo "WARNING: .app bundle not pre-built, Tauri will create it"
-          fi
-          echo "Creating .app bundle..."
+          echo "=== Building macOS installer ==="
           npx tauri build --bundles app --target aarch64-apple-darwin 2>&1 | tee /tmp/tauri-build.log
           echo ""
           echo "=== Tauri build log tail ==="
@@ -183,8 +159,8 @@ jobs:
         with:
           name: macos-arm-artifacts
           path: |
-            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/
-            src-tauri/target/aarch64-apple-darwin/release/Stemgen-GUI
+            target/aarch64-apple-darwin/release/bundle/macos/
+            target/aarch64-apple-darwin/release/Stemgen-GUI
             ${{ github.workspace }}/${{ steps.package.outputs.dmg_file }}
           if-no-files-found: error
           retention-days: 7
@@ -215,19 +191,7 @@ jobs:
             libayatana-appindicator3-dev libdbus-1-dev ffmpeg zip
       - name: Install dependencies
         run: npm ci
-      - name: Build frontend
-        run: npm run build
       - name: Build Linux release
-        run: |
-          echo "=== Building release binary ==="
-          cargo build --release 2>&1 | tee /tmp/cargo-build.log
-          echo ""
-          echo "=== Cargo build tail ==="
-          tail -10 /tmp/cargo-build.log
-        working-directory: src-tauri
-        env:
-          CARGO_HOME: ${{ github.workspace }}/.cargo
-      - name: Build Linux installers
         run: |
           echo "=== Creating Linux installers ==="
           npx tauri build --bundles deb,appimage,rpm 2>&1 | tee /tmp/tauri-build.log
@@ -237,12 +201,15 @@ jobs:
           tail -80 /tmp/tauri-build.log
           echo ""
           echo "=== Checking for produced bundles ==="
-          DEB_FILE=$(find target/release/bundle/deb -name "*.deb" 2>/dev/null | head -1)
-          APPIMAGE_FILE=$(find target/release/bundle/appimage -name "*.AppImage" 2>/dev/null | head -1)
-          RPM_FILE=$(find target/release/bundle/rpm -name "*.rpm" 2>/dev/null | head -1)
+          DEB_FILE=$(find "$GITHUB_WORKSPACE/target/release/bundle/deb" -name "*.deb" 2>/dev/null | head -1)
+          APPIMAGE_FILE=$(find "$GITHUB_WORKSPACE/target/release/bundle/appimage" -name "*.AppImage" 2>/dev/null | head -1)
+          RPM_FILE=$(find "$GITHUB_WORKSPACE/target/release/bundle/rpm" -name "*.rpm" 2>/dev/null | head -1)
           if [ -z "$DEB_FILE" ] && [ -z "$APPIMAGE_FILE" ] && [ -z "$RPM_FILE" ]; then
             echo "ERROR: No bundle files produced!"
-            ls -la target/release/bundle/ 2>/dev/null || echo "No bundle directory"
+            echo "=== Workspace target dir ==="
+            ls -la "$GITHUB_WORKSPACE/target/" 2>/dev/null || echo "No target directory"
+            echo "=== Full target tree ==="
+            find "$GITHUB_WORKSPACE/target" -type d 2>/dev/null | head -30
             exit 1
           fi
           echo "Bundles found:"
@@ -255,18 +222,18 @@ jobs:
       - name: Verify build outputs
         run: |
           echo "=== Release binary ==="
-          if [ -f "target/release/stemgen-gui" ]; then
-            ls -lh target/release/stemgen-gui
+          if [ -f "$GITHUB_WORKSPACE/target/release/stemgen-gui" ]; then
+            ls -lh "$GITHUB_WORKSPACE/target/release/stemgen-gui"
           else
             echo "WARNING: No stemgen-gui binary found"
-            ls -la target/release/ 2>/dev/null | head -20
+            ls -la "$GITHUB_WORKSPACE/target/release/" 2>/dev/null | head -20
           fi
           echo ""
           echo "=== Bundle directory ==="
-          ls -la target/release/bundle/ 2>/dev/null || echo "No bundle directory"
+          ls -la "$GITHUB_WORKSPACE/target/release/bundle/" 2>/dev/null || echo "No bundle directory"
           echo ""
-          echo "=== Package files (glob search) ==="
-          find target/release -type f \( -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" \) -exec ls -lh {} \; 2>/dev/null || echo "No package files found"
+          echo "=== Package files ==="
+          find "$GITHUB_WORKSPACE/target/release" -type f \( -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" \) -exec ls -lh {} \; 2>/dev/null || echo "No package files found"
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
