@@ -338,6 +338,8 @@ jobs:
           else
             VERSION="${GITHUB_REF#refs/tags/v}"
           fi
+          # Strip leading 'v' if present (e.g., input "v1.1.0" -> "1.1.0")
+          VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
       - name: Generate Tauri update manifests
