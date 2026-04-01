@@ -4,8 +4,8 @@
 //! finding duplicates, and exporting library reports.
 
 use crate::stems::{
-    check_stem_staleness, load_registry, StemProvenance, StalenessReport,
-    StalenessRules, StalenessStatus,
+    check_stem_staleness, load_registry, StalenessReport, StalenessRules, StalenessStatus,
+    StemProvenance,
 };
 use crate::AppState;
 use serde::{Deserialize, Serialize};
@@ -135,15 +135,16 @@ pub async fn scan_library(
     let walker = walkdir::WalkDir::new(root)
         .follow_links(true)
         .into_iter()
-        .filter_entry(|e| {
-            !e.file_name().to_string_lossy().starts_with('.')
-        });
+        .filter_entry(|e| !e.file_name().to_string_lossy().starts_with('.'));
 
     for entry in walker.filter_map(|e| e.ok()) {
         let path = entry.path();
 
         if path.extension().map(|e| e == "mp4").unwrap_or(false)
-            && path.file_name().map(|n| n.to_string_lossy().ends_with(".stem.mp4")).unwrap_or(false)
+            && path
+                .file_name()
+                .map(|n| n.to_string_lossy().ends_with(".stem.mp4"))
+                .unwrap_or(false)
         {
             total_scanned += 1;
             let report = check_stem_staleness(path, &rules, &registry);
@@ -166,11 +167,20 @@ pub async fn scan_library(
         }
     }
 
-    let current_count = reports.iter().filter(|r| matches!(r.status, StalenessStatus::Current)).count();
-    let stale_count = reports.iter().filter(|r| matches!(r.status, StalenessStatus::Stale(_))).count();
+    let current_count = reports
+        .iter()
+        .filter(|r| matches!(r.status, StalenessStatus::Current))
+        .count();
+    let stale_count = reports
+        .iter()
+        .filter(|r| matches!(r.status, StalenessStatus::Stale(_)))
+        .count();
     let unknown_count = reports.len() - current_count - stale_count;
 
-    info!("Library scan complete: {} scanned, {} current, {} stale, {} unknown", total_scanned, current_count, stale_count, unknown_count);
+    info!(
+        "Library scan complete: {} scanned, {} current, {} stale, {} unknown",
+        total_scanned, current_count, stale_count, unknown_count
+    );
 
     Ok(LibraryScanResult {
         total_scanned,
@@ -203,7 +213,10 @@ pub async fn find_duplicate_stems(root_path: String) -> Result<Vec<DuplicateEntr
         let path = entry.path();
 
         if path.extension().map(|e| e == "mp4").unwrap_or(false)
-            && path.file_name().map(|n| n.to_string_lossy().ends_with(".stem.mp4")).unwrap_or(false)
+            && path
+                .file_name()
+                .map(|n| n.to_string_lossy().ends_with(".stem.mp4"))
+                .unwrap_or(false)
         {
             match StemProvenance::load_from_sidecar(path) {
                 Ok(Some(prov)) => {
@@ -215,10 +228,17 @@ pub async fn find_duplicate_stems(root_path: String) -> Result<Vec<DuplicateEntr
                         created_at: Some(prov.separation_timestamp.clone()),
                         file_size,
                     };
-                    groups.entry(prov.source_content_hash.clone()).or_insert_with(Vec::new).push(stem);
+                    groups
+                        .entry(prov.source_content_hash.clone())
+                        .or_insert_with(Vec::new)
+                        .push(stem);
                 }
-                Ok(None) => { debug!("No provenance for: {}", path.display()); }
-                Err(e) => { warn!("Error loading provenance for {}: {}", path.display(), e); }
+                Ok(None) => {
+                    debug!("No provenance for: {}", path.display());
+                }
+                Err(e) => {
+                    warn!("Error loading provenance for {}: {}", path.display(), e);
+                }
             }
         }
     }
@@ -229,9 +249,16 @@ pub async fn find_duplicate_stems(root_path: String) -> Result<Vec<DuplicateEntr
         .map(|(source_hash, stems)| {
             let source_path = stems.first().and_then(|s| {
                 let p = Path::new(&s.path);
-                StemProvenance::load_from_sidecar(p).ok().flatten().map(|prov| prov.source_path)
+                StemProvenance::load_from_sidecar(p)
+                    .ok()
+                    .flatten()
+                    .map(|prov| prov.source_path)
             });
-            DuplicateEntry { source_hash, source_path, stems }
+            DuplicateEntry {
+                source_hash,
+                source_path,
+                stems,
+            }
         })
         .collect();
 
@@ -246,7 +273,10 @@ pub async fn export_library_report(
     output_path: String,
     format: String,
 ) -> Result<String, String> {
-    info!("Exporting library report: {} -> {} ({})", root_path, output_path, format);
+    info!(
+        "Exporting library report: {} -> {} ({})",
+        root_path, output_path, format
+    );
 
     let root = Path::new(&root_path);
     if !root.exists() {
@@ -264,14 +294,22 @@ pub async fn export_library_report(
         let path = entry.path();
 
         if path.extension().map(|e| e == "mp4").unwrap_or(false)
-            && path.file_name().map(|n| n.to_string_lossy().ends_with(".stem.mp4")).unwrap_or(false)
+            && path
+                .file_name()
+                .map(|n| n.to_string_lossy().ends_with(".stem.mp4"))
+                .unwrap_or(false)
         {
             match StemProvenance::load_from_sidecar(path) {
                 Ok(Some(prov)) => {
-                    stems_with_path.push(StemWithPath { path: path.to_string_lossy().to_string(), prov });
+                    stems_with_path.push(StemWithPath {
+                        path: path.to_string_lossy().to_string(),
+                        prov,
+                    });
                 }
                 Ok(None) => {}
-                Err(e) => { warn!("Error loading provenance for {}: {}", path.display(), e); }
+                Err(e) => {
+                    warn!("Error loading provenance for {}: {}", path.display(), e);
+                }
             }
         }
     }
@@ -284,9 +322,15 @@ pub async fn export_library_report(
                 .iter()
                 .map(|swp| serde_json::json!({ "stem_path": swp.path, "provenance": swp.prov }))
                 .collect();
-            serde_json::to_string_pretty(&json_data).map_err(|e| format!("Failed to serialize JSON: {}", e))?
+            serde_json::to_string_pretty(&json_data)
+                .map_err(|e| format!("Failed to serialize JSON: {}", e))?
         }
-        _ => return Err(format!("Unknown format '{}'. Supported: csv, markdown, json", format))
+        _ => {
+            return Err(format!(
+                "Unknown format '{}'. Supported: csv, markdown, json",
+                format
+            ))
+        }
     };
 
     std::fs::write(&output_path, &content).map_err(|e| format!("Failed to write report: {}", e))?;
@@ -305,12 +349,24 @@ fn generate_csv_report(stems: &[StemWithPath]) -> String {
             escape_csv(&stem.prov.source_path),
             escape_csv(&stem.prov.source_content_hash),
             escape_csv(&stem.prov.separation_model),
-            stem.prov.model_version.as_ref().map(|s| escape_csv(s)).unwrap_or_default(),
+            stem.prov
+                .model_version
+                .as_ref()
+                .map(|s| escape_csv(s))
+                .unwrap_or_default(),
             escape_csv(&stem.prov.stemgen_gui_version),
-            stem.prov.stemgen_version.as_ref().map(|s| escape_csv(s)).unwrap_or_default(),
+            stem.prov
+                .stemgen_version
+                .as_ref()
+                .map(|s| escape_csv(s))
+                .unwrap_or_default(),
             escape_csv(&stem.prov.separation_timestamp),
             escape_csv(&stem.prov.job_id),
-            stem.prov.batch_id.as_ref().map(|s| escape_csv(s)).unwrap_or_default(),
+            stem.prov
+                .batch_id
+                .as_ref()
+                .map(|s| escape_csv(s))
+                .unwrap_or_default(),
         ));
     }
     csv
@@ -337,7 +393,9 @@ fn generate_markdown_report(stems: &[StemWithPath]) -> String {
 
     let mut model_counts: HashMap<String, usize> = HashMap::new();
     for stem in stems {
-        *model_counts.entry(stem.prov.separation_model.clone()).or_insert(0) += 1;
+        *model_counts
+            .entry(stem.prov.separation_model.clone())
+            .or_insert(0) += 1;
     }
 
     md.push_str("\n## Model Breakdown\n\n");
@@ -355,7 +413,11 @@ fn escape_csv(s: &str) -> String {
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len { s.to_string() } else { format!("{}...", &s[..max_len.saturating_sub(3)]) }
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len.saturating_sub(3)])
+    }
 }
 
 /// Get staleness rules from the app state settings.
@@ -364,15 +426,25 @@ pub async fn get_staleness_rules(state: State<'_, AppState>) -> Result<Staleness
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     let get_setting = |key: &str| -> Option<String> {
-        conn.query_row("SELECT value FROM settings WHERE key = ?", [key], |row| row.get(0)).ok()
+        conn.query_row("SELECT value FROM settings WHERE key = ?", [key], |row| {
+            row.get(0)
+        })
+        .ok()
     };
 
     let rules = StalenessRules {
-        check_source_modified: get_setting("staleness_check_source").map(|v| v == "true").unwrap_or(true),
-        check_model_outdated: get_setting("staleness_check_model").map(|v| v == "true").unwrap_or(true),
+        check_source_modified: get_setting("staleness_check_source")
+            .map(|v| v == "true")
+            .unwrap_or(true),
+        check_model_outdated: get_setting("staleness_check_model")
+            .map(|v| v == "true")
+            .unwrap_or(true),
         minimum_stemgen_gui_version: get_setting("staleness_min_gui_version"),
-        check_parameters_changed: get_setting("staleness_check_params").map(|v| v == "true").unwrap_or(false),
-        default_separation_params: get_setting("staleness_default_params").and_then(|v| serde_json::from_str(&v).ok()),
+        check_parameters_changed: get_setting("staleness_check_params")
+            .map(|v| v == "true")
+            .unwrap_or(false),
+        default_separation_params: get_setting("staleness_default_params")
+            .and_then(|v| serde_json::from_str(&v).ok()),
     };
 
     Ok(rules)
@@ -380,23 +452,39 @@ pub async fn get_staleness_rules(state: State<'_, AppState>) -> Result<Staleness
 
 /// Save staleness rules to app state.
 #[tauri::command]
-pub async fn save_staleness_rules(state: State<'_, AppState>, rules: StalenessRules) -> Result<(), String> {
+pub async fn save_staleness_rules(
+    state: State<'_, AppState>,
+    rules: StalenessRules,
+) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     let set_setting = |key: &str, value: &str| -> Result<(), String> {
-        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", rusqlite::params![key, value])
-            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            rusqlite::params![key, value],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     };
 
-    set_setting("staleness_check_source", &rules.check_source_modified.to_string())?;
-    set_setting("staleness_check_model", &rules.check_model_outdated.to_string())?;
+    set_setting(
+        "staleness_check_source",
+        &rules.check_source_modified.to_string(),
+    )?;
+    set_setting(
+        "staleness_check_model",
+        &rules.check_model_outdated.to_string(),
+    )?;
     if let Some(ref min_version) = rules.minimum_stemgen_gui_version {
         set_setting("staleness_min_gui_version", min_version)?;
     }
-    set_setting("staleness_check_params", &rules.check_parameters_changed.to_string())?;
+    set_setting(
+        "staleness_check_params",
+        &rules.check_parameters_changed.to_string(),
+    )?;
     if let Some(ref default_params) = rules.default_separation_params {
-        let params_json = serde_json::to_string(default_params).map_err(|e| format!("Failed to serialize params: {}", e))?;
+        let params_json = serde_json::to_string(default_params)
+            .map_err(|e| format!("Failed to serialize params: {}", e))?;
         set_setting("staleness_default_params", &params_json)?;
     }
 
@@ -409,7 +497,8 @@ pub async fn save_staleness_rules(state: State<'_, AppState>, rules: StalenessRu
 pub async fn save_user_notes(stem_path: String, notes: String) -> Result<(), String> {
     use crate::stems::save_stem_user_notes;
     let stem_path = Path::new(&stem_path);
-    save_stem_user_notes(stem_path, &notes).map_err(|e| format!("Failed to save user notes: {}", e))?;
+    save_stem_user_notes(stem_path, &notes)
+        .map_err(|e| format!("Failed to save user notes: {}", e))?;
     info!("User notes saved for: {}", stem_path.display());
     Ok(())
 }
@@ -429,9 +518,14 @@ pub async fn verify_stem_integrity(stem_path: String) -> Result<bool, String> {
         return Ok(false);
     }
 
-    let current_hash = hash_file(source_path).map_err(|e| format!("Failed to hash source: {}", e))?;
+    let current_hash =
+        hash_file(source_path).map_err(|e| format!("Failed to hash source: {}", e))?;
     let matches = current_hash == provenance.source_content_hash;
-    info!("Integrity check for {}: {}", stem_path.display(), if matches { "OK" } else { "MODIFIED" });
+    info!(
+        "Integrity check for {}: {}",
+        stem_path.display(),
+        if matches { "OK" } else { "MODIFIED" }
+    );
 
     Ok(matches)
 }
@@ -469,15 +563,13 @@ mod tests {
         let entry = DuplicateEntry {
             source_hash: "abc123".to_string(),
             source_path: Some("/music/track.mp3".to_string()),
-            stems: vec![
-                DuplicateStem {
-                    path: "/music/track_v1.stem.mp4".to_string(),
-                    model: Some("bs_roformer".to_string()),
-                    model_version: Some("v1.0".to_string()),
-                    created_at: Some("2024-03-01T10:00:00Z".to_string()),
-                    file_size: 5_000_000,
-                },
-            ],
+            stems: vec![DuplicateStem {
+                path: "/music/track_v1.stem.mp4".to_string(),
+                model: Some("bs_roformer".to_string()),
+                model_version: Some("v1.0".to_string()),
+                created_at: Some("2024-03-01T10:00:00Z".to_string()),
+                file_size: 5_000_000,
+            }],
         };
         let json = serde_json::to_string(&entry).unwrap();
         assert!(json.contains("abc123"));

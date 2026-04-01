@@ -271,7 +271,9 @@ impl StemProvenance {
 // =============================================================================
 
 /// Load provenance from a sidecar file (standalone function).
-pub fn load_stem_provenance_sidecar(stem_path: &Path) -> Result<Option<StemProvenance>, ProvenanceError> {
+pub fn load_stem_provenance_sidecar(
+    stem_path: &Path,
+) -> Result<Option<StemProvenance>, ProvenanceError> {
     StemProvenance::load_from_sidecar(stem_path)
 }
 
@@ -427,7 +429,10 @@ mod tests {
         assert_eq!(deserialized.separation_model, prov.separation_model);
         assert_eq!(deserialized.model_version, prov.model_version);
         assert_eq!(deserialized.stemgen_version, prov.stemgen_version);
-        assert_eq!(deserialized.separation_quality_preset, prov.separation_quality_preset);
+        assert_eq!(
+            deserialized.separation_quality_preset,
+            prov.separation_quality_preset
+        );
         assert_eq!(deserialized.batch_id, prov.batch_id);
         assert_eq!(deserialized.user_notes, prov.user_notes);
         assert_eq!(deserialized.stem_type, prov.stem_type);
@@ -509,10 +514,7 @@ mod tests {
     fn test_provenance_sidecar_path() {
         let stem_path = Path::new("/music/track.stem.mp4");
         let sidecar = StemProvenance::sidecar_path(stem_path);
-        assert_eq!(
-            sidecar.to_string_lossy(),
-            "/music/track.stem.mp4.prov.json"
-        );
+        assert_eq!(sidecar.to_string_lossy(), "/music/track.stem.mp4.prov.json");
 
         let stem_path2 = Path::new("C:\\Users\\Music\\track.stem.mp4");
         let sidecar2 = StemProvenance::sidecar_path(stem_path2);

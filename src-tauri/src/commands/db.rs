@@ -419,9 +419,7 @@ pub async fn get_separation_log(
 
 /// Get library statistics for the stem collection.
 #[tauri::command]
-pub async fn get_library_stats(
-    state: State<'_, AppState>,
-) -> Result<LibraryStats, String> {
+pub async fn get_library_stats(state: State<'_, AppState>) -> Result<LibraryStats, String> {
     info!("Computing library statistics");
 
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -731,9 +729,18 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let settings = vec![
-            SettingEntry { key: "theme".to_string(), value: "dark".to_string() },
-            SettingEntry { key: "language".to_string(), value: "en".to_string() },
-            SettingEntry { key: "output_dir".to_string(), value: "/output".to_string() },
+            SettingEntry {
+                key: "theme".to_string(),
+                value: "dark".to_string(),
+            },
+            SettingEntry {
+                key: "language".to_string(),
+                value: "en".to_string(),
+            },
+            SettingEntry {
+                key: "output_dir".to_string(),
+                value: "/output".to_string(),
+            },
         ];
 
         for setting in &settings {
@@ -757,8 +764,12 @@ mod tests {
             .collect();
 
         assert_eq!(retrieved.len(), 3);
-        assert!(retrieved.iter().any(|s| s.key == "theme" && s.value == "dark"));
-        assert!(retrieved.iter().any(|s| s.key == "language" && s.value == "en"));
+        assert!(retrieved
+            .iter()
+            .any(|s| s.key == "theme" && s.value == "dark"));
+        assert!(retrieved
+            .iter()
+            .any(|s| s.key == "language" && s.value == "en"));
     }
 
     #[test]
@@ -802,7 +813,14 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
 
-        let presets = vec!["traktor", "rekordbox", "serato", "mixxx", "djay", "virtualdj"];
+        let presets = vec![
+            "traktor",
+            "rekordbox",
+            "serato",
+            "mixxx",
+            "djay",
+            "virtualdj",
+        ];
 
         for (i, preset) in presets.iter().enumerate() {
             conn.execute(
@@ -903,24 +921,41 @@ mod tests {
                 output_path, success, error_message, processing_time_ms
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
-                job.job_id, job.source_path, job.source_hash, job.source_size_bytes,
-                job.source_duration_secs, job.source_sample_rate, job.separation_model,
-                job.model_version, job.stemgen_gui_version, job.stemgen_version,
-                job.dj_preset, job.output_format, job.separation_quality_preset,
-                job.separation_params, job.batch_id, job.separation_timestamp,
-                job.output_path, job.success, job.error_message, job.processing_time_ms,
+                job.job_id,
+                job.source_path,
+                job.source_hash,
+                job.source_size_bytes,
+                job.source_duration_secs,
+                job.source_sample_rate,
+                job.separation_model,
+                job.model_version,
+                job.stemgen_gui_version,
+                job.stemgen_version,
+                job.dj_preset,
+                job.output_format,
+                job.separation_quality_preset,
+                job.separation_params,
+                job.batch_id,
+                job.separation_timestamp,
+                job.output_path,
+                job.success,
+                job.error_message,
+                job.processing_time_ms,
             ],
-        ).unwrap();
+        )
+        .unwrap();
 
-        let mut stmt = conn.prepare(
-            "SELECT job_id, source_path, source_hash, source_size_bytes,
+        let mut stmt = conn
+            .prepare(
+                "SELECT job_id, source_path, source_hash, source_size_bytes,
                     source_duration_secs, source_sample_rate, separation_model,
                     model_version, stemgen_gui_version, stemgen_version,
                     dj_preset, output_format, separation_quality_preset,
                     separation_params, batch_id, separation_timestamp,
                     output_path, success, error_message, processing_time_ms
-             FROM separation_job_log WHERE job_id = ?"
-        ).unwrap();
+             FROM separation_job_log WHERE job_id = ?",
+            )
+            .unwrap();
 
         let retrieved: SeparationJobLog = stmt
             .query_row(["job_test_001"], map_separation_job_log_row)
@@ -980,15 +1015,17 @@ mod tests {
             ],
         ).unwrap();
 
-        let mut stmt = conn.prepare(
-            "SELECT job_id, source_path, source_hash, source_size_bytes,
+        let mut stmt = conn
+            .prepare(
+                "SELECT job_id, source_path, source_hash, source_size_bytes,
                     source_duration_secs, source_sample_rate, separation_model,
                     model_version, stemgen_gui_version, stemgen_version,
                     dj_preset, output_format, separation_quality_preset,
                     separation_params, batch_id, separation_timestamp,
                     output_path, success, error_message, processing_time_ms
-             FROM separation_job_log WHERE job_id = ?"
-        ).unwrap();
+             FROM separation_job_log WHERE job_id = ?",
+            )
+            .unwrap();
 
         let retrieved: SeparationJobLog = stmt
             .query_row(["job_null_test"], map_separation_job_log_row)

@@ -111,10 +111,7 @@ impl StemPacker {
         // Write provenance sidecar
         let prov_path = self.write_provenance_sidecar(output_path, provenance)?;
 
-        info!(
-            "Provenance sidecar written: {}",
-            prov_path.display()
-        );
+        info!("Provenance sidecar written: {}", prov_path.display());
 
         Ok(prov_path)
     }

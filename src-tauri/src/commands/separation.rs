@@ -156,8 +156,7 @@ pub async fn start_separation(
     let mut sidecar_guard = state.sidecar.lock().await;
 
     if sidecar_guard.is_none() {
-        let sidecar =
-            SidecarManager::new(state.sidecar_path.clone(), state.output_dir.clone());
+        let sidecar = SidecarManager::new(state.sidecar_path.clone(), state.output_dir.clone());
         *sidecar_guard = Some(sidecar);
     }
 
@@ -361,16 +360,19 @@ pub async fn pack_stems_with_provenance(
     let output_path = PathBuf::from(&request.output_path);
 
     // Compute source file hash and audio properties
-    let source_hash = hash_file(&master_path).map_err(|e| {
-        warn!("Failed to hash source file: {}", e);
-        format!("Failed to hash source file: {}", e)
-    }).unwrap_or_else(|_| {
-        warn!("Using placeholder hash for source file");
-        String::from("unknown")
-    });
+    let source_hash = hash_file(&master_path)
+        .map_err(|e| {
+            warn!("Failed to hash source file: {}", e);
+            format!("Failed to hash source file: {}", e)
+        })
+        .unwrap_or_else(|_| {
+            warn!("Using placeholder hash for source file");
+            String::from("unknown")
+        });
 
     // Get audio properties from decoder
-    let (source_duration_secs, source_sample_rate) = match AudioDecoder::new().decode(&master_path) {
+    let (source_duration_secs, source_sample_rate) = match AudioDecoder::new().decode(&master_path)
+    {
         Ok(samples) => {
             let duration = if samples.sample_rate > 0 {
                 samples.samples.len() as f64 / samples.sample_rate as f64
@@ -673,12 +675,10 @@ mod tests {
     #[test]
     fn test_batch_export_request_serialization() {
         let request = BatchExportRequest {
-            stem_paths: vec![
-                StemPath {
-                    stem_type: "drums".to_string(),
-                    path: "/drums.wav".to_string(),
-                },
-            ],
+            stem_paths: vec![StemPath {
+                stem_type: "drums".to_string(),
+                path: "/drums.wav".to_string(),
+            }],
             output_dir: "/output".to_string(),
             format: "flac".to_string(),
             normalize: false,

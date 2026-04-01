@@ -174,9 +174,7 @@ pub fn check_stem_staleness(
                 stem_path: stem_path_str.clone(),
                 stem_name,
                 source_path: None,
-                status: StalenessStatus::Unknown(
-                    "No provenance metadata found".to_string(),
-                ),
+                status: StalenessStatus::Unknown("No provenance metadata found".to_string()),
                 reasons: vec![],
                 source_exists: false,
                 source_hash_matches: None,
@@ -222,12 +220,17 @@ pub fn check_stem_staleness(
                         reasons.push(StalenessReason::SourceModified);
                         debug!(
                             "Source modified for {}: {}",
-                            stem_path_str, source_path.display()
+                            stem_path_str,
+                            source_path.display()
                         );
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to verify source hash for {}: {}", source_path.display(), e);
+                    warn!(
+                        "Failed to verify source hash for {}: {}",
+                        source_path.display(),
+                        e
+                    );
                     source_hash_matches = None;
                 }
             }
@@ -244,10 +247,7 @@ pub fn check_stem_staleness(
     // Rule 2: Check if a newer model version is available
     if rules.check_model_outdated {
         if let Some(versions) = registry.get(&provenance.separation_model) {
-            let current_version = provenance
-                .model_version
-                .as_deref()
-                .unwrap_or("unknown");
+            let current_version = provenance.model_version.as_deref().unwrap_or("unknown");
             let latest_version = versions
                 .iter()
                 .find(|v| v.is_latest)
@@ -290,10 +290,7 @@ pub fn check_stem_staleness(
             if let Some(ref current_params) = provenance.separation_params {
                 if current_params != default_params {
                     reasons.push(StalenessReason::ParametersChanged);
-                    debug!(
-                        "Separation parameters changed for {}",
-                        stem_path_str
-                    );
+                    debug!("Separation parameters changed for {}", stem_path_str);
                 }
             }
         }
@@ -337,8 +334,7 @@ pub fn load_registry(registry_path: &Path) -> Result<ModelVersionRegistry, Strin
     let content = std::fs::read_to_string(registry_path)
         .map_err(|e| format!("Failed to read registry: {}", e))?;
 
-    serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse registry JSON: {}", e))
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse registry JSON: {}", e))
 }
 
 /// Save the model version registry to disk.
@@ -393,10 +389,7 @@ mod tests {
     #[test]
     fn test_version_newer_with_checkpoints() {
         // Checkpoint hashes should be compared lexicographically
-        assert!(is_version_newer(
-            "abc123",
-            "def456"
-        ));
+        assert!(is_version_newer("abc123", "def456"));
     }
 
     #[test]
