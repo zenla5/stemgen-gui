@@ -148,6 +148,30 @@ pub fn run() {
             commands::save_settings,
             commands::get_waveform_data,
             commands::pack_stems,
+            // Library management (v1.1.0)
+            commands::scan_library,
+            commands::find_duplicate_stems,
+            commands::export_library_report,
+            commands::get_staleness_rules,
+            commands::save_staleness_rules,
+            commands::save_user_notes,
+            commands::verify_stem_integrity,
+            commands::read_stem_provenance,
+            commands::read_stem_notes,
+            // Metadata
+            commands::read_audio_metadata,
+            commands::read_stem_metadata,
+            // Provenance-aware separation
+            commands::pack_stems_with_provenance,
+            commands::export_stem,
+            commands::batch_export_stems,
+            // Audit trail
+            commands::log_separation_job,
+            commands::get_separation_log,
+            commands::get_library_stats,
+            // Environment validation
+            commands::validate_environment,
+            commands::get_sidecar_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

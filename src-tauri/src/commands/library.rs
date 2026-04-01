@@ -492,6 +492,21 @@ pub async fn save_user_notes(stem_path: String, notes: String) -> Result<(), Str
     Ok(())
 }
 
+/// Read provenance metadata from a stem file's sidecar.
+#[tauri::command]
+pub async fn read_stem_provenance(stem_path: String) -> Result<Option<StemProvenance>, String> {
+    let path = Path::new(&stem_path);
+    StemProvenance::load_from_sidecar(path).map_err(|e| format!("Failed to load provenance: {}", e))
+}
+
+/// Read user notes from a stem file's sidecar.
+#[tauri::command]
+pub async fn read_stem_notes(stem_path: String) -> Result<Option<String>, String> {
+    use crate::stems::provenance::load_stem_user_notes;
+    let path = Path::new(&stem_path);
+    load_stem_user_notes(path).map_err(|e| format!("Failed to load user notes: {}", e))
+}
+
 /// Verify the integrity of stem files (source hash check).
 #[tauri::command]
 pub async fn verify_stem_integrity(stem_path: String) -> Result<bool, String> {
