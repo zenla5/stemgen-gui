@@ -49,6 +49,7 @@ interface AppState {
   sidecarHealth: SidecarStatus | null;
   environmentValidation: EnvironmentValidation | null;
   environmentValidated: boolean;
+  environmentValidatedAt: number | null;  // timestamp of last validation
 
   // Dependency install system
   installManifest: InstallManifest | null;
@@ -242,6 +243,7 @@ export const useAppStore = create<AppState>()(
       sidecarHealth: null,
       environmentValidation: null,
       environmentValidated: false,
+      environmentValidatedAt: null,
       installManifest: null,
       activeInstallLines: {},
       installResults: {},
@@ -512,17 +514,24 @@ export const useAppStore = create<AppState>()(
       
       // Environment validation
       validateEnvironment: async () => {
+        // Skip if cached result is fresh (< 30 seconds)
+        const now = Date.now();
+        const cached = get().environmentValidatedAt;
+        if (cached && (now - cached) < 30_000 && get().environmentValidated) {
+          return;
+        }
         try {
           const validation = await invoke<EnvironmentValidation>('validate_environment');
-          set({ environmentValidation: validation, environmentValidated: true });
+          set({ environmentValidation: validation, environmentValidated: true, environmentValidatedAt: now });
         } catch (error) {
           console.error('Failed to validate environment:', error);
-          set({ 
+          set({
             environmentValidation: {
               isReady: false,
               warnings: [error instanceof Error ? error.message : String(error)],
             },
-            environmentValidated: true 
+            environmentValidated: true,
+            environmentValidatedAt: now,
           });
         }
       },
@@ -572,7 +581,8 @@ export const useAppStore = create<AppState>()(
             installResults: { ...state.installResults, [depName]: result },
           }));
 
-          // Re-validate environment after install
+          // Re-validate environment after install (invalidate cache first)
+          set({ environmentValidatedAt: null });
           const { validateEnvironment } = get();
           await validateEnvironment();
 
@@ -612,6 +622,7 @@ export const useAppStore = create<AppState>()(
         sidebarCollapsed: state.sidebarCollapsed,
         activeView: state.activeView,
         maxParallelJobs: state.maxParallelJobs,
+        environmentValidatedAt: state.environmentValidatedAt,
       }),
     }
   )

@@ -5,13 +5,15 @@ pub mod install_manifest;
 pub mod library;
 pub mod metadata;
 pub mod models;
+pub mod probe;
 pub mod separation;
 pub mod sidecar;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::Command;
 use tracing::info;
+
+use self::probe::*;
 
 pub use audio::*;
 pub use db::*;
@@ -26,58 +28,26 @@ pub use sidecar::*;
 pub async fn check_python_deps() -> Result<PythonDepsResult, String> {
     info!("Checking Python dependencies");
 
-    // Try to find Python
-    let python_path = which::which("python")
-        .or_else(|_| which::which("python3"))
-        .or_else(|_| which::which("py"));
+    let python_path = find_python();
+    let python_available = python_path.is_some();
+    let python_version = python_path.as_ref().and_then(|p| probe_python_version(p));
 
-    let (python_available, python_version) = if let Ok(path) = &python_path {
-        let output = std::process::Command::new(path)
-            .args(["--version"])
-            .output();
+    let demucs_available = python_path
+        .as_ref()
+        .map(|p| probe_python_import(p, "import torch; import torchaudio"))
+        .unwrap_or(false);
 
-        match output {
-            Ok(o) => {
-                let version = if o.status.success() {
-                    String::from_utf8_lossy(&o.stdout).trim().to_string()
-                } else {
-                    String::from_utf8_lossy(&o.stderr).trim().to_string()
-                };
-                (true, Some(version))
-            }
-            Err(_) => (false, None),
-        }
-    } else {
-        (false, None)
-    };
-
-    // Try to import required packages
-    let demucs_available = if let Ok(path) = &python_path {
-        std::process::Command::new(path)
-            .args(["-c", "import torch; import torchaudio"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    } else {
-        false
-    };
-
-    let bs_roformer_available = if let Ok(path) = &python_path {
-        std::process::Command::new(path)
-            .args(["-c", "from bs_roformer import separator"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    } else {
-        false
-    };
+    let bs_roformer_available = python_path
+        .as_ref()
+        .map(|p| probe_python_import(p, "from bs_roformer import separator"))
+        .unwrap_or(false);
 
     Ok(PythonDepsResult {
         python_available,
         python_version,
         demucs_available,
         bs_roformer_available,
-        cuda_available: demucs_available, // If demucs works, CUDA likely works too
+        cuda_available: demucs_available,
     })
 }
 
@@ -108,85 +78,31 @@ pub struct CheckDependenciesResult {
 pub async fn check_dependencies() -> Result<CheckDependenciesResult, String> {
     info!("Checking dependencies");
 
-    // Check FFmpeg
-    let ffmpeg = which::which("ffmpeg").is_ok();
+    let ffmpeg = probe_binary("ffmpeg");
     let ffmpeg_version = if ffmpeg {
-        std::process::Command::new("ffmpeg")
-            .arg("-version")
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
+        probe_binary_version("ffmpeg", "-version")
             .map(|s| s.lines().next().unwrap_or("unknown").to_string())
     } else {
         None
     };
 
-    // Check Sox
-    let sox = which::which("sox").is_ok();
+    let sox = probe_binary("sox");
     let sox_version = if sox {
-        std::process::Command::new("sox")
-            .arg("--version")
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
+        probe_binary_version("sox", "--version")
             .map(|s| s.lines().next().unwrap_or("unknown").to_string())
     } else {
         None
     };
 
-    // Check Python
-    let python = which::which("python3").is_ok() || which::which("python").is_ok();
-    let python_version = if python {
-        std::process::Command::new(if which::which("python3").is_ok() {
-            "python3"
-        } else {
-            "python"
-        })
-        .arg("--version")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .or_else(|| {
-            std::process::Command::new(if which::which("python3").is_ok() {
-                "python3"
-            } else {
-                "python"
-            })
-            .arg("--version")
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stderr).ok())
-        })
-        .map(|s| s.trim().to_string())
-    } else {
-        None
-    };
+    let python_path = find_python();
+    let python = python_path.is_some();
+    let python_version = python_path.as_ref().and_then(|p| probe_python_version(p));
 
-    // Check CUDA
-    #[cfg(target_os = "windows")]
-    let cuda = std::process::Command::new("nvidia-smi")
-        .arg("--query-gpu=name")
-        .arg("--format=csv,noheader")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    let cuda = probe_cuda();
+    let mps = probe_mps();
 
-    #[cfg(not(target_os = "windows"))]
-    let cuda = false;
-
-    // Check MPS (macOS)
-    #[cfg(target_os = "macos")]
-    let mps = true; // macOS always supports MPS if it has Apple Silicon
-    #[cfg(not(target_os = "macos"))]
-    let mps = false;
-
-    // Check model directory
-    let model_dir = directories::ProjectDirs::from("dev", "stemgen", "stemgen-gui")
-        .map(|d| d.data_dir().join("models"))
-        .unwrap_or_else(|| std::env::temp_dir().join("stemgen-gui/models"));
-
+    let model_dir = get_data_dir().join("models");
     std::fs::create_dir_all(&model_dir).ok();
-
     let model_count = if model_dir.exists() {
         std::fs::read_dir(&model_dir)
             .map(|d| d.filter_map(|e| e.ok()).count())
@@ -226,112 +142,43 @@ pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
     let mut status = SidecarStatus::default();
 
     // 1. Find Python executable
-    let python_path = which::which("python")
-        .or_else(|_| which::which("python3"))
-        .or_else(|_| which::which("py"));
-
-    match python_path {
-        Ok(path) => {
+    match find_python() {
+        Some(path) => {
             status.python_found = true;
             status.python_path = Some(path.to_string_lossy().to_string());
+            status.python_version = probe_python_version(&path);
 
-            // Get version
-            let output = Command::new(&path)
-                .args(["--version"])
-                .output()
-                .map_err(|e| e.to_string())?;
+            // Check PyTorch
+            status.pytorch_version = probe_python_package_version(&path, "torch");
 
-            if output.status.success() {
-                status.python_version =
-                    Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
-            }
-
-            // Check PyTorch (needed for demucs)
-            let torch_output = Command::new(&path)
-                .args(["-c", "import torch; print(torch.__version__)"])
-                .output()
-                .map_err(|e| e.to_string())?;
-
-            if torch_output.status.success() {
-                status.pytorch_version = Some(
-                    String::from_utf8_lossy(&torch_output.stdout)
-                        .trim()
-                        .to_string(),
-                );
-
-                // Check GPU availability
-                let cuda_check = Command::new(&path)
-                    .args([
-                        "-c",
-                        "import torch; print('cuda' if torch.cuda.is_available() else 'cpu')",
-                    ])
-                    .output()
-                    .map_err(|e| e.to_string())?;
-
-                if cuda_check.status.success() {
-                    let device = String::from_utf8_lossy(&cuda_check.stdout)
-                        .trim()
-                        .to_string();
-                    status.gpu_available = device == "cuda";
-                    status.gpu_device = Some(device);
-                }
+            if status.pytorch_version.is_some() {
+                let device = probe_torch_device(&path).unwrap_or_else(|| "cpu".to_string());
+                status.gpu_available = device == "cuda";
+                status.gpu_device = Some(device);
             }
         }
-        Err(_) => {
+        None => {
             status.errors.push("Python not found".to_string());
         }
     }
 
     // 2. Check Python packages
-    if status.python_found {
-        let python_exe = status.python_path.as_ref().unwrap();
-
-        // Check demucs
-        let demucs_out = Command::new(python_exe)
-            .args(["-c", "import demucs; print(demucs.__version__)"])
-            .output();
-
-        match demucs_out {
-            Ok(o) if o.status.success() => {
-                status.demucs_available = true;
-                status.demucs_version = Some(String::from_utf8_lossy(&o.stdout).trim().to_string());
-            }
-            _ => {
-                status.errors.push("demucs not installed".to_string());
-            }
+    if let Some(python_path) = find_python() {
+        status.demucs_version = probe_python_package_version(&python_path, "demucs");
+        status.demucs_available = status.demucs_version.is_some();
+        if !status.demucs_available {
+            status.errors.push("demucs not installed".to_string());
         }
 
-        // Check torchaudio
-        let torchaudio_out = Command::new(python_exe)
-            .args(["-c", "import torchaudio; print(torchaudio.__version__)"])
-            .output();
-
-        match torchaudio_out {
-            Ok(o) if o.status.success() => {
-                status.torchaudio_version =
-                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string());
-            }
-            _ => {
-                status.errors.push("torchaudio not installed".to_string());
-            }
+        status.torchaudio_version = probe_python_package_version(&python_path, "torchaudio");
+        if status.torchaudio_version.is_none() {
+            status.errors.push("torchaudio not installed".to_string());
         }
 
-        // Check bs_roformer
-        let bs_out = Command::new(python_exe)
-            .args(["-c", "import bs_roformer; print(bs_roformer.__version__)"])
-            .output();
-
-        match bs_out {
-            Ok(o) if o.status.success() => {
-                status.bs_roformer_available = true;
-                status.bs_roformer_version =
-                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string());
-            }
-            _ => {
-                status
-                    .errors
-                    .push("bs_roformer not installed (optional)".to_string());
-            }
+        status.bs_roformer_version = probe_python_package_version(&python_path, "bs_roformer");
+        status.bs_roformer_available = status.bs_roformer_version.is_some();
+        if !status.bs_roformer_available {
+            status.errors.push("bs_roformer not installed (optional)".to_string());
         }
     }
 
@@ -341,9 +188,7 @@ pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
         status.sidecar_script_found = true;
         status.sidecar_script_path = Some(sidecar_path.to_string_lossy().to_string());
     } else {
-        status
-            .errors
-            .push("stemgen_sidecar.py not found".to_string());
+        status.errors.push("stemgen_sidecar.py not found".to_string());
     }
 
     // 4. Check model directory
@@ -351,10 +196,9 @@ pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
     status.model_directory = model_dir.to_string_lossy().to_string();
 
     if model_dir.exists() {
-        let model_count = std::fs::read_dir(&model_dir)
+        status.model_count = std::fs::read_dir(&model_dir)
             .map(|d| d.filter_map(|e| e.ok()).count())
             .unwrap_or(0);
-        status.model_count = model_count;
     }
 
     // 5. Determine overall health
@@ -417,146 +261,101 @@ pub async fn validate_environment() -> Result<EnvironmentValidation, String> {
     let mut validation = EnvironmentValidation::default();
 
     // 1. FFmpeg check
-    if which::which("ffmpeg").is_ok() {
+    if probe_binary("ffmpeg") {
         validation.ffmpeg = Some(PackageStatus::Available);
     } else {
         validation.ffmpeg = Some(PackageStatus::Missing("ffmpeg not found".to_string()));
     }
 
     // 2. FFprobe check
-    if which::which("ffprobe").is_ok() {
+    if probe_binary("ffprobe") {
         validation.ffprobe = Some(PackageStatus::Available);
     } else {
         validation.ffprobe = Some(PackageStatus::Missing("ffprobe not found".to_string()));
     }
 
     // 3. Python check
-    let python_path = which::which("python")
-        .or_else(|_| which::which("python3"))
-        .or_else(|_| which::which("py"));
-
-    match python_path {
-        Ok(path) => {
-            validation.python = Some(PackageStatus::Available);
+    match find_python() {
+        Some(path) => {
             validation.python_path = Some(path.to_string_lossy().to_string());
 
-            // Check version
-            if let Ok(output) = Command::new(&path).args(["--version"]).output() {
-                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if let Some(version) = probe_python_version(&path) {
                 if version.contains("3.9")
                     || version.contains("3.10")
                     || version.contains("3.11")
                     || version.contains("3.12")
+                    || version.contains("3.13")
                 {
-                    validation.python_version = Some(version);
+                    validation.python = Some(PackageStatus::Available);
                 } else {
                     validation.python = Some(PackageStatus::Warning(format!(
                         "Python {} may not be compatible",
                         version
                     )));
-                    validation.python_version = Some(version);
                 }
+                validation.python_version = Some(version);
+            } else {
+                validation.python = Some(PackageStatus::Available);
             }
         }
-        Err(_) => {
+        None => {
             validation.python = Some(PackageStatus::Missing(
                 "Python not found. Install Python 3.9+".to_string(),
             ));
         }
     }
 
-    // 4. PyTorch check
-    if let Some(ref py_path) = validation.python_path {
-        let torch_check = Command::new(py_path)
-            .args(["-c", "import torch; print(torch.__version__)"])
-            .output();
+    // 4-7. Python package checks (only if Python is available)
+    if let Some(ref py_path_str) = validation.python_path {
+        let py_path = std::path::Path::new(py_path_str);
+        // PyTorch
+        match probe_python_package_version(py_path, "torch") {
+            Some(version) => {
+                validation.pytorch = Some(PackageStatus::Available);
+                validation.pytorch_version = Some(version);
 
-        match torch_check {
-            Ok(o) if o.status.success() => {
-                let version = String::from_utf8_lossy(&o.stdout).trim().to_string();
-
-                // Check CUDA
-                let cuda_check = Command::new(py_path)
-                    .args([
-                        "-c",
-                        "import torch; print('yes' if torch.cuda.is_available() else 'no')",
-                    ])
-                    .output();
-
-                let has_cuda = cuda_check
-                    .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "yes")
-                    .unwrap_or(false);
-
-                if has_cuda {
+                // CUDA check
+                if probe_torch_cuda(py_path) {
                     validation.cuda = Some(PackageStatus::Available);
-
-                    // Get GPU name
-                    let gpu_name = Command::new("nvidia-smi")
-                        .arg("--query-gpu=name")
-                        .arg("--format=csv,noheader")
-                        .output()
-                        .ok()
-                        .and_then(|o| String::from_utf8(o.stdout).ok())
-                        .map(|s| s.trim().to_string());
-
-                    validation.gpu_name = gpu_name;
+                    validation.gpu_name = probe_gpu_name();
                 } else {
                     validation.cuda = Some(PackageStatus::Unavailable(
                         "CUDA not available, will use CPU".to_string(),
                     ));
                 }
-
-                validation.pytorch = Some(PackageStatus::Available);
-                validation.pytorch_version = Some(version);
             }
-            Ok(_) => {
+            None => {
                 validation.pytorch =
                     Some(PackageStatus::Missing("PyTorch not installed".to_string()));
             }
-            Err(e) => {
-                validation.pytorch = Some(PackageStatus::Missing(format!(
-                    "Failed to check PyTorch: {}",
-                    e
-                )));
-            }
         }
 
-        // 5. torchaudio check
-        let torchaudio_check = Command::new(py_path)
-            .args(["-c", "import torchaudio; print(torchaudio.__version__)"])
-            .output();
-
-        match torchaudio_check {
-            Ok(o) if o.status.success() => {
+        // torchaudio
+        match probe_python_package_version(py_path, "torchaudio") {
+            Some(version) => {
                 validation.torchaudio = Some(PackageStatus::Available);
-                validation.torchaudio_version =
-                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string());
+                validation.torchaudio_version = Some(version);
             }
-            _ => {
+            None => {
                 validation.torchaudio = Some(PackageStatus::Missing(
                     "torchaudio not installed".to_string(),
                 ));
             }
         }
 
-        // 6. demucs check
-        let demucs_check = Command::new(py_path)
-            .args(["-c", "import demucs; print(demucs.__version__)"])
-            .output();
-
-        match demucs_check {
-            Ok(o) if o.status.success() => {
+        // demucs
+        match probe_python_package_version(py_path, "demucs") {
+            Some(version) => {
                 validation.demucs = Some(PackageStatus::Available);
-                validation.demucs_version =
-                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string());
+                validation.demucs_version = Some(version);
             }
-            _ => {
+            None => {
                 validation.demucs =
                     Some(PackageStatus::Missing("demucs not installed".to_string()));
             }
         }
 
-        // 7. sidecar script check
+        // sidecar script
         let sidecar_path = get_sidecar_script_path();
         if sidecar_path.exists() {
             validation.sidecar_script = Some(PackageStatus::Available);
@@ -681,15 +480,11 @@ pub struct EnvironmentValidation {
 }
 
 fn get_sidecar_script_path() -> PathBuf {
-    directories::ProjectDirs::from("dev", "stemgen", "stemgen-gui")
-        .map(|d| d.data_dir().join("stemgen_sidecar.py"))
-        .unwrap_or_else(|| std::env::temp_dir().join("stemgen_sidecar.py"))
+    get_data_dir().join("stemgen_sidecar.py")
 }
 
 fn get_model_directory() -> PathBuf {
-    directories::ProjectDirs::from("dev", "stemgen", "stemgen-gui")
-        .map(|d| d.data_dir().join("models"))
-        .unwrap_or_else(|| std::env::temp_dir().join("stemgen-gui/models"))
+    get_data_dir().join("models")
 }
 
 fn calculate_dir_size(path: &std::path::Path) -> std::io::Result<u64> {

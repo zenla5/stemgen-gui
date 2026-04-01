@@ -9,12 +9,22 @@ import { InstallProgress } from '@/components/ui/InstallProgress';
 import { Button } from '@/components/ui/Button';
 import type { AvailableInstaller } from '@/lib/types';
 
+function formatTimeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 10) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+
 export function SettingsPanel() {
   const settings = useSettingsStore();
   const appSettings = useAppStore();
   const {
     updateSettings, checkSidecarHealth, validateEnvironment,
-    sidecarHealth, environmentValidation,
+    sidecarHealth, environmentValidation, environmentValidatedAt,
     fetchInstallManifest,
     getAvailableInstallers, installDependency,
     activeInstallLines, installResults,
@@ -146,7 +156,11 @@ export function SettingsPanel() {
               </Button>
             )}
             <button
-              onClick={() => { checkSidecarHealth(); validateEnvironment(); }}
+              onClick={() => {
+                useAppStore.setState({ environmentValidatedAt: null });
+                checkSidecarHealth();
+                validateEnvironment();
+              }}
               className="flex items-center gap-1 rounded-md border border-muted px-2 py-1 text-xs hover:bg-muted"
             >
               <RefreshCw className="h-3 w-3" />
@@ -154,6 +168,11 @@ export function SettingsPanel() {
             </button>
           </div>
         </div>
+        {environmentValidatedAt && (
+          <p className="text-xs text-muted-foreground">
+            Last checked {formatTimeAgo(environmentValidatedAt)}
+          </p>
+        )}
 
         {/* Sidecar Health Summary */}
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
