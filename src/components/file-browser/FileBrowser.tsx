@@ -133,6 +133,7 @@ export function FileBrowser() {
     <div className="flex h-full flex-col gap-4 p-4" role="region" aria-label="File Browser">
       {/* Drop zone */}
       <div
+        data-testid="drop-zone"
         role="button"
         tabIndex={0}
         aria-label="Drop zone for audio files. Press Enter or click to open file browser."
@@ -168,6 +169,7 @@ export function FileBrowser() {
           or click to browse
         </p>
         <button
+          data-testid="open-files-btn"
           type="button"
           onClick={(e) => {
             e.stopPropagation();
@@ -183,12 +185,13 @@ export function FileBrowser() {
 
       {/* File list */}
       {audioFiles.length > 0 && (
-        <div className="flex-1 overflow-auto" role="listbox" aria-label="Selected audio files" aria-multiselectable="true">
+        <div className="flex-1 overflow-auto" role="listbox" aria-label="Selected audio files" aria-multiselectable="true" data-testid="file-list">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium" role="status" aria-live="polite">
+            <h3 className="text-sm font-medium" role="status" aria-live="polite" data-testid="file-count">
               {audioFiles.length} file{audioFiles.length !== 1 ? 's' : ''} selected
             </h3>
             <button
+              data-testid="clear-all-files-btn"
               onClick={() => audioFiles.forEach((f) => removeFile(f.path))}
               className="text-xs text-muted-foreground hover:text-destructive"
               aria-label="Clear all selected files"
@@ -201,6 +204,7 @@ export function FileBrowser() {
               <div
                 key={file.path}
                 id={`file-item-${index}`}
+                data-testid="file-item"
                 role="option"
                 tabIndex={0}
                 aria-selected={selectedFile?.path === file.path}
@@ -226,6 +230,7 @@ export function FileBrowser() {
                   </p>
                 </div>
                 <button
+                  data-testid="remove-file-btn"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeFile(file.path);

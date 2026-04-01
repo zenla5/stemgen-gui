@@ -41,6 +41,7 @@ export function ProcessingQueue() {
         <div className="flex gap-2">
           {hasJobs && (
             <button
+              data-testid="clear-jobs-btn"
               onClick={clearJobs}
               className="flex items-center gap-2 rounded-md border border-destructive/50 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10"
             >
@@ -76,6 +77,7 @@ export function ProcessingQueue() {
             </div>
           </div>
           <button
+            data-testid="cancel-all-btn"
             onClick={handleCancelAll}
             className="flex items-center gap-2 rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
           >
@@ -86,7 +88,7 @@ export function ProcessingQueue() {
       )}
 
       {!hasJobs ? (
-        <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground">
+        <div data-testid="queue-empty" className="flex flex-1 flex-col items-center justify-center text-muted-foreground">
           <Music className="mb-4 h-16 w-16 opacity-50" />
           <p className="text-lg font-medium">No jobs in queue</p>
           <p className="text-sm">Add audio files and start processing</p>
@@ -134,6 +136,7 @@ export function ProcessingQueue() {
           </button>
         ) : (
           <button
+            data-testid="start-processing-btn"
             onClick={handleStartProcessing}
             disabled={!hasFiles}
             className={cn(
@@ -190,7 +193,7 @@ function JobItem({
   };
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border p-3">
+    <div data-testid="job-item" className="flex items-center gap-3 rounded-lg border p-3">
       <div className="flex-shrink-0">{getStatusIcon(job.status)}</div>
       
       <div className="min-w-0 flex-1">
@@ -230,6 +233,7 @@ function JobItem({
 
       {(job.status === 'processing' || job.status === 'pending') && (
         <button
+          data-testid="cancel-job-btn"
           onClick={onCancel}
           className="flex-shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
           title="Cancel"
@@ -240,6 +244,7 @@ function JobItem({
 
       {job.status !== 'processing' && job.status !== 'pending' && (
         <button
+          data-testid="remove-job-btn"
           onClick={onRemove}
           className="flex-shrink-0 rounded-md p-1 hover:bg-muted"
           title="Remove"

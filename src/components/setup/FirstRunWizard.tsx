@@ -164,7 +164,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
       <div className="w-full max-w-lg bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-5">
-          <h1 className="text-2xl font-bold text-white">Welcome to Stemgen GUI</h1>
+          <h1 data-testid="wizard-step" className="text-2xl font-bold text-white">Welcome to Stemgen GUI</h1>
           <p className="text-indigo-100 mt-1">Let's get you set up for stem separation</p>
         </div>
 
@@ -190,7 +190,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
                 <Button onClick={runDependencyCheck} className="flex-1">
                   Start Check
                 </Button>
-                <Button variant="outline" onClick={onSkip}>
+                <Button data-testid="wizard-skip" variant="outline" onClick={onSkip}>
                   Skip
                 </Button>
               </div>
@@ -317,7 +317,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
               )}
 
               <div className="flex gap-3 pt-2">
-                <Button onClick={onComplete} className="flex-1">
+                <Button data-testid="wizard-complete" onClick={onComplete} className="flex-1">
                   {missingCount === 0 ? 'Start Using Stemgen' : 'Continue Anyway'}
                 </Button>
                 {missingCount > 0 && (

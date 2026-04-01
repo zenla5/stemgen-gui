@@ -12,6 +12,7 @@ export function Header() {
     <header className="flex h-14 items-center justify-between border-b bg-card px-4">
       <div className="flex items-center gap-4">
         <button
+          data-testid="mobile-menu-btn"
           onClick={toggleSidebar}
           className="rounded-md p-2 hover:bg-muted lg:hidden"
         >
@@ -31,6 +32,7 @@ export function Header() {
 
       <div className="flex items-center gap-2">
         <a
+          data-testid="github-link"
           href="https://github.com/zenla5/stemgen-gui"
           target="_blank"
           rel="noopener noreferrer"

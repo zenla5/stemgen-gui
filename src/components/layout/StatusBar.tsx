@@ -13,7 +13,7 @@ export function StatusBar() {
   const cpuGpu = dependencies.cuda ? 'CUDA' : dependencies.mps ? 'MPS' : 'CPU';
   
   return (
-    <footer className="flex h-8 items-center justify-between border-t border-border bg-card px-4 text-xs text-muted-foreground">
+    <footer data-testid="status-bar" className="flex h-8 items-center justify-between border-t border-border bg-card px-4 text-xs text-muted-foreground">
       {/* Left side - Status */}
       <div className="flex items-center gap-4">
         {/* Dependency status */}

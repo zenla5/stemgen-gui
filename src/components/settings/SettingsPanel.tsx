@@ -145,6 +145,7 @@ export function SettingsPanel() {
           <div className="flex gap-2">
             {missingDeps > 0 && (
               <Button
+                data-testid="install-all-btn"
                 variant="default"
                 size="sm"
                 onClick={handleInstallAllMissing}
@@ -156,6 +157,7 @@ export function SettingsPanel() {
               </Button>
             )}
             <button
+              data-testid="refresh-env-btn"
               onClick={() => {
                 useAppStore.setState({ environmentValidatedAt: null });
                 checkSidecarHealth();
@@ -346,6 +348,7 @@ export function SettingsPanel() {
             <button
               key={theme.id}
               onClick={() => settings.setTheme(theme.id)}
+              data-testid={`theme-btn-${theme.id}`}
               className={cn(
                 'flex items-center gap-2 rounded-md border px-4 py-2 text-sm transition-colors',
                 settings.theme === theme.id
@@ -369,6 +372,7 @@ export function SettingsPanel() {
           Language
         </h3>
         <select
+          data-testid="language-select"
           value={settings.language}
           onChange={(e) => settings.setLanguage(e.target.value)}
           className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm"

@@ -101,6 +101,7 @@ export function StemMixer() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Stem Mixer</h2>
         <button
+          data-testid="reset-mixer-btn"
           onClick={resetStemMixer}
           className="flex items-center gap-2 rounded-md border border-muted px-3 py-1.5 text-sm hover:bg-muted/50"
           aria-label="Reset all stem mixer settings to default"
@@ -132,7 +133,7 @@ export function StemMixer() {
           role="status"
         >
           <div className="text-4xl" aria-hidden="true">🎵</div>
-          <p className="text-center">
+          <p className="text-center" data-testid="no-stems-msg">
             Select a file and process it to generate stems.
             <br />
             Stems will appear here for mixing and preview.
@@ -154,6 +155,7 @@ export function StemMixer() {
             return (
               <div
                 key={stem.id}
+                data-testid="stem-card"
                 className="flex flex-col gap-3 rounded-lg border p-4 transition-all"
                 style={{
                   borderColor: `${stem.color}40`,
@@ -174,6 +176,7 @@ export function StemMixer() {
                   </div>
                   <div className="flex gap-1" role="group" aria-label={`${stem.name} controls`}>
                     <button
+                      data-testid="solo-btn"
                       onClick={() => handleStemSolo(stem.id, !stem.solo)}
                       className={cn(
                         'rounded p-1 transition-colors',
@@ -188,6 +191,7 @@ export function StemMixer() {
                       <Headphones className="h-4 w-4" aria-hidden="true" />
                     </button>
                     <button
+                      data-testid="mute-btn"
                       onClick={() => handleStemMute(stem.id, !stem.muted)}
                       className={cn(
                         'rounded p-1 transition-colors',
@@ -227,6 +231,7 @@ export function StemMixer() {
                     <span aria-hidden="true">{Math.round(stem.volume * 100)}%</span>
                   </div>
                   <input
+                    data-testid="stem-volume"
                     id={`volume-${stem.id}`}
                     type="range"
                     min="0"
@@ -271,6 +276,7 @@ export function StemMixer() {
               Master volume
             </label>
             <input
+              data-testid="master-volume"
               id="master-volume"
               type="range"
               min="0"
@@ -288,6 +294,7 @@ export function StemMixer() {
           {/* Playback controls */}
           <div className="flex items-center gap-4" role="group" aria-label="Transport controls">
             <button
+              data-testid="skip-start-btn"
               onClick={() => handleSeek(0)}
               className="rounded-md p-2 hover:bg-muted"
               aria-label="Restart playback"
@@ -297,6 +304,7 @@ export function StemMixer() {
             </button>
 
             <button
+              data-testid="play-pause-btn"
               onClick={handlePlayPause}
               disabled={!hasStems}
               className={cn(
@@ -316,6 +324,7 @@ export function StemMixer() {
             </button>
 
             <button
+              data-testid="skip-end-btn"
               onClick={() => handleSeek(player.state.duration)}
               className="rounded-md p-2 hover:bg-muted"
               aria-label="Skip to end"
