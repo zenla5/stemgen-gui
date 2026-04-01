@@ -1,5 +1,7 @@
 pub mod audio;
 pub mod db;
+pub mod install_executor;
+pub mod install_manifest;
 pub mod library;
 pub mod metadata;
 pub mod models;

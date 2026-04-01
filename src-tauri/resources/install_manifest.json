@@ -1,0 +1,229 @@
+{
+  "manifest_version": 1,
+  "dependencies": {
+    "ffmpeg": {
+      "name": "ffmpeg",
+      "display_name": "FFmpeg",
+      "description": "Audio/video processing toolkit",
+      "required": true,
+      "platforms": {
+        "windows": {
+          "package_managers": [
+            {
+              "id": "winget",
+              "priority": 1,
+              "detect_command": "winget",
+              "detect_args": ["--version"],
+              "install_command": "winget",
+              "install_args": ["install", "--id", "FFmpeg.FFmpeg", "--silent", "--accept-package-agreements", "--accept-source-agreements"],
+              "needs_elevation": false
+            },
+            {
+              "id": "choco",
+              "priority": 2,
+              "detect_command": "choco",
+              "detect_args": ["--version"],
+              "install_command": "choco",
+              "install_args": ["install", "ffmpeg", "-y"],
+              "needs_elevation": true
+            }
+          ]
+        },
+        "macos": {
+          "package_managers": [
+            {
+              "id": "brew",
+              "priority": 1,
+              "detect_command": "brew",
+              "detect_args": ["--version"],
+              "install_command": "brew",
+              "install_args": ["install", "ffmpeg"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "linux": {
+          "package_managers": [
+            {
+              "id": "apt",
+              "priority": 1,
+              "detect_command": "apt",
+              "detect_args": ["--version"],
+              "install_command": "sudo",
+              "install_args": ["apt", "install", "-y", "ffmpeg"],
+              "needs_elevation": true
+            },
+            {
+              "id": "dnf",
+              "priority": 2,
+              "detect_command": "dnf",
+              "detect_args": ["--version"],
+              "install_command": "sudo",
+              "install_args": ["dnf", "install", "-y", "ffmpeg"],
+              "needs_elevation": true
+            },
+            {
+              "id": "pacman",
+              "priority": 3,
+              "detect_command": "pacman",
+              "detect_args": ["--version"],
+              "install_command": "sudo",
+              "install_args": ["pacman", "-S", "--noconfirm", "ffmpeg"],
+              "needs_elevation": true
+            }
+          ]
+        }
+      }
+    },
+    "python": {
+      "name": "python",
+      "display_name": "Python",
+      "description": "Python 3.9+ runtime for AI model inference",
+      "required": true,
+      "platforms": {
+        "windows": {
+          "package_managers": [
+            {
+              "id": "winget",
+              "priority": 1,
+              "detect_command": "winget",
+              "detect_args": ["--version"],
+              "install_command": "winget",
+              "install_args": ["install", "--id", "Python.Python.3.12", "--silent", "--accept-package-agreements"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "macos": {
+          "package_managers": [
+            {
+              "id": "brew",
+              "priority": 1,
+              "detect_command": "brew",
+              "detect_args": ["--version"],
+              "install_command": "brew",
+              "install_args": ["install", "python@3.12"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "linux": {
+          "package_managers": [
+            {
+              "id": "apt",
+              "priority": 1,
+              "detect_command": "apt",
+              "detect_args": ["--version"],
+              "install_command": "sudo",
+              "install_args": ["apt", "install", "-y", "python3", "python3-pip", "python3-venv"],
+              "needs_elevation": true
+            },
+            {
+              "id": "dnf",
+              "priority": 2,
+              "detect_command": "dnf",
+              "detect_args": ["--version"],
+              "install_command": "sudo",
+              "install_args": ["dnf", "install", "-y", "python3", "python3-pip"],
+              "needs_elevation": true
+            }
+          ]
+        }
+      }
+    },
+    "pytorch": {
+      "name": "pytorch",
+      "display_name": "PyTorch",
+      "description": "Machine learning framework for stem separation",
+      "required": true,
+      "platforms": {
+        "windows": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python",
+              "detect_args": ["-c", "import torch"],
+              "install_command": "python",
+              "install_args": ["-m", "pip", "install", "--user", "torch", "torchaudio"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "macos": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import torch"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "torch", "torchaudio"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "linux": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import torch"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "torch", "torchaudio"],
+              "needs_elevation": false
+            }
+          ]
+        }
+      }
+    },
+    "demucs": {
+      "name": "demucs",
+      "display_name": "Demucs",
+      "description": "AI stem separation model",
+      "required": true,
+      "platforms": {
+        "windows": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python",
+              "detect_args": ["-c", "import demucs"],
+              "install_command": "python",
+              "install_args": ["-m", "pip", "install", "--user", "demucs"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "macos": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import demucs"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "demucs"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "linux": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import demucs"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "demucs"],
+              "needs_elevation": false
+            }
+          ]
+        }
+      }
+    }
+  }
+}

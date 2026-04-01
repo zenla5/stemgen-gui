@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import type {
   AudioFileMetadata,
   ProcessingJob,
@@ -12,6 +13,10 @@ import type {
   PackStemsResponse,
   SidecarStatus,
   EnvironmentValidation,
+  InstallManifest,
+  AvailableInstaller,
+  InstallProgressEvent,
+  InstallResult,
 } from '@/lib/types';
 import { DEFAULT_PROCESSING_SETTINGS, STEM_COLORS, STEM_DEFAULT_NAMES } from '@/lib/constants';
 
@@ -44,6 +49,11 @@ interface AppState {
   sidecarHealth: SidecarStatus | null;
   environmentValidation: EnvironmentValidation | null;
   environmentValidated: boolean;
+
+  // Dependency install system
+  installManifest: InstallManifest | null;
+  activeInstallLines: Record<string, string[]>;  // depName -> output lines
+  installResults: Record<string, InstallResult>;  // depName -> result
   
   // Settings
   settings: ProcessingSettings;
@@ -85,6 +95,12 @@ interface AppState {
   // Sidecar health actions (Phase 3)
   checkSidecarHealth: () => Promise<void>;
   validateEnvironment: () => Promise<void>;
+
+  // Dependency install actions
+  fetchInstallManifest: () => Promise<void>;
+  getAvailableInstallers: (depName: string) => Promise<AvailableInstaller[]>;
+  installDependency: (depName: string, installerId: string) => Promise<InstallResult>;
+  cancelInstall: (installId: string) => Promise<void>;
   
   // Settings actions
   updateSettings: (settings: Partial<ProcessingSettings>) => void;
@@ -226,6 +242,9 @@ export const useAppStore = create<AppState>()(
       sidecarHealth: null,
       environmentValidation: null,
       environmentValidated: false,
+      installManifest: null,
+      activeInstallLines: {},
+      installResults: {},
       settings: DEFAULT_PROCESSING_SETTINGS,
       sidebarCollapsed: false,
       activeView: 'files',
@@ -507,7 +526,70 @@ export const useAppStore = create<AppState>()(
           });
         }
       },
-      
+
+      // Dependency install actions
+      fetchInstallManifest: async () => {
+        try {
+          const manifest = await invoke<InstallManifest>('get_install_manifest');
+          set({ installManifest: manifest });
+        } catch (error) {
+          console.error('Failed to fetch install manifest:', error);
+        }
+      },
+
+      getAvailableInstallers: async (depName: string) => {
+        try {
+          return await invoke<AvailableInstaller[]>('get_available_installers', { depName });
+        } catch (error) {
+          console.error(`Failed to get installers for ${depName}:`, error);
+          return [];
+        }
+      },
+
+      installDependency: async (depName: string, installerId: string) => {
+        // Listen for progress events
+        const unlisten = await listen<InstallProgressEvent>('install-progress', (event) => {
+          const { depName: eventDep, line } = event.payload;
+          if (eventDep === depName) {
+            set((state) => ({
+              activeInstallLines: {
+                ...state.activeInstallLines,
+                [depName]: [...(state.activeInstallLines[depName] || []), line],
+              },
+            }));
+          }
+        });
+
+        try {
+          // Clear previous output
+          set((state) => ({
+            activeInstallLines: { ...state.activeInstallLines, [depName]: [] },
+          }));
+
+          const result = await invoke<InstallResult>('install_dependency', { depName, installerId });
+
+          set((state) => ({
+            installResults: { ...state.installResults, [depName]: result },
+          }));
+
+          // Re-validate environment after install
+          const { validateEnvironment } = get();
+          await validateEnvironment();
+
+          return result;
+        } finally {
+          unlisten();
+        }
+      },
+
+      cancelInstall: async (installId: string) => {
+        try {
+          await invoke('cancel_install', { installId });
+        } catch (error) {
+          console.error('Failed to cancel install:', error);
+        }
+      },
+
       // Settings actions
       updateSettings: (updates) => {
         set((state) => ({

@@ -67,9 +67,9 @@ describe('FirstRunWizard — welcome step', () => {
     expect(screen.getByText(/you can re-run this check anytime/i)).toBeInTheDocument();
   });
 
-  it('renders the wizard header with emoji', () => {
+  it('renders the wizard header', () => {
     render(<FirstRunWizard />);
-    expect(screen.getByText(/🎛️ Welcome to Stemgen GUI/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /welcome to stemgen gui/i })).toBeInTheDocument();
   });
 
   it('renders the setup description text', () => {

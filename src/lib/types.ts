@@ -373,3 +373,59 @@ export interface BatchExportResponse {
   success: boolean;
   exported_files: string[];
 }
+
+// ============================================================================
+// Dependency Install System
+// ============================================================================
+
+export interface InstallManifest {
+  manifestVersion: number;
+  dependencies: Record<string, DependencyManifestEntry>;
+}
+
+export interface DependencyManifestEntry {
+  name: string;
+  displayName: string;
+  description: string;
+  required: boolean;
+  platforms: Record<string, PlatformConfig>;
+}
+
+export interface PlatformConfig {
+  packageManagers: PackageManagerEntry[];
+}
+
+export interface PackageManagerEntry {
+  id: string;
+  priority: number;
+  detectCommand: string;
+  detectArgs: string[];
+  installCommand: string;
+  installArgs: string[];
+  needsElevation: boolean;
+}
+
+export interface AvailableInstaller {
+  id: string;
+  name: string;
+  needsElevation: boolean;
+  commandDisplay: string;
+}
+
+export interface InstallProgressEvent {
+  installId: string;
+  depName: string;
+  line: string;
+  stream: 'stdout' | 'stderr';
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+}
+
+export interface InstallResult {
+  success: boolean;
+  depName: string;
+  installerId: string;
+  alreadyInstalled: boolean;
+  exitCode: number | null;
+  output: string[];
+  error?: string;
+}

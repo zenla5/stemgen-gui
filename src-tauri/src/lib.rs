@@ -172,6 +172,11 @@ pub fn run() {
             // Environment validation
             commands::validate_environment,
             commands::get_sidecar_status,
+            // Dependency installation
+            commands::install_executor::get_install_manifest,
+            commands::install_executor::get_available_installers,
+            commands::install_executor::install_dependency,
+            commands::install_executor::cancel_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

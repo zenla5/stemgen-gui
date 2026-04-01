@@ -1,18 +1,22 @@
 /**
  * First-Run Setup Wizard
- * 
+ *
  * Guides users through installing missing dependencies on first launch.
  * Shown when Python, FFmpeg, or AI models are not detected.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/Button';
 import { Progress } from '@/components/ui/Progress';
-import type { PackageStatus } from '@/lib/types';
+import { InstallProgress } from '@/components/ui/InstallProgress';
+import { useAppStore } from '@/stores/appStore';
+import type { PackageStatus, AvailableInstaller } from '@/lib/types';
+import { Download, Loader2 } from 'lucide-react';
 
 interface DependencyCheck {
   name: string;
+  manifestKey: string;  // key in install_manifest.json
   description: string;
   status: 'pending' | 'checking' | 'ok' | 'missing' | 'warning';
   message?: string;
@@ -37,12 +41,19 @@ function getDepStatus(pkg: PackageStatus | undefined, successMsg?: string): { st
 export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
   const [step, setStep] = useState<'welcome' | 'check' | 'results' | 'models'>('welcome');
   const [dependencies, setDependencies] = useState<DependencyCheck[]>([
-    { name: 'FFmpeg', description: 'Audio/video processing — required', status: 'pending' },
-    { name: 'Python', description: 'AI model inference — required', status: 'pending' },
-    { name: 'PyTorch', description: 'Machine learning framework — required', status: 'pending' },
-    { name: 'demucs', description: 'AI stem separation model — required', status: 'pending' },
-    { name: 'CUDA', description: 'GPU acceleration — optional', status: 'pending' },
+    { name: 'FFmpeg', manifestKey: 'ffmpeg', description: 'Audio/video processing — required', status: 'pending' },
+    { name: 'Python', manifestKey: 'python', description: 'AI model inference — required', status: 'pending' },
+    { name: 'PyTorch', manifestKey: 'pytorch', description: 'Machine learning framework — required', status: 'pending' },
+    { name: 'demucs', manifestKey: 'demucs', description: 'AI stem separation model — required', status: 'pending' },
+    { name: 'CUDA', manifestKey: 'pytorch', description: 'GPU acceleration — optional', status: 'pending' },
   ]);
+
+  // Install state
+  const [installersMap, setInstallersMap] = useState<Record<string, AvailableInstaller[]>>({});
+  const [installingDep, setInstallingDep] = useState<string | null>(null);
+  const [installLines, setInstallLines] = useState<string[]>([]);
+
+  const { getAvailableInstallers, installDependency, fetchInstallManifest } = useAppStore();
 
   const updateDependency = (name: string, status: DependencyCheck['status'], message?: string) => {
     setDependencies(prev =>
@@ -53,10 +64,9 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
   const runDependencyCheck = async () => {
     setStep('check');
 
-    // Check each dependency one by one
     for (const dep of dependencies) {
       updateDependency(dep.name, 'checking');
-      await new Promise(r => setTimeout(r, 300)); // brief delay for UX
+      await new Promise(r => setTimeout(r, 300));
 
       try {
         const env = await invoke<Record<string, PackageStatus | unknown>>('validate_environment');
@@ -84,6 +94,46 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
     }
 
     setStep('results');
+  };
+
+  // Load installers for missing deps when entering results step
+  useEffect(() => {
+    if (step === 'results') {
+      fetchInstallManifest();
+      const missingDeps = dependencies.filter(d => d.status === 'missing');
+      for (const dep of missingDeps) {
+        if (dep.manifestKey && !installersMap[dep.manifestKey]) {
+          getAvailableInstallers(dep.manifestKey).then(installers => {
+            setInstallersMap(prev => ({ ...prev, [dep.manifestKey]: installers }));
+          });
+        }
+      }
+    }
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleInstall = async (manifestKey: string) => {
+    const installers = installersMap[manifestKey];
+    if (!installers || installers.length === 0) return;
+
+    setInstallingDep(manifestKey);
+    setInstallLines([]);
+
+    // Listen for progress events
+    const { listen } = await import('@tauri-apps/api/event');
+    const unlisten = await listen<{ depName: string; line: string }>('install-progress', (event) => {
+      if (event.payload.depName === manifestKey) {
+        setInstallLines(prev => [...prev, event.payload.line]);
+      }
+    });
+
+    try {
+      await installDependency(manifestKey, installers[0].id);
+      // Re-check this specific dependency after install
+      await runDependencyCheck();
+    } finally {
+      unlisten();
+      setInstallingDep(null);
+    }
   };
 
   const getStatusIcon = (status: DependencyCheck['status']) => {
@@ -114,7 +164,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
       <div className="w-full max-w-lg bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-5">
-          <h1 className="text-2xl font-bold text-white">🎛️ Welcome to Stemgen GUI</h1>
+          <h1 className="text-2xl font-bold text-white">Welcome to Stemgen GUI</h1>
           <p className="text-indigo-100 mt-1">Let's get you set up for stem separation</p>
         </div>
 
@@ -176,40 +226,73 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
           {step === 'results' && (
             <div className="space-y-4">
               <h2 className="font-semibold text-slate-800 dark:text-slate-200">Dependency Check Complete</h2>
-              
+
               <div className="space-y-2">
-                {dependencies.map(dep => (
-                  <div key={dep.name} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-700">
-                    <span className="text-xl mt-0.5">{getStatusIcon(dep.status)}</span>
-                    <div>
-                      <div className="font-medium text-slate-700 dark:text-slate-300">{dep.name}</div>
-                      <div className={`text-sm ${getStatusColor(dep.status)}`}>
-                        {dep.message ?? dep.description}
+                {dependencies.map(dep => {
+                  const installers = installersMap[dep.manifestKey] || [];
+                  const isInstalling = installingDep === dep.manifestKey;
+                  const canInstall = dep.status === 'missing' && installers.length > 0 && dep.manifestKey;
+
+                  return (
+                    <div key={dep.name} className="rounded-lg bg-slate-50 dark:bg-slate-700">
+                      <div className="flex items-start gap-3 p-3">
+                        <span className="text-xl mt-0.5">{getStatusIcon(dep.status)}</span>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium text-slate-700 dark:text-slate-300">{dep.name}</div>
+                              <div className={`text-sm ${getStatusColor(dep.status)}`}>
+                                {dep.message ?? dep.description}
+                              </div>
+                            </div>
+                            {canInstall && !isInstalling && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleInstall(dep.manifestKey)}
+                                className="ml-2 h-7 text-xs"
+                              >
+                                <Download className="h-3 w-3 mr-1" />
+                                Install
+                              </Button>
+                            )}
+                            {isInstalling && (
+                              <div className="flex items-center gap-1 text-blue-500 ml-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span className="text-xs">Installing...</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
+                      {/* Show install progress inline */}
+                      {isInstalling && installLines.length > 0 && (
+                        <div className="px-3 pb-3">
+                          <InstallProgress
+                            lines={installLines}
+                            isRunning={true}
+                            result={null}
+                            commandDisplay={installers[0]?.commandDisplay}
+                          />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
-              {missingCount > 0 && (
+              {/* Missing deps summary (legacy hint block for manual install) */}
+              {missingCount > 0 && installingDep === null && (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4">
                   <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-2">
-                    ⚠️ {missingCount} required dependency{missingCount > 1 ? 'ies' : 'y'} missing
+                    {missingCount} required dependenc{missingCount > 1 ? 'ies' : 'y'} missing
                   </h3>
                   <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
-                    Install the missing dependencies, then come back to verify.
+                    Click "Install" above for one-click installation, or install manually and come back to verify.
                   </p>
-                  <div className="space-y-1 text-sm font-mono bg-amber-100 dark:bg-amber-950 p-3 rounded">
-                    <div># Install FFmpeg (macOS)</div>
-                    <div className="text-amber-600 dark:text-amber-500">brew install ffmpeg</div>
-                    <div className="mt-2"># Install FFmpeg (Linux)</div>
-                    <div className="text-amber-600 dark:text-amber-500">sudo apt install ffmpeg</div>
-                    <div className="mt-2"># Install Python dependencies</div>
-                    <div className="text-amber-600 dark:text-amber-500">pip install torch torchaudio demucs</div>
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    className="mt-3 w-full"
+                  <Button
+                    variant="outline"
+                    className="w-full"
                     onClick={runDependencyCheck}
                   >
                     Re-check Dependencies
@@ -220,7 +303,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
               {missingCount === 0 && optionalCount > 0 && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
                   <p className="text-sm text-blue-700 dark:text-blue-300">
-                    ✅ All required dependencies are installed. {optionalCount} optional component{optionalCount > 1 ? 's' : ''} could be improved.
+                    All required dependencies are installed. {optionalCount} optional component{optionalCount > 1 ? 's' : ''} could be improved.
                   </p>
                 </div>
               )}
@@ -228,7 +311,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
               {missingCount === 0 && optionalCount === 0 && (
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
                   <p className="text-sm text-green-700 dark:text-green-300">
-                    ✅ Everything is set up correctly! You're ready to start separating stems.
+                    Everything is set up correctly! You're ready to start separating stems.
                   </p>
                 </div>
               )}

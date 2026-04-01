@@ -1,16 +1,100 @@
-import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles, RefreshCw, CheckCircle, XCircle, AlertCircle, Package, HardDrive } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles, RefreshCw, CheckCircle, XCircle, AlertCircle, Package, HardDrive, Download, ChevronDown, Copy, Check } from 'lucide-react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useSettingsStore, supportedLanguages } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
 import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { ModelManager } from './ModelManager';
+import { InstallProgress } from '@/components/ui/InstallProgress';
+import { Button } from '@/components/ui/Button';
+import type { AvailableInstaller } from '@/lib/types';
 
 export function SettingsPanel() {
   const settings = useSettingsStore();
   const appSettings = useAppStore();
-  const { updateSettings, checkSidecarHealth, validateEnvironment, sidecarHealth, environmentValidation } = appSettings;
+  const {
+    updateSettings, checkSidecarHealth, validateEnvironment,
+    sidecarHealth, environmentValidation,
+    fetchInstallManifest,
+    getAvailableInstallers, installDependency,
+    activeInstallLines, installResults,
+  } = appSettings;
   const { dependencies } = appSettings;
+
+  // Local state for install UI
+  const [installingDep, setInstallingDep] = useState<string | null>(null);
+  const [installersMap, setInstallersMap] = useState<Record<string, AvailableInstaller[]>>({});
+
+  // Fetch manifest on mount
+  useEffect(() => {
+    fetchInstallManifest();
+  }, [fetchInstallManifest]);
+
+  // Load available installers for missing deps
+  const loadInstallersForDep = useCallback(async (depKey: string) => {
+    if (installersMap[depKey]) return;
+    const installers = await getAvailableInstallers(depKey);
+    setInstallersMap(prev => ({ ...prev, [depKey]: installers }));
+  }, [getAvailableInstallers, installersMap]);
+
+  // Map dependency display names to manifest keys
+  const depKeyMap: Record<string, string> = {
+    'FFmpeg': 'ffmpeg',
+    'FFprobe': 'ffmpeg',  // FFprobe comes with FFmpeg
+    'Python': 'python',
+    'PyTorch': 'pytorch',
+    'torchaudio': 'pytorch',  // Installed together with PyTorch
+    'demucs': 'demucs',
+    'CUDA': 'pytorch',  // CUDA is part of PyTorch install
+    'Sidecar Script': '',  // Cannot auto-install
+  };
+
+  const handleInstall = async (depKey: string, installerId: string) => {
+    setInstallingDep(depKey);
+    try {
+      await installDependency(depKey, installerId);
+    } finally {
+      setInstallingDep(null);
+    }
+  };
+
+  const handleInstallAllMissing = async () => {
+    // Install in order: Python first, then PyTorch, then demucs, then FFmpeg
+    const installOrder = ['python', 'pytorch', 'demucs', 'ffmpeg'];
+    for (const depKey of installOrder) {
+      const validation = environmentValidation;
+      // Check if this dep is missing
+      const isMissing = depKey === 'ffmpeg'
+        ? (!validation?.ffmpeg || !('available' in validation.ffmpeg))
+        : depKey === 'python'
+        ? (!validation?.python || !('available' in validation.python))
+        : depKey === 'pytorch'
+        ? (!validation?.pytorch || !('available' in validation.pytorch))
+        : depKey === 'demucs'
+        ? (!validation?.demucs || !('available' in validation.demucs))
+        : false;
+
+      if (!isMissing) continue;
+
+      const installers = installersMap[depKey] || await getAvailableInstallers(depKey);
+      if (installers.length === 0) continue;
+
+      setInstallingDep(depKey);
+      try {
+        await installDependency(depKey, installers[0].id);
+      } finally {
+        setInstallingDep(null);
+      }
+    }
+  };
+
+  // Count missing required dependencies
+  const missingDeps = [
+    environmentValidation?.ffmpeg,
+    environmentValidation?.python,
+    environmentValidation?.pytorch,
+    environmentValidation?.demucs,
+  ].filter(s => s && !('available' in s)).length;
 
   const isPackageAvailable = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null) => {
     if (!status) return false;
@@ -49,6 +133,18 @@ export function SettingsPanel() {
             System Status
           </h3>
           <div className="flex gap-2">
+            {missingDeps > 0 && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleInstallAllMissing}
+                disabled={installingDep !== null}
+                className="h-7 text-xs"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                Install All Missing
+              </Button>
+            )}
             <button
               onClick={() => { checkSidecarHealth(); validateEnvironment(); }}
               className="flex items-center gap-1 rounded-md border border-muted px-2 py-1 text-xs hover:bg-muted"
@@ -91,11 +187,19 @@ export function SettingsPanel() {
         <div className="mt-4 space-y-2">
           <h4 className="text-xs font-medium uppercase text-muted-foreground">Detailed Status</h4>
           <div className="grid gap-2 text-sm">
-            <PackageRow
+            <InstallablePackageRow
               label="FFmpeg"
               status={getPackageIcon(environmentValidation?.ffmpeg)}
               value={getPackageLabel(environmentValidation?.ffmpeg)}
               healthy={isPackageAvailable(environmentValidation?.ffmpeg)}
+              depKey="ffmpeg"
+              depKeyMap={depKeyMap}
+              installersMap={installersMap}
+              installingDep={installingDep}
+              activeInstallLines={activeInstallLines}
+              installResults={installResults}
+              loadInstallersForDep={loadInstallersForDep}
+              handleInstall={handleInstall}
             />
             <PackageRow
               label="FFprobe"
@@ -103,17 +207,33 @@ export function SettingsPanel() {
               value={getPackageLabel(environmentValidation?.ffprobe)}
               healthy={isPackageAvailable(environmentValidation?.ffprobe)}
             />
-            <PackageRow
+            <InstallablePackageRow
               label="Python"
               status={getPackageIcon(environmentValidation?.python)}
               value={`${environmentValidation?.pythonPath || 'Not found'} (${environmentValidation?.pythonVersion || 'unknown'})`}
               healthy={isPackageAvailable(environmentValidation?.python)}
+              depKey="python"
+              depKeyMap={depKeyMap}
+              installersMap={installersMap}
+              installingDep={installingDep}
+              activeInstallLines={activeInstallLines}
+              installResults={installResults}
+              loadInstallersForDep={loadInstallersForDep}
+              handleInstall={handleInstall}
             />
-            <PackageRow
+            <InstallablePackageRow
               label="PyTorch"
               status={getPackageIcon(environmentValidation?.pytorch)}
               value={environmentValidation?.pytorchVersion || getPackageLabel(environmentValidation?.pytorch)}
               healthy={isPackageAvailable(environmentValidation?.pytorch)}
+              depKey="pytorch"
+              depKeyMap={depKeyMap}
+              installersMap={installersMap}
+              installingDep={installingDep}
+              activeInstallLines={activeInstallLines}
+              installResults={installResults}
+              loadInstallersForDep={loadInstallersForDep}
+              handleInstall={handleInstall}
             />
             <PackageRow
               label="torchaudio"
@@ -121,11 +241,19 @@ export function SettingsPanel() {
               value={environmentValidation?.torchaudioVersion || getPackageLabel(environmentValidation?.torchaudio)}
               healthy={isPackageAvailable(environmentValidation?.torchaudio)}
             />
-            <PackageRow
+            <InstallablePackageRow
               label="demucs"
               status={getPackageIcon(environmentValidation?.demucs)}
               value={environmentValidation?.demucsVersion || getPackageLabel(environmentValidation?.demucs)}
               healthy={isPackageAvailable(environmentValidation?.demucs)}
+              depKey="demucs"
+              depKeyMap={depKeyMap}
+              installersMap={installersMap}
+              installingDep={installingDep}
+              activeInstallLines={activeInstallLines}
+              installResults={installResults}
+              loadInstallersForDep={loadInstallersForDep}
+              handleInstall={handleInstall}
             />
             <PackageRow
               label="CUDA"
@@ -469,6 +597,133 @@ function PackageRow({ label, status, value, healthy }: { label: string; status: 
       )}>
         {value}
       </span>
+    </div>
+  );
+}
+
+interface InstallablePackageRowProps {
+  label: string;
+  status: ReactNode;
+  value: string;
+  healthy?: boolean;
+  depKey: string;
+  depKeyMap: Record<string, string>;
+  installersMap: Record<string, AvailableInstaller[]>;
+  installingDep: string | null;
+  activeInstallLines: Record<string, string[]>;
+  installResults: Record<string, import('@/lib/types').InstallResult>;
+  loadInstallersForDep: (depKey: string) => Promise<void>;
+  handleInstall: (depKey: string, installerId: string) => Promise<void>;
+}
+
+function InstallablePackageRow({
+  label, status, value, healthy, depKey,
+  installersMap, installingDep, activeInstallLines, installResults,
+  loadInstallersForDep, handleInstall,
+}: InstallablePackageRowProps) {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const manifestKey = depKey;
+  const installers = installersMap[manifestKey] || [];
+  const isInstalling = installingDep === manifestKey;
+  const lines = activeInstallLines[manifestKey] || [];
+  const result = installResults[manifestKey];
+
+  // Load installers when unhealthy
+  useEffect(() => {
+    if (!healthy && manifestKey) {
+      loadInstallersForDep(manifestKey);
+    }
+  }, [healthy, manifestKey, loadInstallersForDep]);
+
+  const handleCopyCommand = async () => {
+    if (installers.length > 0) {
+      await navigator.clipboard.writeText(installers[0].commandDisplay);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="rounded px-2 py-1">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {status}
+          <span className="text-sm">{label}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className={cn(
+            "text-xs",
+            healthy === undefined ? "text-muted-foreground" :
+            healthy ? "text-green-600" : "text-red-600"
+          )}>
+            {value}
+          </span>
+          {!healthy && installers.length > 0 && !isInstalling && !(result?.success) && (
+            <div className="flex items-center gap-1 ml-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleInstall(manifestKey, installers[0].id)}
+                className="h-6 px-2 text-xs"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                Install
+              </Button>
+              {installers.length > 1 && (
+                <div className="relative">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowDropdown(!showDropdown)}
+                    className="h-6 px-1 text-xs"
+                  >
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                  {showDropdown && (
+                    <div className="absolute right-0 top-7 z-10 rounded-md border bg-popover p-1 shadow-md min-w-[120px]">
+                      {installers.map((installer) => (
+                        <button
+                          key={installer.id}
+                          onClick={() => {
+                            handleInstall(manifestKey, installer.id);
+                            setShowDropdown(false);
+                          }}
+                          className="w-full text-left px-2 py-1 text-xs rounded hover:bg-accent"
+                        >
+                          {installer.name}
+                          {installer.needsElevation && ' (elevated)'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCopyCommand}
+                className="h-6 px-1 text-xs"
+                title="Copy install command"
+              >
+                {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+      {/* Show install progress if this dep is installing or has recent output */}
+      {(isInstalling || lines.length > 0) && (
+        <div className="mt-2">
+          <InstallProgress
+            lines={lines}
+            isRunning={isInstalling}
+            result={isInstalling ? null : result}
+            commandDisplay={installers[0]?.commandDisplay}
+          />
+        </div>
+      )}
     </div>
   );
 }
