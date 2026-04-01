@@ -126,17 +126,17 @@ Audio File (MP3/FLAC/WAV/OGG)
 >
 > Binaries are built via GitHub Actions. SHA256 checksums are provided with every release for verification.
 
-### Latest Release (v1.0.12)
+### Latest Release
 
-Download the installer for your platform below. All links point to the **latest GitHub release** and will always reflect the most recent version.
+Download the installer for your platform below. All builds are available from the **[latest GitHub release page](https://github.com/zenla5/stemgen-gui/releases/latest)**.
 
 | Platform | Download |
 |---|---|
-| **Windows** | [.exe installer](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI_1.0.12_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI_1.0.12_x64_en-US.msi) |
-| **macOS (Apple Silicon)** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_aarch64.dmg) |
-| **Linux** | [.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI_1.0.12_amd64.AppImage) · [.deb](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI_1.0.12_amd64.deb) · [.rpm](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI-1.0.12-1.x86_64.rpm) |
+| **Windows** | [Stemgen-GUI_x64-setup.exe](https://github.com/zenla5/stemgen-gui/releases/latest) · [Stemgen-GUI_x64_en-US.msi](https://github.com/zenla5/stemgen-gui/releases/latest) |
+| **macOS (Apple Silicon)** | [Stemgen-GUI_aarch64.dmg](https://github.com/zenla5/stemgen-gui/releases/latest) |
+| **Linux** | [Stemgen.GUI_amd64.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest) · [Stemgen.GUI_amd64.deb](https://github.com/zenla5/stemgen-gui/releases/latest) · [Stemgen.GUI_x86_64.rpm](https://github.com/zenla5/stemgen-gui/releases/latest) |
 
-> **Note:** Linux `.deb` and `.rpm` filenames follow Debian/RPM packaging conventions and may differ slightly from the `.AppImage`. Download the file that matches your distribution.
+> **Note:** Artifact filenames include the version number (e.g., `Stemgen-GUI_1.1.0_x64-setup.exe`). Click any link above to see the full filenames on the releases page.
 
 📦 **All releases:** [github.com/zenla5/stemgen-gui/releases](https://github.com/zenla5/stemgen-gui/releases)
 
@@ -146,11 +146,11 @@ Every release includes a `SHA256SUMS.txt` file listing the SHA-256 hash of each 
 
 ```bash
 # Linux / macOS
-shasum -a 256 Stemgen.GUI_1.0.12_amd64.AppImage
+shasum -a 256 <filename>
 # Compare the output against the entry in SHA256SUMS.txt
 
 # Windows (PowerShell)
-Get-FileHash Stemgen.GUI_1.0.12_x64-setup.exe -Algorithm SHA256
+Get-FileHash <filename> -Algorithm SHA256
 # Compare against SHA256SUMS.txt
 ```
 

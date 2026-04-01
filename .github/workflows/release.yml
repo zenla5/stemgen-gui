@@ -295,6 +295,21 @@ jobs:
             exit 1
           fi
           echo "src-tauri/Cargo.toml version matches tag"
+      - name: Validate README download links
+        run: |
+          echo "=== Checking README download section ==="
+          # Ensure download links use /releases/latest (not hardcoded versions)
+          if grep -nE 'releases/download/v[0-9]' README.md; then
+            echo "ERROR: README contains hardcoded version download links."
+            echo "Download links must use /releases/latest to avoid going stale."
+            exit 1
+          fi
+          # Ensure download section header exists
+          if ! grep -q '### Latest Release' README.md; then
+            echo "ERROR: README missing '### Latest Release' section"
+            exit 1
+          fi
+          echo "README download links OK"
       - name: Download all artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
