@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.1.1] — Apr 2 2026 — Version Bump
+
+### Changed
+
+- **Version consistency** — All version strings bumped to 1.1.1: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+
 
 ## [1.0.13] — 2026-03-28 — Release Artifact & Download Link Repair (Phase 2)
 
