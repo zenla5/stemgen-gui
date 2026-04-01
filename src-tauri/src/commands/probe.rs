@@ -98,7 +98,10 @@ pub fn probe_cuda() -> bool {
 /// Check if CUDA is available through PyTorch.
 pub fn probe_torch_cuda(python: &Path) -> bool {
     Command::new(python)
-        .args(["-c", "import torch; print('yes' if torch.cuda.is_available() else 'no')"])
+        .args([
+            "-c",
+            "import torch; print('yes' if torch.cuda.is_available() else 'no')",
+        ])
         .output()
         .ok()
         .filter(|o| o.status.success())

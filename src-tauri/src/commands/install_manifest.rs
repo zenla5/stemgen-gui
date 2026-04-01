@@ -66,13 +66,21 @@ pub fn get_manifest() -> &'static InstallManifest {
 /// Get the current platform key matching the manifest (windows/macos/linux)
 pub fn current_platform() -> &'static str {
     #[cfg(target_os = "windows")]
-    { "windows" }
+    {
+        "windows"
+    }
     #[cfg(target_os = "macos")]
-    { "macos" }
+    {
+        "macos"
+    }
     #[cfg(target_os = "linux")]
-    { "linux" }
+    {
+        "linux"
+    }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    { "linux" }
+    {
+        "linux"
+    }
 }
 
 /// Build a human-readable command string from a PackageManager

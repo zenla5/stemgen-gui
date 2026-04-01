@@ -403,29 +403,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Failure notification (requires WEBHOOK_URL secret)
+  # Failure notification via Telegram
   notify-failure:
     name: Notify on Failure
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [build-windows, build-macos, build-linux, release]
-    if: failure() && vars.WEBHOOK_URL != ''
+    if: failure()
     steps:
-      - name: Send failure notification
+      - name: Send Telegram notification
         run: |
-          curl -sS -X POST "$WEBHOOK_URL" \
-            -H 'Content-Type: application/json' \
-            -d "{
-              \"text\": \":x: Release Failed: \`${{ github.ref_name }}\` by ${{ github.actor }}\",
-              \"blocks\": [
-                {
-                  \"type\": \"section\",
-                  \"text\": {
-                    \"type\": \"mrkdwn\",
-                    \"text\": \":x: *Release Build Failed* — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Run #${{ github.run_number }}>\n*Ref:* \`${{ github.ref_name }}\`\n*Actor:* ${{ github.actor }}\"
-                  }
-                }
-              ]
-            }" || echo "WARNING: Notification webhook failed (non-blocking)"
-        env:
-          WEBHOOK_URL: ${{ vars.WEBHOOK_URL }}
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d parse_mode="Markdown" \
+            -d text="🔴 *Release Pipeline Failed*
+
+*Repo:* ${{ github.repository }}
+*Branch:* ${{ github.ref_name }}
+*Commit:* \`${{ github.sha }}\`
+*Triggered by:* ${{ github.actor }}
+[View Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"

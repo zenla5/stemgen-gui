@@ -178,7 +178,9 @@ pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
         status.bs_roformer_version = probe_python_package_version(&python_path, "bs_roformer");
         status.bs_roformer_available = status.bs_roformer_version.is_some();
         if !status.bs_roformer_available {
-            status.errors.push("bs_roformer not installed (optional)".to_string());
+            status
+                .errors
+                .push("bs_roformer not installed (optional)".to_string());
         }
     }
 
@@ -188,7 +190,9 @@ pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
         status.sidecar_script_found = true;
         status.sidecar_script_path = Some(sidecar_path.to_string_lossy().to_string());
     } else {
-        status.errors.push("stemgen_sidecar.py not found".to_string());
+        status
+            .errors
+            .push("stemgen_sidecar.py not found".to_string());
     }
 
     // 4. Check model directory

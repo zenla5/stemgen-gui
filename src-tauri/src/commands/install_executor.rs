@@ -66,9 +66,7 @@ pub async fn get_install_manifest() -> Result<super::install_manifest::InstallMa
 
 /// Get available installers for a dependency on the current platform
 #[tauri::command]
-pub async fn get_available_installers(
-    dep_name: String,
-) -> Result<Vec<AvailableInstaller>, String> {
+pub async fn get_available_installers(dep_name: String) -> Result<Vec<AvailableInstaller>, String> {
     let manifest = get_manifest();
     let platform = current_platform();
 
