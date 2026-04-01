@@ -18,8 +18,23 @@ export default defineConfig({
   },
   projects: [
     {
+      // Dev-server project: tests against Vite dev server (fast, no binary needed)
       name: 'chromium',
+      testIgnore: '**/binary/**',
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      // Binary project: tests against compiled Tauri binary via CDP
+      name: 'binary',
+      testDir: './src/__tests__/e2e/binary',
+      fullyParallel: false, // Shared binary process, must run serially
+      timeout: 120000, // Binary tests may be slower
+      expect: { timeout: 15000 },
+      retries: 0, // No retries for binary tests
+      use: {
+        trace: 'on-first-retry',
+        screenshot: 'on',
+      },
     },
   ],
   webServer: {
