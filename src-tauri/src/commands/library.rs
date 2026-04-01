@@ -32,7 +32,7 @@ pub struct LibraryScanResult {
 }
 
 /// Filter options for library scan.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct LibraryScanFilter {
     /// Only scan stems created with this model
     pub model: Option<String>,
@@ -42,17 +42,6 @@ pub struct LibraryScanFilter {
     pub stale_only: bool,
     /// Only return current stems
     pub current_only: bool,
-}
-
-impl Default for LibraryScanFilter {
-    fn default() -> Self {
-        Self {
-            model: None,
-            dj_preset: None,
-            stale_only: false,
-            current_only: false,
-        }
-    }
 }
 
 /// A duplicate stem entry — multiple stem files for the same source.
@@ -230,7 +219,7 @@ pub async fn find_duplicate_stems(root_path: String) -> Result<Vec<DuplicateEntr
                     };
                     groups
                         .entry(prov.source_content_hash.clone())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(stem);
                 }
                 Ok(None) => {

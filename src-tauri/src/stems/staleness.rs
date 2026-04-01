@@ -255,17 +255,18 @@ pub fn check_stem_staleness(
                 .map(|v| v.version.as_str())
                 .unwrap_or("unknown");
 
-            if latest_version != current_version && latest_version != "unknown" {
-                if is_version_newer(current_version, latest_version) {
-                    reasons.push(StalenessReason::NewerModelVersion {
-                        current: current_version.to_string(),
-                        available: latest_version.to_string(),
-                    });
-                    debug!(
-                        "Newer model version available for {}: {} -> {}",
-                        stem_path_str, current_version, latest_version
-                    );
-                }
+            if latest_version != current_version
+                && latest_version != "unknown"
+                && is_version_newer(current_version, latest_version)
+            {
+                reasons.push(StalenessReason::NewerModelVersion {
+                    current: current_version.to_string(),
+                    available: latest_version.to_string(),
+                });
+                debug!(
+                    "Newer model version available for {}: {} -> {}",
+                    stem_path_str, current_version, latest_version
+                );
             }
         }
     }

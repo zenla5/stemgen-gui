@@ -123,6 +123,7 @@ impl StemProvenance {
     ///
     /// A new `StemProvenance` with `schema_version = 1` and all optional fields set to `None`.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         separation_model: String,
         stemgen_gui_version: String,

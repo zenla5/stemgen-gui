@@ -4,7 +4,7 @@
  * Displays detailed provenance metadata for a selected stem file.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/Button';
 import {

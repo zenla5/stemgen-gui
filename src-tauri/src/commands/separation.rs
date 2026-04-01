@@ -41,7 +41,7 @@ pub struct PackStemsRequest {
 }
 
 /// Provenance fields that the frontend provides when packing stems.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct ProvenanceFields {
     /// AI model used (e.g., "bs_roformer", "htdemucs")
     pub separation_model: String,
@@ -60,19 +60,6 @@ pub struct ProvenanceFields {
     /// Batch identifier (optional)
     #[serde(default)]
     pub batch_id: Option<String>,
-}
-
-impl Default for ProvenanceFields {
-    fn default() -> Self {
-        Self {
-            separation_model: String::new(),
-            model_version: None,
-            stemgen_version: None,
-            separation_quality_preset: None,
-            separation_params: None,
-            batch_id: None,
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
