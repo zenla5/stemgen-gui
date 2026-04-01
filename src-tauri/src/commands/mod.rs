@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod db;
+pub mod library;
 pub mod metadata;
 pub mod models;
 pub mod separation;
@@ -12,6 +13,7 @@ use tracing::info;
 
 pub use audio::*;
 pub use db::*;
+pub use library::*;
 pub use metadata::*;
 pub use models::*;
 pub use separation::*;

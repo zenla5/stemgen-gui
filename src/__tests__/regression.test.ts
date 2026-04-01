@@ -20,6 +20,7 @@ import { describe, it, expect } from 'vitest';
 
 import { DEFAULT_PROCESSING_SETTINGS, APP_VERSION, DJ_SOFTWARE_PRESETS, AI_MODELS, DEVICE_OPTIONS, QUALITY_PRESETS } from '@/lib/constants';
 import { BUILT_IN_FORMATS } from '@/lib/plugin';
+import { PROVENANCE_SCHEMA_VERSION, isStemCurrent, isStemStale, isStemUnknown } from '@/lib/types/library';
 import packageJson from '../../package.json';
 
 // ============================================================
@@ -166,8 +167,9 @@ describe('Regression: Model Card Button Selection (J7)', () => {
 // ============================================================
 // Regression: v1.0.8 — Testing Enhancement & E2E Hardening
 // ============================================================
-describe('Regression: v1.0.8 Coverage Enhancement', () => {
-  it('APP_VERSION should be 1.0.12', () => { expect(APP_VERSION).toBe('1.0.12');
+describe('Regression: v1.1.0 Stem Library Management', () => {
+  it('APP_VERSION should be 1.1.0', () => {
+    expect(APP_VERSION).toBe('1.1.0');
   });
 
   it('APP_VERSION should match package.json', () => {
@@ -228,5 +230,29 @@ describe('Regression: Security — Parameterized Queries', () => {
     // See: src-tauri/src/commands/db.rs — all INSERT/UPDATE/SELECT use params![]
     const usesParameterizedQueries = true;
     expect(usesParameterizedQueries).toBe(true);
+  });
+});
+
+// ============================================================
+// Regression: v1.1.0 — Library Management Feature Guards
+// ============================================================
+describe('Regression: v1.1.0 — Provenance Schema', () => {
+  it('PROVENANCE_SCHEMA_VERSION should be 1', () => {
+    // Schema must be 1 for the initial release
+    // Future migrations will bump this and handle backwards compat
+    expect(PROVENANCE_SCHEMA_VERSION).toBe(1);
+  });
+});
+
+describe('Regression: v1.1.0 — Library Types', () => {
+  it('StalenessStatus discriminated union should work correctly', () => {
+    // Guard against union type regressions
+    expect(isStemCurrent({ status: 'Current' })).toBe(true);
+    expect(isStemStale({ status: 'Stale', reasons: [] })).toBe(true);
+    expect(isStemUnknown({ status: 'Unknown', reason: 'x' })).toBe(true);
+
+    // Cross-checks
+    expect(isStemCurrent({ status: 'Stale', reasons: [] })).toBe(false);
+    expect(isStemStale({ status: 'Current' })).toBe(false);
   });
 });
