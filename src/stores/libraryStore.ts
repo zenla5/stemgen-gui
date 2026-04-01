@@ -84,14 +84,6 @@ const defaultStalenessRules: StalenessRules = {
   default_separation_params: undefined,
 };
 
-const defaultScanResult: LibraryScanResult = {
-  total_scanned: 0,
-  current_count: 0,
-  stale_count: 0,
-  unknown_count: 0,
-  reports: [],
-  errors: [],
-};
 
 // =============================================================================
 // Store Implementation

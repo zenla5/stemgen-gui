@@ -6,57 +6,30 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/Button';
 import {
   AlertCircle,
   CheckCircle,
-  Clock,
   Copy,
   Database,
   FileAudio,
-  Hash,
   History,
   Info,
   Loader2,
   Save,
-  Shield,
   Tag,
-  User,
   XCircle,
 } from 'lucide-react';
 import type { StemProvenance, StalenessReport } from '@/lib/types/library';
-import { formatFileSize, formatTimestamp, getStalenessReasonDescription, isStemCurrent, isStemStale, isStemUnknown } from '@/lib/types/library';
-import { useLibraryStore } from '@/stores/libraryStore';
+import { formatTimestamp, isStemCurrent, isStemStale, isStemUnknown } from '@/lib/types/library';
 
 interface StemInfoPanelProps {
   stemPath: string;
-  onClose?: () => void;
 }
 
-export function StemInfoPanel({ stemPath, onClose }: StemInfoPanelProps) {
+export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
   const [provenance, setProvenance] = useState<StemProvenance | null>(null);
-  const [stalenessReport, setStalenessReport] = useState<StalenessReport | null>(null);
+  const [stalenessReport] = useState<StalenessReport | null>(null);
   const [userNotes, setUserNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -107,11 +80,6 @@ export function StemInfoPanel({ stemPath, onClose }: StemInfoPanelProps) {
     }
   }, [stemPath, userNotes]);
 
-  // Copy field to clipboard
-  const copyToClipboard = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
-  }, []);
-
   // Get integrity icon
   const IntegrityIcon = () => {
     switch (integrityStatus) {
@@ -131,283 +99,282 @@ export function StemInfoPanel({ stemPath, onClose }: StemInfoPanelProps) {
     if (!stalenessReport) return null;
     
     if (isStemCurrent(stalenessReport.status)) {
-      return <Badge variant="default" className="bg-green-500">Current</Badge>;
+      return <span className="inline-flex items-center rounded-full bg-green-500 px-2 py-1 text-xs font-medium text-white">Current</span>;
     }
     if (isStemStale(stalenessReport.status)) {
-      return <Badge variant="destructive">Stale</Badge>;
+      return <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-1 text-xs font-medium text-white">Stale</span>;
     }
     if (isStemUnknown(stalenessReport.status)) {
-      return <Badge variant="secondary">Unknown</Badge>;
+      return <span className="inline-flex items-center rounded-full bg-gray-500 px-2 py-1 text-xs font-medium text-white">Unknown</span>;
     }
     return null;
   };
 
+  // Copy button component
+  const CopyButton = ({ text }: { text: string }) => {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+      <Button variant="ghost" size="sm" onClick={handleCopy} className="h-6 w-6 p-0">
+        {copied ? <CheckCircle className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </Button>
+    );
+  };
+
   if (isLoading) {
     return (
-      <Card className="w-full">
-        <CardContent className="flex items-center justify-center py-12">
+      <div className="w-full rounded-lg border bg-card text-card-foreground shadow-sm">
+        <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-destructive">
+      <div className="w-full rounded-lg border bg-card text-card-foreground shadow-sm">
+        <div className="flex flex-col space-y-1.5 p-6">
+          <h3 className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight text-destructive">
             <AlertCircle className="h-5 w-5" />
             Error Loading Stem Info
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+          </h3>
+        </div>
+        <div className="p-6 pt-0">
           <p className="text-muted-foreground">{error}</p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   return (
-    <TooltipProvider>
-      <Card className="w-full">
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Info className="h-5 w-5" />
-              Stem Information
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <StalenessBadge />
-              <div className="flex items-center gap-1">
-                <IntegrityIcon />
-                <span className="text-sm text-muted-foreground">
-                  {integrityStatus === 'ok' && 'Source Verified'}
-                  {integrityStatus === 'modified' && 'Source Modified'}
-                  {integrityStatus === 'missing' && 'Source Missing'}
-                  {integrityStatus === 'checking' && 'Checking...'}
-                </span>
-              </div>
+    <div className="w-full rounded-lg border bg-card text-card-foreground shadow-sm">
+      <div className="flex flex-col space-y-1.5 p-6 pb-4">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight">
+            <Info className="h-5 w-5" />
+            Stem Information
+          </h3>
+          <div className="flex items-center gap-2">
+            <StalenessBadge />
+            <div className="flex items-center gap-1">
+              <IntegrityIcon />
+              <span className="text-sm text-muted-foreground">
+                {integrityStatus === 'ok' && 'Source Verified'}
+                {integrityStatus === 'modified' && 'Source Modified'}
+                {integrityStatus === 'missing' && 'Source Missing'}
+                {integrityStatus === 'checking' && 'Checking...'}
+              </span>
             </div>
           </div>
-          <p className="text-sm text-muted-foreground truncate" title={stemPath}>
-            {stemPath.split(/[/\\]/).pop()}
-          </p>
-        </CardHeader>
-        
-        <CardContent className="space-y-6">
-          {provenance ? (
-            <>
-              {/* Model Information */}
-              <section>
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <Database className="h-4 w-4" />
-                  Separation Model
-                </h3>
-                <Table>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="text-muted-foreground">Model</TableCell>
-                      <TableCell className="font-medium">{provenance.separation_model}</TableCell>
-                    </TableRow>
+        </div>
+        <p className="text-sm text-muted-foreground truncate" title={stemPath}>
+          {stemPath.split(/[/\\]/).pop()}
+        </p>
+      </div>
+      
+      <div className="p-6 pt-0 space-y-6">
+        {provenance ? (
+          <>
+            {/* Model Information */}
+            <section>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Separation Model
+              </h3>
+              <div className="rounded-md border">
+                <table className="w-full">
+                  <tbody>
+                    <tr className="border-b">
+                      <td className="p-3 text-muted-foreground">Model</td>
+                      <td className="p-3 font-medium">{provenance.separation_model}</td>
+                    </tr>
                     {provenance.model_version && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground">Version</TableCell>
-                        <TableCell className="font-medium">
+                      <tr className="border-b">
+                        <td className="p-3 text-muted-foreground">Version</td>
+                        <td className="p-3 font-medium">
                           <div className="flex items-center gap-2">
                             <code className="text-xs bg-muted px-1 py-0.5 rounded">
                               {provenance.model_version}
                             </code>
                             <CopyButton text={provenance.model_version} />
                           </div>
-                        </TableCell>
-                      </TableRow>
+                        </td>
+                      </tr>
                     )}
                     {provenance.stemgen_version && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground">stemgen Version</TableCell>
-                        <TableCell className="font-medium">{provenance.stemgen_version}</TableCell>
-                      </TableRow>
+                      <tr className="border-b">
+                        <td className="p-3 text-muted-foreground">stemgen Version</td>
+                        <td className="p-3 font-medium">{provenance.stemgen_version}</td>
+                      </tr>
                     )}
-                    <TableRow>
-                      <TableCell className="text-muted-foreground">stemgen-gui Version</TableCell>
-                      <TableCell className="font-medium">{provenance.stemgen_gui_version}</TableCell>
-                    </TableRow>
+                    <tr className="border-b">
+                      <td className="p-3 text-muted-foreground">stemgen-gui Version</td>
+                      <td className="p-3 font-medium">{provenance.stemgen_gui_version}</td>
+                    </tr>
                     {provenance.separation_quality_preset && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground">Quality Preset</TableCell>
-                        <TableCell className="font-medium">
-                          <Badge variant="outline">{provenance.separation_quality_preset}</Badge>
-                        </TableCell>
-                      </TableRow>
+                      <tr>
+                        <td className="p-3 text-muted-foreground">Quality Preset</td>
+                        <td className="p-3 font-medium">
+                          <span className="inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium">
+                            {provenance.separation_quality_preset}
+                          </span>
+                        </td>
+                      </tr>
                     )}
-                  </TableBody>
-                </Table>
-              </section>
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
-              <Separator />
+            <hr className="border-t" />
 
-              {/* Source Information */}
-              <section>
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <FileAudio className="h-4 w-4" />
-                  Source File
-                </h3>
-                <Table>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="text-muted-foreground">Path</TableCell>
-                      <TableCell className="font-medium">
+            {/* Source Information */}
+            <section>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <FileAudio className="h-4 w-4" />
+                Source File
+              </h3>
+              <div className="rounded-md border">
+                <table className="w-full">
+                  <tbody>
+                    <tr className="border-b">
+                      <td className="p-3 text-muted-foreground">Path</td>
+                      <td className="p-3 font-medium">
                         <div className="flex items-center gap-2 max-w-[300px]">
                           <span className="truncate" title={provenance.source_path}>
                             {provenance.source_path}
                           </span>
                           <CopyButton text={provenance.source_path} />
                         </div>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="text-muted-foreground">Content Hash</TableCell>
-                      <TableCell className="font-medium">
+                      </td>
+                    </tr>
+                    <tr className="border-b">
+                      <td className="p-3 text-muted-foreground">Content Hash</td>
+                      <td className="p-3 font-medium">
                         <div className="flex items-center gap-2">
                           <code className="text-xs bg-muted px-1 py-0.5 rounded truncate max-w-[200px]">
                             {provenance.source_content_hash}
                           </code>
                           <CopyButton text={provenance.source_content_hash} />
                         </div>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="text-muted-foreground">Duration</TableCell>
-                      <TableCell className="font-medium">
+                      </td>
+                    </tr>
+                    <tr className="border-b">
+                      <td className="p-3 text-muted-foreground">Duration</td>
+                      <td className="p-3 font-medium">
                         {provenance.source_duration_secs.toFixed(1)} seconds
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="text-muted-foreground">Sample Rate</TableCell>
-                      <TableCell className="font-medium">
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 text-muted-foreground">Sample Rate</td>
+                      <td className="p-3 font-medium">
                         {provenance.source_sample_rate.toLocaleString()} Hz
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </section>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
-              <Separator />
+            <hr className="border-t" />
 
-              {/* Job Information */}
-              <section>
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <History className="h-4 w-4" />
-                  Job Information
-                </h3>
-                <Table>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="text-muted-foreground">Job ID</TableCell>
-                      <TableCell className="font-medium">
+            {/* Job Information */}
+            <section>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Job Information
+              </h3>
+              <div className="rounded-md border">
+                <table className="w-full">
+                  <tbody>
+                    <tr className="border-b">
+                      <td className="p-3 text-muted-foreground">Job ID</td>
+                      <td className="p-3 font-medium">
                         <div className="flex items-center gap-2">
                           <code className="text-xs bg-muted px-1 py-0.5 rounded">
                             {provenance.job_id}
                           </code>
                           <CopyButton text={provenance.job_id} />
                         </div>
-                      </TableCell>
-                    </TableRow>
+                      </td>
+                    </tr>
                     {provenance.batch_id && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground">Batch ID</TableCell>
-                        <TableCell className="font-medium">
+                      <tr className="border-b">
+                        <td className="p-3 text-muted-foreground">Batch ID</td>
+                        <td className="p-3 font-medium">
                           <code className="text-xs bg-muted px-1 py-0.5 rounded">
                             {provenance.batch_id}
                           </code>
-                        </TableCell>
-                      </TableRow>
+                        </td>
+                      </tr>
                     )}
-                    <TableRow>
-                      <TableCell className="text-muted-foreground">Separation Time</TableCell>
-                      <TableCell className="font-medium">
+                    <tr className="border-b">
+                      <td className="p-3 text-muted-foreground">Separation Time</td>
+                      <td className="p-3 font-medium">
                         {formatTimestamp(provenance.separation_timestamp)}
-                      </TableCell>
-                    </TableRow>
+                      </td>
+                    </tr>
                     {provenance.schema_version && (
-                      <TableRow>
-                        <TableCell className="text-muted-foreground">Schema Version</TableCell>
-                        <TableCell className="font-medium">{provenance.schema_version}</TableCell>
-                      </TableRow>
+                      <tr>
+                        <td className="p-3 text-muted-foreground">Schema Version</td>
+                        <td className="p-3 font-medium">{provenance.schema_version}</td>
+                      </tr>
                     )}
-                  </TableBody>
-                </Table>
-              </section>
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
-              <Separator />
+            <hr className="border-t" />
 
-              {/* User Notes */}
-              <section>
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <Tag className="h-4 w-4" />
-                  User Notes
-                </h3>
-                <div className="space-y-2">
-                  <Textarea
-                    value={userNotes}
-                    onChange={(e) => setUserNotes(e.target.value)}
-                    placeholder="Add personal notes about this stem..."
-                    className="min-h-[100px]"
-                  />
-                  <div className="flex justify-end">
-                    <Button
-                      size="sm"
-                      onClick={handleSaveNotes}
-                      disabled={isSavingNotes}
-                    >
-                      {isSavingNotes ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4 mr-2" />
-                      )}
-                      Save Notes
-                    </Button>
-                  </div>
+            {/* User Notes */}
+            <section>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Tag className="h-4 w-4" />
+                User Notes
+              </h3>
+              <div className="space-y-2">
+                <textarea
+                  value={userNotes}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setUserNotes(e.target.value)}
+                  placeholder="Add personal notes about this stem..."
+                  className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveNotes}
+                    disabled={isSavingNotes}
+                  >
+                    {isSavingNotes ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    Save Notes
+                  </Button>
                 </div>
-              </section>
-            </>
-          ) : (
-            <div className="text-center py-8">
-              <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-              <p className="text-muted-foreground">No provenance metadata found</p>
-              <p className="text-sm text-muted-foreground">
-                This stem file may have been created with an older version of stemgen-gui.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </TooltipProvider>
-  );
-}
-
-// Copy button component
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="sm" onClick={handleCopy} className="h-6 w-6 p-0">
-          {copied ? <CheckCircle className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>{copied ? 'Copied!' : 'Copy to clipboard'}</p>
-      </TooltipContent>
-    </Tooltip>
+              </div>
+            </section>
+          </>
+        ) : (
+          <div className="text-center py-8">
+            <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+            <p className="text-muted-foreground">No provenance metadata found</p>
+            <p className="text-sm text-muted-foreground">
+              This stem file may have been created with an older version of stemgen-gui.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
