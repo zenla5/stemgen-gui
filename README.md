@@ -126,15 +126,15 @@ Audio File (MP3/FLAC/WAV/OGG)
 >
 > Binaries are built via GitHub Actions. SHA256 checksums are provided with every release for verification.
 
-### Latest Release
+### Latest Release (v1.0.12)
 
 Download the installer for your platform below. All links point to the **latest GitHub release** and will always reflect the most recent version.
 
 | Platform | Download |
 |---|---|
-| **Windows** | [.exe installer](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_x64-setup.msi) |
+| **Windows** | [.exe installer](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI_1.0.12_x64-setup.exe) · [.msi](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI_1.0.12_x64_en-US.msi) |
 | **macOS (Apple Silicon)** | [.dmg](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_aarch64.dmg) |
-| **Linux** | [.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen-GUI_amd64.AppImage) · [.deb](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui_amd64.deb) · [.rpm](https://github.com/zenla5/stemgen-gui/releases/latest/download/stemgen-gui.x86_64.rpm) |
+| **Linux** | [.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI_1.0.12_amd64.AppImage) · [.deb](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI_1.0.12_amd64.deb) · [.rpm](https://github.com/zenla5/stemgen-gui/releases/latest/download/Stemgen.GUI-1.0.12-1.x86_64.rpm) |
 
 > **Note:** Linux `.deb` and `.rpm` filenames follow Debian/RPM packaging conventions and may differ slightly from the `.AppImage`. Download the file that matches your distribution.
 
@@ -146,11 +146,11 @@ Every release includes a `SHA256SUMS.txt` file listing the SHA-256 hash of each 
 
 ```bash
 # Linux / macOS
-shasum -a 256 Stemgen-GUI_amd64.AppImage
+shasum -a 256 Stemgen.GUI_1.0.12_amd64.AppImage
 # Compare the output against the entry in SHA256SUMS.txt
 
 # Windows (PowerShell)
-Get-FileHash Stemgen-GUI_x64-setup.exe -Algorithm SHA256
+Get-FileHash Stemgen.GUI_1.0.12_x64-setup.exe -Algorithm SHA256
 # Compare against SHA256SUMS.txt
 ```
 

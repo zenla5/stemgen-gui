@@ -109,23 +109,20 @@ function updateReadmeLinks() {
 
   // README download link patterns (Windows .exe, .msi; macOS .dmg; Linux .AppImage, .deb, .rpm)
   // NOTE: defined inside the function so VERSION is in scope.
+  // These match the actual Tauri bundler output filenames.
   const README_PATTERNS = [
-    // Windows NSIS
-    [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen-GUI_${VERSION}_x64-setup.exe`],
+    // Windows NSIS (note: Tauri uses dot in product name: Stemgen.GUI)
+    [/Stemgen\.GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen.GUI_${VERSION}_x64-setup.exe`],
     // Windows MSI
-    [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.msi/g, `Stemgen-GUI_${VERSION}_x64-setup.msi`],
-    // macOS
-    [/Stemgen-GUI_(\d+\.\d+\.\d+)_aarch64\.dmg/g, `Stemgen-GUI_${VERSION}_aarch64.dmg`],
+    [/Stemgen\.GUI_(\d+\.\d+\.\d+)_x64_en-US\.msi/g, `Stemgen.GUI_${VERSION}_x64_en-US.msi`],
+    // macOS (uses hyphen: Stemgen-GUI, no version in current builds)
+    [/Stemgen-GUI_(?:\d+\.\d+\.\d+_)?aarch64\.dmg/g, `Stemgen-GUI_${VERSION}_aarch64.dmg`],
     // Linux AppImage
-    [/Stemgen-GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen-GUI_${VERSION}_amd64.AppImage`],
+    [/Stemgen\.GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen.GUI_${VERSION}_amd64.AppImage`],
     // Linux DEB
-    [/stemgen-gui_(\d+\.\d+\.\d+)_amd64\.deb/g, `stemgen-gui_${VERSION}_amd64.deb`],
+    [/Stemgen\.GUI_(\d+\.\d+\.\d+)_amd64\.deb/g, `Stemgen.GUI_${VERSION}_amd64.deb`],
     // Linux RPM
-    [/stemgen-gui-(\d+\.\d+\.\d+)-1\.x86_64\.rpm/g, `stemgen-gui-${VERSION}-1.x86_64.rpm`],
-    // Verification examples in README (AppImage)
-    [/Stemgen-GUI_(\d+\.\d+\.\d+)_amd64\.AppImage/g, `Stemgen-GUI_${VERSION}_amd64.AppImage`],
-    // Verification examples in README (exe)
-    [/Stemgen-GUI_(\d+\.\d+\.\d+)_x64-setup\.exe/g, `Stemgen-GUI_${VERSION}_x64-setup.exe`],
+    [/Stemgen\.GUI-(\d+\.\d+\.\d+)-1\.x86_64\.rpm/g, `Stemgen.GUI-${VERSION}-1.x86_64.rpm`],
   ];
 
   // Section header pattern
