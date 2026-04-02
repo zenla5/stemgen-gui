@@ -19,7 +19,7 @@ const LOG_FILE = path.join(PROJECT_ROOT, 'test-results', 'binary.log');
  * Poll the CDP endpoint until it responds or timeout is reached.
  * Returns the webSocketDebuggerUrl if available, otherwise the base URL.
  */
-async function waitForCDP(port: number, timeoutMs = 60000): Promise<string> {
+async function waitForCDP(port: number, timeoutMs = 30000): Promise<string> {
   const start = Date.now();
   const interval = 500;
 
