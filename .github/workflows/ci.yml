@@ -318,6 +318,10 @@ jobs:
             echo "Binary E2E tests failed"
             exit 1
           fi
+          if [[ "${{ needs.e2e-binary.result }}" == "skipped" ]]; then
+            echo "Binary E2E tests were skipped — this should not happen on CI"
+            exit 1
+          fi
           echo "All critical checks passed!"
 
   # Failure notification via Telegram

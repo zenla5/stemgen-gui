@@ -16,6 +16,8 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
+  globalSetup: './src/__tests__/e2e/binary/setup-wrapper.ts',
+  globalTeardown: './src/__tests__/e2e/binary/teardown-wrapper.ts',
   projects: [
     {
       // Dev-server project: tests against Vite dev server (fast, no binary needed)
@@ -38,12 +40,15 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:1420',
-    reuseExistingServer: true,
-    timeout: 180 * 1000, // 3 minutes to start
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
+  // Skip webServer for binary-only runs — the Tauri binary serves its own app
+  webServer: process.argv.includes('--project=binary')
+    ? undefined
+    : {
+        command: 'npm run dev',
+        url: 'http://localhost:1420',
+        reuseExistingServer: true,
+        timeout: 180 * 1000, // 3 minutes to start
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
 });
