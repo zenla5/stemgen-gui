@@ -24,5 +24,6 @@
     }
   },
   "include": ["src"],
+  "exclude": ["src/__tests__/e2e/binary/linux/**"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
