@@ -29,6 +29,9 @@ function getBinaryPath(): string | null {
   return null;
 }
 
+const TAURI_DRIVER_PORT = 4444;
+const TAURI_NATIVE_PORT = 4445;
+
 let tauriDriverProcess: ChildProcess | null = null;
 
 export const config: Options.Testrunner = {
@@ -41,8 +44,14 @@ export const config: Options.Testrunner = {
   specs: ['./src/__tests__/e2e/binary/linux/**/*.spec.ts'],
   exclude: [],
   maxInstances: 1,
+  // Use raw WebDriver protocol (connect to tauri-driver)
+  automationProtocol: 'webdriver',
+  hostname: '127.0.0.1',
+  port: TAURI_DRIVER_PORT,
+  path: '/',
   capabilities: [
     {
+      // wry is the Tauri browser name for WebDriver
       browserName: 'wry',
       'tauri:options': {
         application: '', // set in beforeSession
@@ -95,30 +104,44 @@ export const config: Options.Testrunner = {
       );
     }
 
-    console.log(`[wdio] Starting tauri-driver: ${tauriDriverBin}`);
-    tauriDriverProcess = spawn(tauriDriverBin, [], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    console.log(
+      `[wdio] Starting tauri-driver: ${tauriDriverBin} (port ${TAURI_DRIVER_PORT}, native ${TAURI_NATIVE_PORT})`
+    );
+    tauriDriverProcess = spawn(
+      tauriDriverBin,
+      ['--port', String(TAURI_DRIVER_PORT), '--native-port', String(TAURI_NATIVE_PORT)],
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
+    );
 
     tauriDriverProcess.stderr?.on('data', (d: Buffer) => {
       const msg = d.toString().trim();
       if (msg) console.log(`[tauri-driver] ${msg}`);
     });
 
-    // Wait for tauri-driver to be ready (port 4444)
+    tauriDriverProcess.stdout?.on('data', (d: Buffer) => {
+      const msg = d.toString().trim();
+      if (msg) console.log(`[tauri-driver] ${msg}`);
+    });
+
+    // Wait for tauri-driver to be ready
     const maxWait = 15000;
     const start = Date.now();
     while (Date.now() - start < maxWait) {
       try {
         const { default: http } = await import('http');
         await new Promise<void>((resolve, reject) => {
-          const req = http.get('http://127.0.0.1:4444/status', (res) => {
-            if (res.statusCode === 200) {
-              resolve();
-            } else {
-              reject(new Error(`Status: ${res.statusCode}`));
+          const req = http.get(
+            `http://127.0.0.1:${TAURI_DRIVER_PORT}/status`,
+            (res) => {
+              if (res.statusCode === 200) {
+                resolve();
+              } else {
+                reject(new Error(`Status: ${res.statusCode}`));
+              }
             }
-          });
+          );
           req.on('error', reject);
           req.setTimeout(2000, () => {
             req.destroy();

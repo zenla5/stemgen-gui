@@ -29,6 +29,7 @@ export default defineConfig({
       // Binary project: tests against compiled Tauri binary via CDP
       name: 'binary',
       testDir: './src/__tests__/e2e/binary',
+      testIgnore: '**/linux/**', // Linux uses WebdriverIO instead
       fullyParallel: false, // Shared binary process, must run serially
       timeout: 120000, // Binary tests may be slower
       expect: { timeout: 15000 },
