@@ -19,6 +19,7 @@ impl NoWindow for std::process::Command {
     fn no_window(&mut self) -> &mut Self {
         #[cfg(target_os = "windows")]
         {
+            #[allow(unused_imports)]
             use std::os::windows::process::CommandExt;
             // CREATE_NO_WINDOW = 0x08000000
             self.creation_flags(0x08000000);
@@ -31,6 +32,7 @@ impl NoWindow for tokio::process::Command {
     fn no_window(&mut self) -> &mut Self {
         #[cfg(target_os = "windows")]
         {
+            #[allow(unused_imports)]
             use std::os::windows::process::CommandExt;
             self.creation_flags(0x08000000);
         }
