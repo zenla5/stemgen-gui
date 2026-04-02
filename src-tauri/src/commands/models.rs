@@ -312,11 +312,7 @@ async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<
     );
 
     let output = tokio::process::Command::new(&python)
-        .args([
-            sidecar.to_str().unwrap(),
-            "--download-model",
-            &model_id,
-        ])
+        .args([sidecar.to_str().unwrap(), "--download-model", &model_id])
         .no_window()
         .output()
         .await

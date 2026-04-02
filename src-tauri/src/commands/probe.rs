@@ -228,7 +228,11 @@ pub fn get_data_dir() -> PathBuf {
 pub fn refresh_path_from_registry() {
     #[cfg(target_os = "windows")]
     {
-        if let Ok(output) = Command::new("cmd").args(["/C", "echo", "%PATH%"]).no_window().output() {
+        if let Ok(output) = Command::new("cmd")
+            .args(["/C", "echo", "%PATH%"])
+            .no_window()
+            .output()
+        {
             let path_str = decode_output(&output.stdout).trim().to_string();
             if !path_str.is_empty() && path_str != "%PATH%" {
                 std::env::set_var("PATH", &path_str);
@@ -237,7 +241,11 @@ pub fn refresh_path_from_registry() {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        if let Ok(output) = Command::new("bash").args(["-lc", "echo $PATH"]).no_window().output() {
+        if let Ok(output) = Command::new("bash")
+            .args(["-lc", "echo $PATH"])
+            .no_window()
+            .output()
+        {
             let path_str = decode_output(&output.stdout).trim().to_string();
             if !path_str.is_empty() {
                 std::env::set_var("PATH", &path_str);
