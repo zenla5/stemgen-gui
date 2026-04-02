@@ -106,7 +106,12 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   // Spawn the binary
   let child: ChildProcess;
   try {
-    child = spawn(binaryPath, [], {
+    // On Linux, wrap with xvfb-run to provide a virtual display
+    const isLinux = process.platform === 'linux';
+    const command = isLinux ? 'xvfb-run' : binaryPath;
+    const args = isLinux ? ['--auto-servernum', binaryPath] : [];
+
+    child = spawn(command, args, {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
