@@ -51,8 +51,7 @@ export const config: Options.Testrunner = {
   path: '/',
   capabilities: [
     {
-      // wry is the Tauri browser name for WebDriver
-      browserName: 'wry',
+      maxInstances: 1,
       'tauri:options': {
         application: '', // set in beforeSession
       },
