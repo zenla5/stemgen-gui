@@ -76,6 +76,20 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     const reason = `Binary not found for platform ${process.platform}. ` +
       `Run 'cd src-tauri && cargo build --release --features devtools' first.`;
     console.warn(`[binary-setup] ${reason}`);
+    console.warn(`[binary-setup] PROJECT_ROOT: ${PROJECT_ROOT}`);
+
+    // On CI, list the target/release directory for debugging
+    if (process.env.CI) {
+      const targetDir = path.join(PROJECT_ROOT, 'src-tauri', 'target', 'release');
+      console.warn(`[binary-setup] Checking target dir: ${targetDir}`);
+      try {
+        const entries = fs.readdirSync(targetDir);
+        console.warn(`[binary-setup] target/release contents: ${entries.join(', ')}`);
+      } catch (e) {
+        console.warn(`[binary-setup] Could not read target/release: ${e}`);
+      }
+    }
+
     fs.writeFileSync(STATE_FILE, JSON.stringify({ available: false, reason }));
 
     // On CI, fail loudly instead of silently skipping all tests
