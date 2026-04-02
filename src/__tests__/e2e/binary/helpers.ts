@@ -49,9 +49,11 @@ export function getBinaryPath(): string | null {
   const candidates: Record<string, string[]> = {
     win32: [
       path.join('src-tauri', 'target', 'release', 'stemgen-gui.exe'),
+      path.join('src-tauri', 'target', 'release', 'stemgen_gui.exe'),
     ],
     linux: [
       path.join('src-tauri', 'target', 'release', 'stemgen-gui'),
+      path.join('src-tauri', 'target', 'release', 'stemgen_gui'),
     ],
     darwin: [
       path.join('src-tauri', 'target', 'release', 'bundle', 'macos', 'Stemgen GUI.app', 'Contents', 'MacOS', 'stemgen-gui'),

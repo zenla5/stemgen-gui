@@ -77,6 +77,11 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       `Run 'cd src-tauri && cargo build --release --features devtools' first.`;
     console.warn(`[binary-setup] ${reason}`);
     fs.writeFileSync(STATE_FILE, JSON.stringify({ available: false, reason }));
+
+    // On CI, fail loudly instead of silently skipping all tests
+    if (process.env.CI) {
+      throw new Error(`[binary-setup] FATAL: Binary not found on CI. ${reason}`);
+    }
     return;
   }
 
@@ -110,6 +115,9 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     const reason = `Failed to spawn binary: ${err}`;
     console.error(`[binary-setup] ${reason}`);
     fs.writeFileSync(STATE_FILE, JSON.stringify({ available: false, reason }));
+    if (process.env.CI) {
+      throw new Error(`[binary-setup] FATAL: Could not spawn binary on CI. ${reason}`);
+    }
     return;
   }
 
@@ -181,6 +189,11 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     }
 
     fs.writeFileSync(STATE_FILE, JSON.stringify({ available: false, reason }));
+
+    // On CI, fail loudly instead of silently skipping all tests
+    if (process.env.CI) {
+      throw new Error(`[binary-setup] FATAL: CDP connection failed on CI. ${reason}`);
+    }
     // Don't throw — let tests skip gracefully
   }
 }
