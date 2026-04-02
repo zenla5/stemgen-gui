@@ -27,6 +27,7 @@ export function ModelManager() {
   const [downloadedModels, setDownloadedModels] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
+  const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -73,13 +74,14 @@ export function ModelManager() {
   const downloadModel = async (modelId: string) => {
     setDownloading(modelId);
     setProgress(0);
-    setError(null);
-    
+    setDownloadErrors(prev => { const next = { ...prev }; delete next[modelId]; return next; });
+
     try {
       await invoke('download_model', { modelId });
     } catch (err) {
-      console.error('Failed to download model:', err);
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Failed to download model:', msg);
+      setDownloadErrors(prev => ({ ...prev, [modelId]: msg }));
       setDownloading(null);
     }
   };
@@ -210,7 +212,7 @@ export function ModelManager() {
                 
                 {/* Download Progress */}
                 {isDownloading && (
-                  <div className="mt-3">
+                  <div className="mt-3" data-testid={`progress-bar-${model.id}`}>
                     <div className="flex items-center justify-between text-xs">
                       <span>Downloading...</span>
                       <span>{Math.round(progress)}%</span>
@@ -222,6 +224,13 @@ export function ModelManager() {
                       />
                     </div>
                   </div>
+                )}
+
+                {/* Per-model download error */}
+                {downloadErrors[model.id] && (
+                  <p className="mt-1 text-xs text-red-600 break-all" data-testid={`download-error-${model.id}`}>
+                    {downloadErrors[model.id]}
+                  </p>
                 )}
               </div>
 
@@ -237,6 +246,7 @@ export function ModelManager() {
                   </button>
                 ) : !isDownloading ? (
                   <button
+                    data-testid={`download-btn-${model.id}`}
                     onClick={() => downloadModel(model.id)}
                     className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90"
                   >

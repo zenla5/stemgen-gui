@@ -6,6 +6,38 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Platform-aware helper — suppresses the console window that Win32 creates
+/// when spawning child processes from a GUI application (WS_VISIBLE is set by
+/// default). On non-Windows targets this is a compile-time no-op.
+///
+/// Usage: `Command::new("ffmpeg").no_window().arg("-version").output()`
+pub trait NoWindow {
+    fn no_window(&mut self) -> &mut Self;
+}
+
+impl NoWindow for std::process::Command {
+    fn no_window(&mut self) -> &mut Self {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            // CREATE_NO_WINDOW = 0x08000000
+            self.creation_flags(0x08000000);
+        }
+        self
+    }
+}
+
+impl NoWindow for tokio::process::Command {
+    fn no_window(&mut self) -> &mut Self {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            self.creation_flags(0x08000000);
+        }
+        self
+    }
+}
+
 /// Decode process output bytes, trying strict UTF-8 first, falling back to lossy.
 fn decode_output(bytes: &[u8]) -> String {
     String::from_utf8(bytes.to_vec())
@@ -54,6 +86,7 @@ pub fn probe_binary(name: &str) -> bool {
 pub fn probe_binary_version(name: &str, version_flag: &str) -> Option<String> {
     Command::new(name)
         .arg(version_flag)
+        .no_window()
         .output()
         .ok()
         .and_then(|o| {
@@ -76,6 +109,7 @@ pub fn probe_python_version(python: &Path) -> Option<String> {
     Command::new(python)
         .arg("--version")
         .env("PYTHONUTF8", "1")
+        .no_window()
         .output()
         .ok()
         .and_then(|o| {
@@ -98,6 +132,7 @@ pub fn probe_python_import(python: &Path, import_statement: &str) -> bool {
     Command::new(python)
         .args(["-c", import_statement])
         .env("PYTHONUTF8", "1")
+        .no_window()
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -110,6 +145,7 @@ pub fn probe_python_package_version(python: &Path, module: &str) -> Option<Strin
     Command::new(python)
         .args(["-c", &code])
         .env("PYTHONUTF8", "1")
+        .no_window()
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -121,6 +157,7 @@ pub fn probe_cuda() -> bool {
     Command::new("nvidia-smi")
         .arg("--query-gpu=name")
         .arg("--format=csv,noheader")
+        .no_window()
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -134,6 +171,7 @@ pub fn probe_torch_cuda(python: &Path) -> bool {
             "import torch; print('yes' if torch.cuda.is_available() else 'no')",
         ])
         .env("PYTHONUTF8", "1")
+        .no_window()
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -146,6 +184,7 @@ pub fn probe_gpu_name() -> Option<String> {
     Command::new("nvidia-smi")
         .arg("--query-gpu=name")
         .arg("--format=csv,noheader")
+        .no_window()
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -162,6 +201,7 @@ pub fn probe_torch_device(python: &Path) -> Option<String> {
     Command::new(python)
         .args(["-c", "import torch; print('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')"])
         .env("PYTHONUTF8", "1")
+        .no_window()
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -188,7 +228,7 @@ pub fn get_data_dir() -> PathBuf {
 pub fn refresh_path_from_registry() {
     #[cfg(target_os = "windows")]
     {
-        if let Ok(output) = Command::new("cmd").args(["/C", "echo", "%PATH%"]).output() {
+        if let Ok(output) = Command::new("cmd").args(["/C", "echo", "%PATH%"]).no_window().output() {
             let path_str = decode_output(&output.stdout).trim().to_string();
             if !path_str.is_empty() && path_str != "%PATH%" {
                 std::env::set_var("PATH", &path_str);
@@ -197,7 +237,7 @@ pub fn refresh_path_from_registry() {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        if let Ok(output) = Command::new("bash").args(["-lc", "echo $PATH"]).output() {
+        if let Ok(output) = Command::new("bash").args(["-lc", "echo $PATH"]).no_window().output() {
             let path_str = decode_output(&output.stdout).trim().to_string();
             if !path_str.is_empty() {
                 std::env::set_var("PATH", &path_str);
@@ -272,5 +312,29 @@ mod tests {
     fn test_is_windows_store_stub_with_unix_path() {
         let unix = PathBuf::from("/usr/bin/python3");
         assert!(!is_windows_store_stub(&unix));
+    }
+
+    #[test]
+    fn test_no_window_probe_runs_without_hanging() {
+        // If CREATE_NO_WINDOW is mis-applied (e.g. wrong flag) the process
+        // will still spawn; we just verify it exits normally.
+        let mut cmd = Command::new(if cfg!(windows) { "cmd" } else { "echo" });
+        if cfg!(windows) {
+            cmd.args(["/C", "echo", "hello"]);
+        } else {
+            cmd.arg("hello");
+        }
+        let output = cmd.no_window().output().expect("command failed to run");
+        assert!(output.status.success());
+    }
+
+    #[test]
+    fn test_probe_binary_version_completes_quickly() {
+        // A simple binary like echo should return in under 5 seconds.
+        use std::time::Instant;
+        let start = Instant::now();
+        let _ = probe_binary_version("echo", "");
+        let elapsed = start.elapsed();
+        assert!(elapsed.as_secs() < 5, "probe took too long: {elapsed:?}");
     }
 }

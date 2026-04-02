@@ -17,6 +17,7 @@ import type {
   AvailableInstaller,
   InstallProgressEvent,
   InstallResult,
+  PackageStatus,
 } from '@/lib/types';
 import { hasPackageStatusKey } from '@/lib/types';
 
@@ -673,3 +674,45 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+
+/**
+ * Single source of truth for environment readiness.
+ * Consumes only environmentValidation (the richer, canonical data source).
+ * Returns a structured object used by both summary cards and the footer.
+ */
+export function computeEnvironmentReadiness(v: EnvironmentValidation | null): {
+  pythonOk: boolean;
+  pytorchOk: boolean;
+  gpuStatus: 'cuda' | 'cpu' | 'unknown';
+  demucsOk: boolean;
+  ffmpegOk: boolean;
+  ffprobeOk: boolean;
+  sidecarOk: boolean;
+  isReady: boolean;
+} {
+  if (!v) {
+    return {
+      pythonOk: false, pytorchOk: false, gpuStatus: 'unknown',
+      demucsOk: false, ffmpegOk: false, ffprobeOk: false,
+      sidecarOk: false, isReady: false,
+    };
+  }
+
+  const ok = (s?: PackageStatus | null) => hasPackageStatusKey(s, 'available');
+
+  const gpuStatus: 'cuda' | 'cpu' | 'unknown' =
+    hasPackageStatusKey(v.cuda, 'available') ? 'cuda' :
+    ok(v.python) && v.pythonVersion ? 'cpu' :
+    'unknown';
+
+  return {
+    pythonOk:   ok(v.python),
+    pytorchOk:  ok(v.pytorch),
+    gpuStatus,
+    demucsOk:   ok(v.demucs),
+    ffmpegOk:   ok(v.ffmpeg),
+    ffprobeOk:  ok(v.ffprobe),
+    sidecarOk:  ok(v.sidecarScript),
+    isReady:    v.isReady,
+  };
+}

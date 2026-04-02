@@ -3,7 +3,7 @@ resolver = "2"
 members = ["src-tauri"]
 
 [workspace.package]
-version = "1.1.5"
+version = "1.2.1"
 authors = ["The Stemgen-GUI Contributors"]
 edition = "2021"
 rust-version = "1.70"
@@ -50,6 +50,9 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 # HTTP client (for inference providers)
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Stream utilities (for download progress streaming)
+futures-util = "0.3"
 
 # Utilities
 anyhow = "1"

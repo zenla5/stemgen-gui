@@ -1,7 +1,7 @@
 import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles, RefreshCw, CheckCircle, XCircle, AlertCircle, Package, HardDrive, Download, ChevronDown, Copy, Check } from 'lucide-react';
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useSettingsStore, supportedLanguages } from '@/stores/settingsStore';
-import { useAppStore } from '@/stores/appStore';
+import { useAppStore, computeEnvironmentReadiness } from '@/stores/appStore';
 import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { ModelManager } from './ModelManager';
@@ -36,10 +36,16 @@ export function SettingsPanel() {
   const [installingDep, setInstallingDep] = useState<string | null>(null);
   const [installersMap, setInstallersMap] = useState<Record<string, AvailableInstaller[]>>({});
 
-  // Fetch manifest on mount
+  // Fetch manifest on mount and pre-load installers for all known dep keys
   useEffect(() => {
-    fetchInstallManifest();
-  }, [fetchInstallManifest]);
+    fetchInstallManifest().then(async () => {
+      const keys = ['python', 'pytorch', 'demucs', 'ffmpeg'];
+      const entries = await Promise.all(
+        keys.map(async k => [k, await getAvailableInstallers(k)] as const)
+      );
+      setInstallersMap(Object.fromEntries(entries));
+    });
+  }, [fetchInstallManifest, getAvailableInstallers]);
 
   // Load available installers for missing deps
   const loadInstallersForDep = useCallback(async (depKey: string) => {
@@ -73,7 +79,7 @@ export function SettingsPanel() {
     // Install in order: Python first, then PyTorch, then demucs, then FFmpeg
     const installOrder = ['python', 'pytorch', 'demucs', 'ffmpeg'];
     for (const depKey of installOrder) {
-      const validation = environmentValidation;
+      const validation = useAppStore.getState().environmentValidation;
       // Check if this dep is missing
       const isMissing = depKey === 'ffmpeg'
         ? (!validation?.ffmpeg || !hasPackageStatusKey(validation.ffmpeg, 'available'))
@@ -97,6 +103,10 @@ export function SettingsPanel() {
         setInstallingDep(null);
       }
     }
+
+    // Always refresh status after the loop, regardless of success
+    await validateEnvironment();
+    await checkSidecarHealth();
   };
 
   // Count missing required dependencies
@@ -177,24 +187,30 @@ export function SettingsPanel() {
           </p>
         )}
 
-        {/* Sidecar Health Summary */}
+        {/* Environment Summary — single source of truth via computeEnvironmentReadiness */}
+        {(() => {
+          const envReady = computeEnvironmentReadiness(environmentValidation);
+          return (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <StatusBadge
             label="Python"
-            value={sidecarHealth?.pythonVersion || (sidecarHealth?.pythonFound ? 'Found' : 'Not found')}
-            healthy={sidecarHealth?.pythonFound}
+            value={environmentValidation?.pythonVersion || (envReady.pythonOk ? 'Found' : 'Not found')}
+            healthy={envReady.pythonOk}
             icon={getPackageIcon(environmentValidation?.python)}
           />
           <StatusBadge
             label="PyTorch"
-            value={sidecarHealth?.pytorchVersion || getPackageLabel(environmentValidation?.pytorch)}
-            healthy={!!sidecarHealth?.pytorchVersion}
+            value={environmentValidation?.pytorchVersion || getPackageLabel(environmentValidation?.pytorch)}
+            healthy={envReady.pytorchOk}
             icon={getPackageIcon(environmentValidation?.pytorch)}
           />
           <StatusBadge
             label="GPU"
-            value={sidecarHealth?.gpuDevice || (sidecarHealth?.gpuAvailable ? 'CUDA' : 'CPU only')}
-            healthy={sidecarHealth?.gpuAvailable}
+            value={
+              envReady.gpuStatus === 'cuda' ? (environmentValidation?.gpuName || 'CUDA') :
+              envReady.gpuStatus === 'cpu' ? 'CPU (no GPU)' : 'Unknown'
+            }
+            healthy={envReady.gpuStatus === 'cuda' ? true : envReady.gpuStatus === 'cpu' ? undefined : false}
             icon={getPackageIcon(environmentValidation?.cuda)}
           />
           <StatusBadge
@@ -204,11 +220,13 @@ export function SettingsPanel() {
             icon={<CheckCircle className={cn("h-4 w-4", (sidecarHealth?.modelCount ?? 0) > 0 ? "text-green-500" : "text-muted-foreground")} />}
           />
         </div>
+          );
+        })()}
 
         {/* Detailed Package List */}
         <div className="mt-4 space-y-2">
           <h4 className="text-xs font-medium uppercase text-muted-foreground">Detailed Status</h4>
-          <div className="grid gap-2 text-sm">
+          <div data-testid="detailed-status" className="grid gap-2 text-sm">
             <InstallablePackageRow
               label="FFmpeg"
               status={getPackageIcon(environmentValidation?.ffmpeg)}
@@ -281,7 +299,14 @@ export function SettingsPanel() {
               label="CUDA"
               status={getPackageIcon(environmentValidation?.cuda)}
               value={environmentValidation?.gpuName || getPackageLabel(environmentValidation?.cuda)}
-              healthy={isPackageAvailable(environmentValidation?.cuda)}
+              // unavailable = CPU-only, which is fine — render amber, not red
+              healthy={
+                isPackageAvailable(environmentValidation?.cuda)
+                  ? true
+                  : hasPackageStatusKey(environmentValidation?.cuda, 'unavailable')
+                    ? undefined
+                    : false
+              }
             />
             <PackageRow
               label="Sidecar Script"

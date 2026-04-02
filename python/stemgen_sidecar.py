@@ -422,12 +422,29 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--model", required=True, help="AI model to use (demucs, htdemucs, htdemucs_ft, bs_roformer)")
-    parser.add_argument("--input", required=True, type=Path, help="Input audio file path")
-    parser.add_argument("--output", required=True, type=Path, help="Output directory for stem files")
+    parser.add_argument("--model", help="AI model to use (demucs, htdemucs, htdemucs_ft, bs_roformer)")
+    parser.add_argument("--input", type=Path, help="Input audio file path")
+    parser.add_argument("--output", type=Path, help="Output directory for stem files")
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "mps"], help="Device to use for inference")
+    parser.add_argument("--download-model", metavar="MODEL_ID", help="Download a demucs model by ID and exit")
 
     args = parser.parse_args()
+
+    # Handle --download-model (standalone download mode)
+    if args.download_model:
+        try:
+            import demucs.pretrained
+            print(f"Downloading model: {args.download_model}", flush=True)
+            demucs.pretrained.get_model(args.download_model)
+            print(f"Download complete: {args.download_model}", flush=True)
+            sys.exit(0)
+        except Exception as e:
+            print(f"Download failed: {e}", file=sys.stderr, flush=True)
+            sys.exit(1)
+
+    # Validate required args for separation mode
+    if not args.model or not args.input or not args.output:
+        parser.error("--model, --input, and --output are required for stem separation")
 
     # Validate input file
     if not args.input.exists():

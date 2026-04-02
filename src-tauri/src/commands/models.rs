@@ -75,10 +75,16 @@ fn model_download_url(model_id: &str) -> Option<String> {
             "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th"
                 .to_string(),
         ),
-        // Multi-file model bags or unavailable repos — manual download not supported
+        // Multi-file model bags or unavailable repos — download via sidecar instead
         "demucs" | "htdemucs_ft" | "bs_roformer" => None,
         _ => None,
     }
+}
+
+/// Returns whether a model should be downloaded via the Python sidecar
+/// rather than a direct HTTP pull.
+fn requires_sidecar_download(model_id: &str) -> bool {
+    matches!(model_id, "htdemucs_ft" | "bs_roformer" | "demucs")
 }
 
 /// Estimated download size in megabytes
@@ -142,9 +148,14 @@ pub fn get_available_models() -> Vec<ModelInfo> {
 ///
 /// Downloads the full file to memory first, then writes it to disk while
 /// emitting progress events. The cancellation flag is checked periodically.
+/// Multi-file models (htdemucs_ft, bs_roformer, demucs) are downloaded via the Python sidecar.
 #[tauri::command]
 pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), String> {
     info!("Starting model download: {}", model_id);
+
+    if requires_sidecar_download(&model_id) {
+        return download_model_via_sidecar(model_id, app).await;
+    }
 
     let url =
         model_download_url(&model_id).ok_or_else(|| format!("Unknown model: {}", model_id))?;
@@ -181,16 +192,16 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    // Download the full response body into memory
-    let bytes = client
+    // Send the download request
+    let response = client
         .get(&url)
         .send()
         .await
         .map_err(|e| format!("Download request failed: {}", e))?;
 
-    if !bytes.status().is_success() {
-        let status = bytes.status();
-        let body_excerpt = bytes
+    if !response.status().is_success() {
+        let status = response.status();
+        let body_excerpt = response
             .text()
             .await
             .map(|b| b.chars().take(200).collect::<String>())
@@ -200,27 +211,54 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
         ));
     }
 
-    let _total_size = bytes.content_length().unwrap_or(total_bytes);
-    let all_bytes = bytes
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read download body: {}", e))?;
+    let content_length = response.content_length().unwrap_or(total_bytes);
+    let total_mb_actual = content_length as f64 / 1_000_000.0;
 
-    // Check cancellation after download completes
-    if should_abort() {
-        warn!("Download cancelled by user: {}", model_id);
-        let _ = app.emit(
-            "model-download-progress",
-            DownloadProgressPayload {
-                model_id: model_id.clone(),
-                status: "cancelled".to_string(),
-                progress: 0.0,
-                downloaded_mb: 0.0,
-                total_mb,
-            },
-        );
-        return Ok(());
+    // Stream the download with progress events
+    use futures_util::StreamExt;
+    let mut downloaded: u64 = 0;
+    let mut buffer: Vec<u8> = Vec::with_capacity(content_length as usize);
+    let mut stream = response.bytes_stream();
+    let mut last_emitted_pct: f64 = -1.0;
+
+    while let Some(chunk) = stream.next().await {
+        if should_abort() {
+            warn!("Download cancelled by user: {}", model_id);
+            let _ = app.emit(
+                "model-download-progress",
+                DownloadProgressPayload {
+                    model_id: model_id.clone(),
+                    status: "cancelled".to_string(),
+                    progress: 0.0,
+                    downloaded_mb: 0.0,
+                    total_mb: total_mb_actual,
+                },
+            );
+            return Ok(());
+        }
+
+        let chunk = chunk.map_err(|e| format!("Stream error: {e}"))?;
+        downloaded += chunk.len() as u64;
+        buffer.extend_from_slice(&chunk);
+
+        let pct = (downloaded as f64 / content_length as f64) * 100.0;
+        // Throttle events to every 1 % to avoid flooding the IPC bridge
+        if pct - last_emitted_pct >= 1.0 {
+            last_emitted_pct = pct;
+            let _ = app.emit(
+                "model-download-progress",
+                DownloadProgressPayload {
+                    model_id: model_id.clone(),
+                    status: "downloading".to_string(),
+                    progress: pct,
+                    downloaded_mb: downloaded as f64 / 1_000_000.0,
+                    total_mb: total_mb_actual,
+                },
+            );
+        }
     }
+
+    let all_bytes = buffer;
 
     let downloaded_mb = all_bytes.len() as f64 / 1_000_000.0;
     let model_file = models_dir.join(format!("{}.onnx", model_id));
@@ -241,10 +279,76 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
             status: "complete".to_string(),
             progress: 100.0,
             downloaded_mb,
+            total_mb: total_mb_actual,
+        },
+    );
+
+    Ok(())
+}
+
+/// Download a model via the Python sidecar (for multi-file model bags)
+async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<(), String> {
+    use super::probe::{find_python, get_data_dir, NoWindow};
+
+    let python = find_python().ok_or("Python not found — cannot download model via sidecar")?;
+    let sidecar = get_data_dir().join("stemgen_sidecar.py");
+    if !sidecar.exists() {
+        return Err(format!("Sidecar script not found at {:?}", sidecar));
+    }
+
+    reset_abort();
+
+    let total_mb = model_size_mb(&model_id) as f64;
+
+    let _ = app.emit(
+        "model-download-progress",
+        DownloadProgressPayload {
+            model_id: model_id.clone(),
+            status: "downloading".to_string(),
+            progress: 0.0,
+            downloaded_mb: 0.0,
             total_mb,
         },
     );
 
+    let output = tokio::process::Command::new(&python)
+        .args([
+            sidecar.to_str().unwrap(),
+            "--download-model",
+            &model_id,
+        ])
+        .no_window()
+        .output()
+        .await
+        .map_err(|e| format!("Failed to launch sidecar for download: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let _ = app.emit(
+            "model-download-progress",
+            DownloadProgressPayload {
+                model_id: model_id.clone(),
+                status: "error".to_string(),
+                progress: 0.0,
+                downloaded_mb: 0.0,
+                total_mb,
+            },
+        );
+        return Err(format!("Model download failed:\n{stderr}"));
+    }
+
+    let _ = app.emit(
+        "model-download-progress",
+        DownloadProgressPayload {
+            model_id: model_id.clone(),
+            status: "complete".to_string(),
+            progress: 100.0,
+            downloaded_mb: total_mb,
+            total_mb,
+        },
+    );
+
+    info!("Model downloaded via sidecar: {}", model_id);
     Ok(())
 }
 
@@ -480,5 +584,25 @@ mod tests {
             assert!(model.size_mb.is_some());
             assert!(model.size_mb.unwrap() > 0);
         }
+    }
+
+    #[test]
+    fn test_requires_sidecar_download_for_multi_file_models() {
+        assert!(requires_sidecar_download("htdemucs_ft"));
+        assert!(requires_sidecar_download("bs_roformer"));
+        assert!(requires_sidecar_download("demucs"));
+    }
+
+    #[test]
+    fn test_direct_download_for_htdemucs() {
+        assert!(!requires_sidecar_download("htdemucs"));
+        assert!(model_download_url("htdemucs").is_some());
+    }
+
+    #[test]
+    fn test_model_download_url_returns_none_for_sidecar_models() {
+        assert!(model_download_url("htdemucs_ft").is_none());
+        assert!(model_download_url("bs_roformer").is_none());
+        assert!(model_download_url("demucs").is_none());
     }
 }

@@ -1,7 +1,21 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [1.1.1] — Apr 2 2026 — Version Bump
+
+## [1.2.1] — 2026-04-02 — Bug Fixes
+
+### Fixed
+- **[WIN-WINDOW]** Dependency probes and install commands no longer flash a visible CMD/Python console window on Windows. A CREATE_NO_WINDOW (0x08000000) flag is now applied via the NoWindow extension trait on every std::process::Command and tokio::process::Command spawn. (Tasks 1.1-1.2)
+- **[STATUS-COLOUR]** Components with a detected version now always render green. Summary cards and Detailed Status now both derive from the single computeEnvironmentReadiness() function. (Task 2.3)
+- **[CUDA-RED]** CUDA unavailability (will use CPU) no longer renders as a red error row. The PackageStatus::Unavailable variant is now treated as amber/informational in the UI. (Task 2.1)
+- **[FOOTER-AGREE]** The Environment ready footer and the Detailed Status section now always agree — both consume computeEnvironmentReadiness() derived from the canonical environmentValidation struct. (Task 2.3)
+- **[INSTALL-REFRESH]** Clicking Install All Missing now triggers an automatic validateEnvironment() call on completion. Status refreshes without a manual Refresh click. (Task 3.1)
+- **[CUDA-FIELD]** PythonDepsResult.cuda_available was incorrectly set to demucs_available. It now calls probe_torch_cuda() directly. (Task 2.2)
+- **[MODEL-DOWNLOAD]** htdemucs_ft, bs_roformer, and demucs download buttons no longer immediately error with Unknown model. These models are now downloaded via the Python sidecar using demucs.pretrained. (Task 4.1)
+- **[PROGRESS-BAR]** htdemucs direct download now emits streaming progress events every ~1% of transfer instead of jumping 0 to 100 at completion. (Task 4.2)
+- **[DOWNLOAD-ERROR]** Model download failures now display the error message inline below the progress bar instead of silently resetting it to 0%. (Task 4.3)
+
+## [1.1.1] — Apr 2 2026 — Version Bump
 
 ### Changed
 

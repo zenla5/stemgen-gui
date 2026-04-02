@@ -42,12 +42,17 @@ pub async fn check_python_deps() -> Result<PythonDepsResult, String> {
         .map(|p| probe_python_import(p, "from bs_roformer import separator"))
         .unwrap_or(false);
 
+    let cuda_available = python_path
+        .as_ref()
+        .map(|p| probe_torch_cuda(p))
+        .unwrap_or(false);
+
     Ok(PythonDepsResult {
         python_available,
         python_version,
         demucs_available,
         bs_roformer_available,
-        cuda_available: demucs_available,
+        cuda_available,
     })
 }
 
