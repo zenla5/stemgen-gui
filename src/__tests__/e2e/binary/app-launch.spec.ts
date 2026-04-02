@@ -4,7 +4,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { readBinaryState, navigateSkippingWizard } from './helpers';
+import { readBinaryState, navigateSkippingWizard, takeScreenshot } from './helpers';
 
 test.describe('App Launch', () => {
   let appUrl: string;
@@ -24,6 +24,7 @@ test.describe('App Launch', () => {
 
     await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await expect(page.locator('body')).toBeVisible();
+    await takeScreenshot(page, 'app-launch-initial-load');
   });
 
   test('window title matches product name', async ({ page }) => {
@@ -32,6 +33,7 @@ test.describe('App Launch', () => {
 
     await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await expect(page).toHaveTitle(/Stemgen/i);
+    await takeScreenshot(page, 'app-launch-title');
   });
 
   test('app shell renders with sidebar after wizard skip', async ({ page }) => {
@@ -45,6 +47,7 @@ test.describe('App Launch', () => {
     await expect(page.locator('[data-testid="nav-queue"]')).toBeVisible();
     await expect(page.locator('[data-testid="nav-mixer"]')).toBeVisible();
     await expect(page.locator('[data-testid="nav-settings"]')).toBeVisible();
+    await takeScreenshot(page, 'app-launch-sidebar');
   });
 
   test('status bar renders with dependency indicators', async ({ page }) => {
@@ -54,6 +57,7 @@ test.describe('App Launch', () => {
     await navigateSkippingWizard(page, appUrl);
 
     await expect(page.locator('[data-testid="status-bar"]')).toBeVisible();
+    await takeScreenshot(page, 'app-launch-status-bar');
   });
 
   test('no console errors on startup', async ({ page }) => {

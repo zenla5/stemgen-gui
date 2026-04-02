@@ -618,6 +618,21 @@ export const useAppStore = create<AppState>()(
           await validateEnvironment();
 
           return result;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorResult: InstallResult = {
+            success: false,
+            depName,
+            installerId,
+            alreadyInstalled: false,
+            exitCode: null,
+            output: [],
+            error: errorMessage,
+          };
+          set((state) => ({
+            installResults: { ...state.installResults, [depName]: errorResult },
+          }));
+          throw error;
         } finally {
           unlisten();
         }

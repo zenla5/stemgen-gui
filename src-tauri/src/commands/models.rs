@@ -64,24 +64,19 @@ fn get_models_dir() -> PathBuf {
         .unwrap_or_else(|| std::env::temp_dir().join("stemgen-gui/models"))
 }
 
-/// demucs / HuggingFace download URL for each model ID
+/// demucs / HuggingFace download URL for each model ID.
+///
+/// Only models available as single downloadable files are supported.
+/// htdemucs_ft and demucs are multi-file model bags — install via `pip install demucs` instead.
+/// bs_roformer upstream repo (zenla5) is no longer publicly accessible.
 fn model_download_url(model_id: &str) -> Option<String> {
     match model_id {
-        "demucs" | "htdemucs" | "htdemucs_ft" => {
-            let suffix = match model_id {
-                "htdemucs_ft" => "htdemucs_ft",
-                "htdemucs" => "htdemucs",
-                _ => "htdemucs",
-            };
-            Some(format!(
-                "https://dl.fbaipublicfiles.com/demucs/demucs/v4/{}",
-                suffix
-            ))
-        }
-        "bs_roformer" => Some(
-            "https://huggingface.co/datasets/zenla5/bs_roformer/resolve/main/bs_roformer.onnx"
+        "htdemucs" => Some(
+            "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th"
                 .to_string(),
         ),
+        // Multi-file model bags or unavailable repos — manual download not supported
+        "demucs" | "htdemucs_ft" | "bs_roformer" => None,
         _ => None,
     }
 }
@@ -182,6 +177,7 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
     }
 
     let client = reqwest::Client::builder()
+        .user_agent(format!("Stemgen-GUI/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
@@ -193,7 +189,15 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
         .map_err(|e| format!("Download request failed: {}", e))?;
 
     if !bytes.status().is_success() {
-        return Err(format!("Download server returned HTTP {}", bytes.status()));
+        let status = bytes.status();
+        let body_excerpt = bytes
+            .text()
+            .await
+            .map(|b| b.chars().take(200).collect::<String>())
+            .unwrap_or_else(|_| "<could not read body>".to_string());
+        return Err(format!(
+            "Download failed: HTTP {status} for {url}\nResponse: {body_excerpt}"
+        ));
     }
 
     let _total_size = bytes.content_length().unwrap_or(total_bytes);
@@ -371,32 +375,29 @@ mod tests {
 
     #[test]
     fn test_model_download_url_demucs() {
-        assert!(model_download_url("demucs").is_some());
-        let url = model_download_url("demucs").unwrap();
-        assert!(url.contains("demucs"));
-        assert!(url.contains("dl.fbaipublicfiles.com"));
+        // demucs is a multi-file model bag — no direct download URL
+        assert!(model_download_url("demucs").is_none());
     }
 
     #[test]
     fn test_model_download_url_htdemucs() {
         assert!(model_download_url("htdemucs").is_some());
         let url = model_download_url("htdemucs").unwrap();
-        assert!(url.contains("htdemucs"));
+        assert!(url.contains("dl.fbaipublicfiles.com"));
+        assert!(url.contains("hybrid_transformer"));
+        assert!(url.ends_with(".th"));
     }
 
     #[test]
     fn test_model_download_url_htdemucs_ft() {
-        assert!(model_download_url("htdemucs_ft").is_some());
-        let url = model_download_url("htdemucs_ft").unwrap();
-        assert!(url.contains("htdemucs_ft"));
+        // htdemucs_ft is a multi-file model bag — no direct download URL
+        assert!(model_download_url("htdemucs_ft").is_none());
     }
 
     #[test]
     fn test_model_download_url_bs_roformer() {
-        assert!(model_download_url("bs_roformer").is_some());
-        let url = model_download_url("bs_roformer").unwrap();
-        assert!(url.contains("bs_roformer"));
-        assert!(url.contains("huggingface.co"));
+        // bs_roformer upstream repo is no longer publicly accessible
+        assert!(model_download_url("bs_roformer").is_none());
     }
 
     #[test]

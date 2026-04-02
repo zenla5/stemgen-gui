@@ -9,7 +9,7 @@ use super::install_manifest::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -167,6 +167,21 @@ pub async fn install_dependency(
     // Build the install command
     let (cmd, args) = build_install_command(pm);
 
+    // Pre-check: verify the package manager binary is available
+    if which::which(&cmd).is_err() {
+        return Ok(InstallResult {
+            success: false,
+            dep_name,
+            installer_id,
+            already_installed: false,
+            exit_code: None,
+            output: vec![],
+            error: Some(format!(
+                "Package manager '{cmd}' is not available. Install it first or install manually."
+            )),
+        });
+    }
+
     info!("Running: {} {}", cmd, args.join(" "));
 
     // Spawn the install process
@@ -215,7 +230,9 @@ pub async fn install_dependency(
         tokio::spawn(async {})
     };
 
-    // Stream stderr
+    // Stream stderr and capture lines for error reporting
+    let stderr_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let stderr_lines_clone = stderr_lines.clone();
     let stderr_handle = if let Some(stderr) = stderr {
         tokio::spawn(async move {
             let reader = BufReader::new(stderr);
@@ -225,6 +242,7 @@ pub async fn install_dependency(
                 if trimmed.is_empty() {
                     continue;
                 }
+                stderr_lines_clone.lock().unwrap().push(trimmed.clone());
                 warn!("[install:{}] stderr: {}", install_id_stderr, trimmed);
                 let _ = app_handle_stderr.emit(
                     "install-progress",
@@ -290,6 +308,9 @@ pub async fn install_dependency(
     let _ = tokio::join!(stdout_handle, stderr_handle);
     clear_cancelled(&install_id);
 
+    // Refresh PATH so newly installed binaries are immediately detectable
+    super::probe::refresh_path_from_registry();
+
     let success = exit_code == Some(0);
     let status_str = if success { "completed" } else { "failed" };
 
@@ -322,7 +343,25 @@ pub async fn install_dependency(
         exit_code,
         output: vec![],
         error: if !success {
-            Some(format!("Process exited with code {:?}", exit_code))
+            let stderr_tail = stderr_lines
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .take(10)
+                .rev()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n");
+            Some(format!(
+                "Process exited with code {:?}.{}",
+                exit_code,
+                if stderr_tail.is_empty() {
+                    String::new()
+                } else {
+                    format!("\nStderr:\n{stderr_tail}")
+                }
+            ))
         } else {
             None
         },

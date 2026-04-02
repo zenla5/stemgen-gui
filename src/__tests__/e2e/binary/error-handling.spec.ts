@@ -9,6 +9,7 @@ import {
   readBinaryState,
   navigateSkippingWizard,
   getFixturePath,
+  takeScreenshot,
 } from './helpers';
 
 test.describe('Error Handling', () => {
@@ -43,6 +44,7 @@ test.describe('Error Handling', () => {
 
     // App should still be functional
     await expect(page.locator('[data-testid="nav-files"]')).toBeVisible();
+    await takeScreenshot(page, 'error-handling-invalid-invoke');
   });
 
   test('corrupt WAV file invoke returns error gracefully', async ({ page }) => {
@@ -64,6 +66,7 @@ test.describe('Error Handling', () => {
 
     // App should still be functional
     await expect(page.locator('[data-testid="nav-files"]')).toBeVisible();
+    await takeScreenshot(page, 'error-handling-corrupt-file');
   });
 
   test('non-existent file invoke returns error gracefully', async ({ page }) => {
@@ -83,6 +86,7 @@ test.describe('Error Handling', () => {
 
     // App should still be functional
     await expect(page.locator('[data-testid="nav-files"]')).toBeVisible();
+    await takeScreenshot(page, 'error-handling-nonexistent-file');
   });
 
   test('app recovers after error without restart', async ({ page }) => {
@@ -105,5 +109,6 @@ test.describe('Error Handling', () => {
 
     await page.click('[data-testid="nav-settings"]');
     await expect(page.locator('[data-testid="theme-btn-light"]')).toBeVisible();
+    await takeScreenshot(page, 'error-handling-recovery');
   });
 });

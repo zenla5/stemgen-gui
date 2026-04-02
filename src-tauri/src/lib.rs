@@ -97,15 +97,39 @@ pub fn run() {
 
             let data_dir = project_dirs.data_dir();
             let output_dir = data_dir.join("stems");
-            let sidecar_path = std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-                .unwrap_or_else(|| data_dir.to_path_buf())
-                .join("python")
-                .join("stemgen_sidecar.py");
+            let sidecar_path = data_dir.join("stemgen_sidecar.py");
 
             // Create directories
             std::fs::create_dir_all(&output_dir).ok();
+            std::fs::create_dir_all(data_dir).ok();
+
+            // Deploy sidecar script from resource bundle to data dir
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let resource_sidecar = resource_dir.join("stemgen_sidecar.py");
+                if resource_sidecar.exists() {
+                    let should_copy = !sidecar_path.exists()
+                        || std::fs::metadata(&resource_sidecar)
+                            .and_then(|s| s.modified())
+                            .ok()
+                            .and_then(|src_mtime| {
+                                std::fs::metadata(&sidecar_path)
+                                    .and_then(|d| d.modified())
+                                    .ok()
+                                    .map(|d_mtime| src_mtime > d_mtime)
+                            })
+                            .unwrap_or(true);
+                    if should_copy {
+                        info!(
+                            "Deploying sidecar script: {} -> {}",
+                            resource_sidecar.display(),
+                            sidecar_path.display()
+                        );
+                        if let Err(e) = std::fs::copy(&resource_sidecar, &sidecar_path) {
+                            tracing::warn!("Failed to deploy sidecar script: {}", e);
+                        }
+                    }
+                }
+            }
 
             info!("Output directory: {}", output_dir.display());
             info!("Sidecar path: {}", sidecar_path.display());

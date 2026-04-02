@@ -11,6 +11,7 @@ import {
   readBinaryState,
   navigateSkippingWizard,
   resetAppState,
+  takeScreenshot,
 } from './helpers';
 
 test.describe('File Import', () => {
@@ -37,6 +38,7 @@ test.describe('File Import', () => {
 
   test('drop zone is visible in Files view', async ({ page }) => {
     await expect(page.locator('[data-testid="drop-zone"]')).toBeVisible();
+    await takeScreenshot(page, 'file-import-drop-zone');
   });
 
   test('drop zone shows upload prompt text', async ({ page }) => {

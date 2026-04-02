@@ -31,6 +31,7 @@ export default defineConfig({
       timeout: 120000, // Binary tests may be slower
       expect: { timeout: 15000 },
       retries: 0, // No retries for binary tests
+      outputDir: './test-results/binary-screenshots',
       use: {
         trace: 'on-first-retry',
         screenshot: 'on',

@@ -78,6 +78,9 @@ pub struct CheckDependenciesResult {
 pub async fn check_dependencies() -> Result<CheckDependenciesResult, String> {
     info!("Checking dependencies");
 
+    // Refresh PATH to pick up recently installed binaries
+    refresh_path_from_registry();
+
     let ffmpeg = probe_binary("ffmpeg");
     let ffmpeg_version = if ffmpeg {
         probe_binary_version("ffmpeg", "-version")
@@ -261,6 +264,9 @@ pub async fn check_model_available(model: String) -> Result<ModelAvailability, S
 #[tauri::command]
 pub async fn validate_environment() -> Result<EnvironmentValidation, String> {
     info!("Validating Python environment");
+
+    // Refresh PATH to pick up recently installed binaries
+    refresh_path_from_registry();
 
     let mut validation = EnvironmentValidation::default();
 

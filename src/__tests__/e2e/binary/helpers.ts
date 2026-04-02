@@ -25,6 +25,22 @@ export const STATE_FILE = path.join(PROJECT_ROOT, 'test-results', 'binary-state.
 // Fixture paths
 export const FIXTURES_DIR = path.join(PROJECT_ROOT, 'tests', 'fixtures', 'audio');
 
+// Screenshots directory for E2E tests
+export const SCREENSHOTS_DIR = path.join(PROJECT_ROOT, 'test-results', 'screenshots');
+
+/**
+ * Take a named screenshot and save it to the test results directory.
+ * Uses the label to construct a unique filename.
+ */
+export async function takeScreenshot(page: Page, label: string): Promise<void> {
+  const sanitized = label.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const dir = SCREENSHOTS_DIR;
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, `${sanitized}.png`);
+  await page.screenshot({ path: filePath });
+  console.log(`[screenshot] Saved: ${filePath}`);
+}
+
 /**
  * Resolve the platform-specific binary path.
  * Returns null if no binary is found.

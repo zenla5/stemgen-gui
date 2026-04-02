@@ -12,6 +12,8 @@ use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
+use super::probe::is_windows_store_stub;
+
 /// Represents a running separation process
 pub struct SeparationProcess {
     /// The child process handle
@@ -76,9 +78,15 @@ impl SidecarManager {
 
         for candidate in &candidates {
             if let Ok(path) = which::which(candidate) {
+                // Skip Windows Store stubs
+                if is_windows_store_stub(&path) {
+                    continue;
+                }
+
                 // Verify it's working
                 let output = Command::new(&path)
                     .args(["--version"])
+                    .env("PYTHONUTF8", "1")
                     .output()
                     .await
                     .context("Failed to check Python version")?;

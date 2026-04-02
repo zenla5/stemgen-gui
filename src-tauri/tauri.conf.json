@@ -41,7 +41,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [],
+    "resources": ["../python/stemgen_sidecar.py"],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

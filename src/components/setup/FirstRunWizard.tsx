@@ -65,6 +65,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
   const [installersMap, setInstallersMap] = useState<Record<string, AvailableInstaller[]>>({});
   const [installingDep, setInstallingDep] = useState<string | null>(null);
   const [installLines, setInstallLines] = useState<string[]>([]);
+  const [installResult, setInstallResult] = useState<{ success: boolean; alreadyInstalled: boolean; error?: string } | null>(null);
 
   const { getAvailableInstallers, installDependency, fetchInstallManifest } = useAppStore();
 
@@ -130,6 +131,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
 
     setInstallingDep(manifestKey);
     setInstallLines([]);
+    setInstallResult(null);
 
     // Listen for progress events
     const { listen } = await import('@tauri-apps/api/event');
@@ -140,9 +142,23 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
     });
 
     try {
-      await installDependency(manifestKey, installers[0].id);
+      const result = await installDependency(manifestKey, installers[0].id);
+      setInstallResult(result);
+      if (!result.success) {
+        const dep = dependencies.find(d => d.manifestKey === manifestKey);
+        if (dep) {
+          updateDependency(dep.name, 'warning', result.error || 'Installation failed');
+        }
+      }
       // Re-check this specific dependency after install
       await runDependencyCheck();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setInstallResult({ success: false, alreadyInstalled: false, error: errorMessage });
+      const dep = dependencies.find(d => d.manifestKey === manifestKey);
+      if (dep) {
+        updateDependency(dep.name, 'warning', `Install failed: ${errorMessage}`);
+      }
     } finally {
       unlisten();
       setInstallingDep(null);
@@ -247,19 +263,20 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
                   const canInstall = dep.status === 'missing' && installers.length > 0 && dep.manifestKey;
 
                   return (
-                    <div key={dep.name} className="rounded-lg bg-slate-50 dark:bg-slate-700">
+                    <div key={dep.name} data-testid="wizard-dep-row" className="rounded-lg bg-slate-50 dark:bg-slate-700">
                       <div className="flex items-start gap-3 p-3">
                         <span className="text-xl mt-0.5">{getStatusIcon(dep.status)}</span>
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <div>
                               <div className="font-medium text-slate-700 dark:text-slate-300">{dep.name}</div>
-                              <div className={`text-sm ${getStatusColor(dep.status)}`}>
+                              <div data-testid="wizard-dep-status" className={`text-sm ${getStatusColor(dep.status)}`}>
                                 {dep.message ?? dep.description}
                               </div>
                             </div>
                             {canInstall && !isInstalling && (
                               <Button
+                                data-testid="wizard-install-btn"
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleInstall(dep.manifestKey)}
@@ -280,11 +297,11 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
                       </div>
                       {/* Show install progress inline */}
                       {isInstalling && installLines.length > 0 && (
-                        <div className="px-3 pb-3">
+                        <div data-testid="wizard-install-progress" className="px-3 pb-3">
                           <InstallProgress
                             lines={installLines}
-                            isRunning={true}
-                            result={null}
+                            isRunning={!installResult}
+                            result={installResult}
                             commandDisplay={installers[0]?.commandDisplay}
                           />
                         </div>

@@ -9,6 +9,7 @@ import {
   navigateSkippingWizard,
   navigateToView,
   resetAppState,
+  takeScreenshot,
 } from './helpers';
 
 test.describe('Stem Mixer', () => {
@@ -37,6 +38,7 @@ test.describe('Stem Mixer', () => {
   test('no stems message shows when nothing loaded', async ({ page }) => {
     await expect(page.locator('[data-testid="no-stems-msg"]')).toBeVisible();
     await expect(page.locator('[data-testid="no-stems-msg"]')).toContainText('Select a file');
+    await takeScreenshot(page, 'mixer-empty-state');
   });
 
   test('reset button is present', async ({ page }) => {
