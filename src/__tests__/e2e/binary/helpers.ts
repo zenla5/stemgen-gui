@@ -46,16 +46,23 @@ export async function takeScreenshot(page: Page, label: string): Promise<void> {
  * Returns null if no binary is found.
  */
 export function getBinaryPath(): string | null {
+  // Workspace root target/ takes precedence over src-tauri/target/
   const candidates: Record<string, string[]> = {
     win32: [
+      path.join('target', 'release', 'stemgen-gui.exe'),
+      path.join('target', 'release', 'stemgen_gui.exe'),
       path.join('src-tauri', 'target', 'release', 'stemgen-gui.exe'),
       path.join('src-tauri', 'target', 'release', 'stemgen_gui.exe'),
     ],
     linux: [
+      path.join('target', 'release', 'stemgen-gui'),
+      path.join('target', 'release', 'stemgen_gui'),
       path.join('src-tauri', 'target', 'release', 'stemgen-gui'),
       path.join('src-tauri', 'target', 'release', 'stemgen_gui'),
     ],
     darwin: [
+      path.join('target', 'release', 'bundle', 'macos', 'Stemgen GUI.app', 'Contents', 'MacOS', 'stemgen-gui'),
+      path.join('target', 'release', 'stemgen-gui'),
       path.join('src-tauri', 'target', 'release', 'bundle', 'macos', 'Stemgen GUI.app', 'Contents', 'MacOS', 'stemgen-gui'),
       path.join('src-tauri', 'target', 'release', 'stemgen-gui'),
     ],
