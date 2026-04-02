@@ -19,7 +19,7 @@ const LOG_FILE = path.join(PROJECT_ROOT, 'test-results', 'binary.log');
  * Poll the CDP endpoint until it responds or timeout is reached.
  * Returns the webSocketDebuggerUrl if available, otherwise the base URL.
  */
-async function waitForCDP(port: number, timeoutMs = 30000): Promise<string> {
+async function waitForCDP(port: number, timeoutMs = 60000): Promise<string> {
   const start = Date.now();
   const interval = 500;
 
@@ -126,13 +126,19 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     return;
   }
 
-  // Pipe stdout/stderr to log file
+  // Pipe stdout to log file; buffer stderr for diagnostics
   child.stdout?.pipe(logStream);
-  child.stderr?.pipe(logStream);
 
-  // Track early exits
-  child.on('exit', (code) => {
-    console.error(`[binary-setup] Binary exited early with code ${code}`);
+  // Track early exits with stderr output
+  let stderrBuf = '';
+  child.stderr?.on('data', (chunk: Buffer) => {
+    stderrBuf += chunk.toString();
+  });
+  child.on('exit', (code, signal) => {
+    console.error(`[binary-setup] Binary exited early with code ${code}, signal ${signal}`);
+    if (stderrBuf) {
+      console.error(`[binary-setup] Binary stderr (last 2000 chars): ${stderrBuf.slice(-2000)}`);
+    }
   });
 
   if (!child.pid) {
