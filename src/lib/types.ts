@@ -262,9 +262,9 @@ export interface ModelAvailability {
 }
 
 // Package validation status (mirrors Rust PackageStatus enum with snake_case)
-export interface PackageStatusAvailable {
-  available: null;
-}
+// Rust unit variant serializes as bare string "available"; tuple variants as objects.
+// Accept both wire representations.
+export type PackageStatusAvailable = { available: null } | 'available';
 
 export interface PackageStatusUnavailable {
   unavailable: string;
@@ -286,13 +286,16 @@ export type PackageStatus =
 
 /**
  * Safely check if a PackageStatus value has a given key.
- * Guards against primitives (strings, null, undefined) that would
- * cause "Cannot use 'in' operator" errors.
+ * Handles both the bare-string form (e.g. "available") from Rust unit variants
+ * and the object form (e.g. { available: null }) from tuple variants.
  */
 export function hasPackageStatusKey(
   status: unknown,
   key: string
-): status is Record<string, unknown> {
+): boolean {
+  // Unit variant serializes as a bare string (e.g. "available")
+  if (typeof status === 'string') return status === key;
+  // Tuple variants serialize as objects (e.g. { missing: "msg" })
   return typeof status === 'object' && status !== null && key in status;
 }
 

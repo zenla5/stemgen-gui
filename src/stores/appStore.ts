@@ -28,7 +28,8 @@ const PACKAGE_STATUS_FIELDS = [
 
 /**
  * Validate that all PackageStatus fields in an EnvironmentValidation
- * response are objects, not primitives. Logs warnings for malformed fields.
+ * response are valid. Normalizes bare string "available" to object form.
+ * Logs warnings for malformed fields.
  */
 function validateEnvironmentResponse(data: unknown): EnvironmentValidation {
   if (!data || typeof data !== 'object') {
@@ -38,7 +39,10 @@ function validateEnvironmentResponse(data: unknown): EnvironmentValidation {
   const record = data as Record<string, unknown>;
   for (const field of PACKAGE_STATUS_FIELDS) {
     const val = record[field];
-    if (val !== undefined && val !== null && !hasPackageStatusKey(val, 'available')
+    // Normalize bare string "available" (Rust unit variant) to object form
+    if (val === 'available') {
+      record[field] = { available: null };
+    } else if (val !== undefined && val !== null && !hasPackageStatusKey(val, 'available')
         && !hasPackageStatusKey(val, 'unavailable') && !hasPackageStatusKey(val, 'warning')
         && !hasPackageStatusKey(val, 'missing')) {
       console.error(
@@ -81,6 +85,7 @@ interface AppState {
   environmentValidation: EnvironmentValidation | null;
   environmentValidated: boolean;
   environmentValidatedAt: number | null;  // timestamp of last validation
+  sidecarDeployed: { success: boolean; path?: string; error?: string | null } | null;
 
   // Dependency install system
   installManifest: InstallManifest | null;
@@ -275,6 +280,7 @@ export const useAppStore = create<AppState>()(
       environmentValidation: null,
       environmentValidated: false,
       environmentValidatedAt: null,
+      sidecarDeployed: null,
       installManifest: null,
       activeInstallLines: {},
       installResults: {},
@@ -674,6 +680,29 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+
+// Listen for sidecar deployment events from the backend (lazy init to avoid mock ordering issues in tests)
+let _sidecarListenerInitialized = false;
+function initSidecarListener() {
+  if (_sidecarListenerInitialized) return;
+  _sidecarListenerInitialized = true;
+  try {
+    const result = listen<{ success: boolean; path: string; error: string | null }>('sidecar-deployed', (event) => {
+      useAppStore.setState({ sidecarDeployed: event.payload });
+    });
+    if (result && typeof result.catch === 'function') {
+      result.catch((err: unknown) => {
+        console.warn('Failed to set up sidecar-deployed listener:', err);
+      });
+    }
+  } catch {
+    // In test environments, listen may not be properly set up
+  }
+}
+// Initialize on first use in browser; in tests this may never be called
+if (typeof window !== 'undefined') {
+  initSidecarListener();
+}
 
 /**
  * Single source of truth for environment readiness.

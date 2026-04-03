@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.2] — 2026-04-03 — Environment Detection & Sidecar Deployment Fixes
+
+### Fixed
+- **[FALSE-RED]** `PackageStatus::Available` serializes as a bare string `"available"` from Rust, but TypeScript `hasPackageStatusKey()` expected an object. All healthy dependencies appeared red. Fixed by extending `hasPackageStatusKey()` and `validateEnvironmentResponse()` to accept both string and object wire representations. (TASK-02)
+- **[FOOTER-DIVERGE]** StatusBar footer read from legacy `dependencies` booleans (separate `check_dependencies` call) instead of `environmentValidation`. Refactored StatusBar to consume `computeEnvironmentReadiness()` as the single source of truth. (TASK-03)
+- **[NO-REASON]** Red/amber dependency rows in Detailed Status showed no explanation. Each non-available row now displays the failure reason string from the backend with `data-testid="dep-failure-reason-{dep}"`. (TASK-04)
+- **[SILENT-SIDECAR]** Sidecar deployment failures during startup were silently logged with `tracing::warn!` and never surfaced to the UI. Added `sidecar-deployed` Tauri event emission on startup and a `deploy_sidecar` command for manual repair. (TASK-05)
+- **[NO-REPAIR]** No way to fix a missing sidecar from the UI. Added "Repair Installation" button to the Sidecar Script row in Detailed Status. (TASK-06)
+- **[NO-INSTALL-PROGRESS]** "Install All Missing" gave no per-component progress feedback and silently skipped deps with no installer. Now shows a progress list with pending/installing/done/failed/skipped states. (TASK-07)
+- **[MODEL-NO-GUARD]** Model downloads had no sidecar presence check — clicking download with a missing sidecar produced an unhelpful error. Added pre-download guard with actionable error message. (TASK-08)
+- **[SIDECAR-NOT-IN-READY]** The `is_ready` gate in the Rust backend did not include `sidecar_script`, allowing "Environment ready" to appear with a missing sidecar. Added `sidecar_script` to the readiness gate. (TASK-09)
+
 ## [1.2.1] — 2026-04-02 — Bug Fixes
 
 ### Fixed

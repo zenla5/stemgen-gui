@@ -104,31 +104,55 @@ pub fn run() {
             std::fs::create_dir_all(data_dir).ok();
 
             // Deploy sidecar script from resource bundle to data dir
-            if let Ok(resource_dir) = app.path().resource_dir() {
-                let resource_sidecar = resource_dir.join("stemgen_sidecar.py");
-                if resource_sidecar.exists() {
-                    let should_copy = !sidecar_path.exists()
-                        || std::fs::metadata(&resource_sidecar)
-                            .and_then(|s| s.modified())
-                            .ok()
-                            .and_then(|src_mtime| {
-                                std::fs::metadata(&sidecar_path)
-                                    .and_then(|d| d.modified())
-                                    .ok()
-                                    .map(|d_mtime| src_mtime > d_mtime)
-                            })
-                            .unwrap_or(true);
-                    if should_copy {
-                        info!(
-                            "Deploying sidecar script: {} -> {}",
-                            resource_sidecar.display(),
-                            sidecar_path.display()
-                        );
-                        if let Err(e) = std::fs::copy(&resource_sidecar, &sidecar_path) {
-                            tracing::warn!("Failed to deploy sidecar script: {}", e);
+            {
+                let mut deploy_success = false;
+                let mut deploy_error: Option<String> = None;
+
+                if let Ok(resource_dir) = app.path().resource_dir() {
+                    let resource_sidecar = resource_dir.join("stemgen_sidecar.py");
+                    if resource_sidecar.exists() {
+                        let should_copy = !sidecar_path.exists()
+                            || std::fs::metadata(&resource_sidecar)
+                                .and_then(|s| s.modified())
+                                .ok()
+                                .and_then(|src_mtime| {
+                                    std::fs::metadata(&sidecar_path)
+                                        .and_then(|d| d.modified())
+                                        .ok()
+                                        .map(|d_mtime| src_mtime > d_mtime)
+                                })
+                                .unwrap_or(true);
+                        if should_copy {
+                            info!(
+                                "Deploying sidecar script: {} -> {}",
+                                resource_sidecar.display(),
+                                sidecar_path.display()
+                            );
+                            match std::fs::copy(&resource_sidecar, &sidecar_path) {
+                                Ok(_) => deploy_success = true,
+                                Err(e) => {
+                                    tracing::warn!("Failed to deploy sidecar script: {}", e);
+                                    deploy_error = Some(e.to_string());
+                                }
+                            }
+                        } else {
+                            // Already up to date
+                            deploy_success = true;
                         }
+                    } else {
+                        deploy_error = Some("Sidecar script not found in application resources".to_string());
                     }
+                } else {
+                    deploy_error = Some("Failed to get resource directory".to_string());
                 }
+
+                // Emit event so frontend can react
+                let payload = serde_json::json!({
+                    "success": deploy_success,
+                    "path": sidecar_path.to_string_lossy(),
+                    "error": deploy_error,
+                });
+                let _ = app.emit("sidecar-deployed", payload);
             }
 
             info!("Output directory: {}", output_dir.display());
@@ -196,6 +220,7 @@ pub fn run() {
             // Environment validation
             commands::validate_environment,
             commands::get_sidecar_status,
+            commands::deploy_sidecar,
             // Dependency installation
             commands::install_executor::get_install_manifest,
             commands::install_executor::get_available_installers,

@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Download, Trash2, Check, AlertCircle, Cpu, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/stores/appStore';
+import { hasPackageStatusKey } from '@/lib/types';
 
 interface ModelInfo {
   id: string;
@@ -72,6 +74,17 @@ export function ModelManager() {
   };
 
   const downloadModel = async (modelId: string) => {
+    // Guard: ensure sidecar is available before attempting download
+    const { environmentValidation } = useAppStore.getState();
+    if (!environmentValidation?.sidecarScript ||
+        !hasPackageStatusKey(environmentValidation.sidecarScript, 'available')) {
+      setDownloadErrors(prev => ({
+        ...prev,
+        [modelId]: 'Sidecar script missing — click \'Repair Installation\' in Settings > System Status to fix.',
+      }));
+      return;
+    }
+
     setDownloading(modelId);
     setProgress(0);
     setDownloadErrors(prev => { const next = { ...prev }; delete next[modelId]; return next; });
@@ -153,7 +166,7 @@ export function ModelManager() {
         {models.map((model) => {
           const isDownloaded = downloadedModels.has(model.id);
           const isDownloading = downloading === model.id;
-          
+
           return (
             <div
               key={model.id}
@@ -228,7 +241,12 @@ export function ModelManager() {
 
                 {/* Per-model download error */}
                 {downloadErrors[model.id] && (
-                  <p className="mt-1 text-xs text-red-600 break-all" data-testid={`download-error-${model.id}`}>
+                  <p
+                    className="mt-1 text-xs text-red-600 break-all"
+                    data-testid={downloadErrors[model.id].includes('Sidecar script missing')
+                      ? `model-sidecar-error-${model.id}`
+                      : `download-error-${model.id}`}
+                  >
                     {downloadErrors[model.id]}
                   </p>
                 )}

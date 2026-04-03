@@ -3,12 +3,13 @@ import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useSettingsStore, supportedLanguages } from '@/stores/settingsStore';
 import { useAppStore, computeEnvironmentReadiness } from '@/stores/appStore';
 import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
+import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import { ModelManager } from './ModelManager';
 import { InstallProgress } from '@/components/ui/InstallProgress';
 import { Button } from '@/components/ui/Button';
-import type { AvailableInstaller } from '@/lib/types';
-import { hasPackageStatusKey } from '@/lib/types';
+import type { AvailableInstaller, PackageStatus } from '@/lib/types';
+import { hasPackageStatusKey, getPackageStatusValue } from '@/lib/types';
 
 function formatTimeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -18,6 +19,14 @@ function formatTimeAgo(timestamp: number): string {
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ago`;
+}
+
+function getFailureReason(status?: PackageStatus | null): string | undefined {
+  if (!status) return undefined;
+  return getPackageStatusValue(status, 'missing')
+    ?? getPackageStatusValue(status, 'unavailable')
+    ?? getPackageStatusValue(status, 'warning')
+    ?? undefined;
 }
 
 export function SettingsPanel() {
@@ -35,6 +44,11 @@ export function SettingsPanel() {
   // Local state for install UI
   const [installingDep, setInstallingDep] = useState<string | null>(null);
   const [installersMap, setInstallersMap] = useState<Record<string, AvailableInstaller[]>>({});
+  const [installPlan, setInstallPlan] = useState<Array<{
+    depKey: string; label: string;
+    status: 'pending' | 'installing' | 'done' | 'failed' | 'skipped';
+    reason?: string;
+  }> | null>(null);
 
   // Fetch manifest on mount and pre-load installers for all known dep keys
   useEffect(() => {
@@ -76,35 +90,63 @@ export function SettingsPanel() {
   };
 
   const handleInstallAllMissing = async () => {
-    // Install in order: Python first, then PyTorch, then demucs, then FFmpeg
-    const installOrder = ['python', 'pytorch', 'demucs', 'ffmpeg'];
-    for (const depKey of installOrder) {
+    const installOrder = [
+      { depKey: 'python', label: 'Python' },
+      { depKey: 'pytorch', label: 'PyTorch' },
+      { depKey: 'demucs', label: 'demucs' },
+      { depKey: 'ffmpeg', label: 'FFmpeg' },
+    ];
+
+    // Build install plan — include all deps that need attention
+    const plan: Array<{ depKey: string; label: string; status: 'pending' | 'installing' | 'done' | 'failed' | 'skipped'; reason?: string }> = [];
+
+    for (const { depKey, label } of installOrder) {
       const validation = useAppStore.getState().environmentValidation;
-      // Check if this dep is missing
-      const isMissing = depKey === 'ffmpeg'
-        ? (!validation?.ffmpeg || !hasPackageStatusKey(validation.ffmpeg, 'available'))
-        : depKey === 'python'
-        ? (!validation?.python || !hasPackageStatusKey(validation.python, 'available'))
-        : depKey === 'pytorch'
-        ? (!validation?.pytorch || !hasPackageStatusKey(validation.pytorch, 'available'))
-        : depKey === 'demucs'
-        ? (!validation?.demucs || !hasPackageStatusKey(validation.demucs, 'available'))
-        : false;
+      const status = validation?.[depKey as keyof typeof validation] as PackageStatus | undefined;
+      const isMissing = !status || !hasPackageStatusKey(status, 'available');
 
       if (!isMissing) continue;
 
       const installers = installersMap[depKey] || await getAvailableInstallers(depKey);
-      if (installers.length === 0) continue;
-
-      setInstallingDep(depKey);
-      try {
-        await installDependency(depKey, installers[0].id);
-      } finally {
-        setInstallingDep(null);
+      if (installers.length === 0) {
+        plan.push({ depKey, label, status: 'skipped', reason: 'No installer available for this platform' });
+      } else {
+        plan.push({ depKey, label, status: 'pending' });
       }
     }
 
-    // Always refresh status after the loop, regardless of success
+    if (plan.length === 0) return;
+
+    setInstallPlan([...plan]);
+
+    for (let i = 0; i < plan.length; i++) {
+      if (plan[i].status === 'skipped') continue;
+
+      plan[i].status = 'installing';
+      setInstallPlan([...plan]);
+
+      const installers = installersMap[plan[i].depKey] || await getAvailableInstallers(plan[i].depKey);
+      if (installers.length === 0) {
+        plan[i].status = 'skipped';
+        plan[i].reason = 'No installer available for this platform';
+        setInstallPlan([...plan]);
+        continue;
+      }
+
+      setInstallingDep(plan[i].depKey);
+      try {
+        await installDependency(plan[i].depKey, installers[0].id);
+        plan[i].status = 'done';
+      } catch (err) {
+        plan[i].status = 'failed';
+        plan[i].reason = err instanceof Error ? err.message : String(err);
+      } finally {
+        setInstallingDep(null);
+      }
+      setInstallPlan([...plan]);
+    }
+
+    // Always refresh status after the loop
     await validateEnvironment();
     await checkSidecarHealth();
   };
@@ -117,12 +159,12 @@ export function SettingsPanel() {
     environmentValidation?.demucs,
   ].filter(s => s && !hasPackageStatusKey(s, 'available')).length;
 
-  const isPackageAvailable = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null) => {
+  const isPackageAvailable = (status?: PackageStatus | null) => {
     if (!status) return false;
     return hasPackageStatusKey(status, 'available');
   };
 
-  const getPackageIcon = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null): ReactNode => {
+  const getPackageIcon = (status?: PackageStatus | null): ReactNode => {
     if (!status) return <XCircle className="h-4 w-4 text-muted-foreground" />;
     if (isPackageAvailable(status)) return <CheckCircle className="h-4 w-4 text-green-500" />;
     if (hasPackageStatusKey(status, 'warning')) return <AlertCircle className="h-4 w-4 text-yellow-500" />;
@@ -130,7 +172,7 @@ export function SettingsPanel() {
     return <XCircle className="h-4 w-4 text-red-500" />;
   };
 
-  const getPackageLabel = (status?: { available: null } | { unavailable: string } | { warning: string } | { missing: string } | null): string => {
+  const getPackageLabel = (status?: PackageStatus | null): string => {
     if (!status) return 'Not checked';
     if (hasPackageStatusKey(status, 'available')) return 'Available';
     if (hasPackageStatusKey(status, 'warning')) return (status as { warning: string }).warning;
@@ -181,6 +223,50 @@ export function SettingsPanel() {
             </button>
           </div>
         </div>
+
+        {/* Install progress plan */}
+        {installPlan && installPlan.length > 0 && (
+          <div data-testid="install-plan" className="rounded-md border border-muted p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium">Installing missing dependencies...</span>
+              {installPlan.every(i => i.status === 'done' || i.status === 'failed' || i.status === 'skipped') && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setInstallPlan(null)}
+                  className="h-5 px-2 text-xs"
+                >
+                  Dismiss
+                </Button>
+              )}
+            </div>
+            {installPlan.map((item) => (
+              <div
+                key={item.depKey}
+                data-testid={`install-plan-row-${item.depKey}`}
+                className="flex items-center justify-between text-xs"
+              >
+                <span>{item.label}</span>
+                <div className="flex items-center gap-2">
+                  {item.status === 'pending' && <span className="text-muted-foreground" data-testid={`install-plan-status-${item.depKey}`}>Pending</span>}
+                  {item.status === 'installing' && <span className="text-blue-500" data-testid={`install-plan-status-${item.depKey}`}>Installing...</span>}
+                  {item.status === 'done' && <span className="text-green-500" data-testid={`install-plan-status-${item.depKey}`}>Done</span>}
+                  {item.status === 'failed' && (
+                    <span className="text-red-500" data-testid={`install-plan-status-${item.depKey}`}>
+                      Failed{item.reason ? `: ${item.reason}` : ''}
+                    </span>
+                  )}
+                  {item.status === 'skipped' && (
+                    <span className="text-muted-foreground" data-testid={`install-plan-status-${item.depKey}`}>
+                      Skipped{item.reason ? `: ${item.reason}` : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {environmentValidatedAt && (
           <p className="text-xs text-muted-foreground">
             Last checked {formatTimeAgo(environmentValidatedAt)}
@@ -232,6 +318,7 @@ export function SettingsPanel() {
               status={getPackageIcon(environmentValidation?.ffmpeg)}
               value={getPackageLabel(environmentValidation?.ffmpeg)}
               healthy={isPackageAvailable(environmentValidation?.ffmpeg)}
+              failureReason={getFailureReason(environmentValidation?.ffmpeg)}
               depKey="ffmpeg"
               depKeyMap={depKeyMap}
               installersMap={installersMap}
@@ -246,12 +333,15 @@ export function SettingsPanel() {
               status={getPackageIcon(environmentValidation?.ffprobe)}
               value={getPackageLabel(environmentValidation?.ffprobe)}
               healthy={isPackageAvailable(environmentValidation?.ffprobe)}
+              failureReason={getFailureReason(environmentValidation?.ffprobe)}
+              depKey="ffprobe"
             />
             <InstallablePackageRow
               label="Python"
               status={getPackageIcon(environmentValidation?.python)}
               value={`${environmentValidation?.pythonPath || 'Not found'} (${environmentValidation?.pythonVersion || 'unknown'})`}
               healthy={isPackageAvailable(environmentValidation?.python)}
+              failureReason={getFailureReason(environmentValidation?.python)}
               depKey="python"
               depKeyMap={depKeyMap}
               installersMap={installersMap}
@@ -266,6 +356,7 @@ export function SettingsPanel() {
               status={getPackageIcon(environmentValidation?.pytorch)}
               value={environmentValidation?.pytorchVersion || getPackageLabel(environmentValidation?.pytorch)}
               healthy={isPackageAvailable(environmentValidation?.pytorch)}
+              failureReason={getFailureReason(environmentValidation?.pytorch)}
               depKey="pytorch"
               depKeyMap={depKeyMap}
               installersMap={installersMap}
@@ -280,12 +371,15 @@ export function SettingsPanel() {
               status={getPackageIcon(environmentValidation?.torchaudio)}
               value={environmentValidation?.torchaudioVersion || getPackageLabel(environmentValidation?.torchaudio)}
               healthy={isPackageAvailable(environmentValidation?.torchaudio)}
+              failureReason={getFailureReason(environmentValidation?.torchaudio)}
+              depKey="torchaudio"
             />
             <InstallablePackageRow
               label="demucs"
               status={getPackageIcon(environmentValidation?.demucs)}
               value={environmentValidation?.demucsVersion || getPackageLabel(environmentValidation?.demucs)}
               healthy={isPackageAvailable(environmentValidation?.demucs)}
+              failureReason={getFailureReason(environmentValidation?.demucs)}
               depKey="demucs"
               depKeyMap={depKeyMap}
               installersMap={installersMap}
@@ -308,11 +402,16 @@ export function SettingsPanel() {
                     : false
               }
             />
-            <PackageRow
-              label="Sidecar Script"
+            <SidecarRow
               status={getPackageIcon(environmentValidation?.sidecarScript)}
               value={environmentValidation?.sidecarScriptPath || getPackageLabel(environmentValidation?.sidecarScript)}
               healthy={isPackageAvailable(environmentValidation?.sidecarScript)}
+              failureReason={getFailureReason(environmentValidation?.sidecarScript)}
+              onRevalidate={() => {
+                const store = useAppStore.getState();
+                store.validateEnvironment();
+                store.checkSidecarHealth();
+              }}
             />
           </div>
         </div>
@@ -632,20 +731,85 @@ function StatusBadge({ label, value, healthy, icon }: { label: string; value: st
   );
 }
 
-function PackageRow({ label, status, value, healthy }: { label: string; status: ReactNode; value: string; healthy?: boolean }) {
+function PackageRow({ label, status, value, healthy, failureReason, depKey }: { label: string; status: ReactNode; value: string; healthy?: boolean; failureReason?: string; depKey?: string }) {
   return (
-    <div className="flex items-center justify-between rounded px-2 py-1">
-      <div className="flex items-center gap-2">
-        {status}
-        <span className="text-sm">{label}</span>
+    <div className="rounded px-2 py-1">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {status}
+          <span className="text-sm">{label}</span>
+        </div>
+        <span className={cn(
+          "text-xs",
+          healthy === undefined ? "text-muted-foreground" :
+          healthy ? "text-green-600" : "text-red-600"
+        )}>
+          {value}
+        </span>
       </div>
-      <span className={cn(
-        "text-xs",
-        healthy === undefined ? "text-muted-foreground" :
-        healthy ? "text-green-600" : "text-red-600"
-      )}>
-        {value}
-      </span>
+      {failureReason && !healthy && (
+        <p data-testid={`dep-failure-reason-${depKey ?? label.toLowerCase()}`} className="ml-6 mt-0.5 text-xs text-red-500">
+          {failureReason}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SidecarRow({ status, value, healthy, failureReason, onRevalidate }: {
+  status: ReactNode; value: string; healthy?: boolean; failureReason?: string; onRevalidate: () => void;
+}) {
+  const [repairing, setRepairing] = useState(false);
+  const [repairError, setRepairError] = useState<string | null>(null);
+
+  const handleRepair = async () => {
+    setRepairing(true);
+    setRepairError(null);
+    try {
+      await invoke('deploy_sidecar');
+      onRevalidate();
+    } catch (err) {
+      setRepairError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  return (
+    <div className="rounded px-2 py-1">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {status}
+          <span className="text-sm">Sidecar Script</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={cn("text-xs", healthy ? "text-green-600" : "text-red-600")}>
+            {value}
+          </span>
+          {!healthy && (
+            <Button
+              data-testid="repair-sidecar-btn"
+              variant="outline"
+              size="sm"
+              onClick={handleRepair}
+              disabled={repairing}
+              className="h-6 px-2 text-xs"
+            >
+              {repairing ? 'Repairing...' : 'Repair Installation'}
+            </Button>
+          )}
+        </div>
+      </div>
+      {failureReason && !healthy && (
+        <p data-testid="dep-failure-reason-sidecar" className="ml-6 mt-0.5 text-xs text-red-500">
+          {failureReason}
+        </p>
+      )}
+      {repairError && (
+        <p data-testid="sidecar-repair-error" className="ml-6 mt-0.5 text-xs text-red-500">
+          Deployment failed: {repairError}
+        </p>
+      )}
     </div>
   );
 }
@@ -655,6 +819,7 @@ interface InstallablePackageRowProps {
   status: ReactNode;
   value: string;
   healthy?: boolean;
+  failureReason?: string;
   depKey: string;
   depKeyMap: Record<string, string>;
   installersMap: Record<string, AvailableInstaller[]>;
@@ -666,7 +831,7 @@ interface InstallablePackageRowProps {
 }
 
 function InstallablePackageRow({
-  label, status, value, healthy, depKey,
+  label, status, value, healthy, failureReason, depKey,
   installersMap, installingDep, activeInstallLines, installResults,
   loadInstallersForDep, handleInstall,
 }: InstallablePackageRowProps) {
@@ -762,6 +927,12 @@ function InstallablePackageRow({
           )}
         </div>
       </div>
+      {/* Failure reason for non-available packages */}
+      {failureReason && !healthy && (
+        <p data-testid={`dep-failure-reason-${depKey}`} className="ml-6 mt-0.5 text-xs text-red-500">
+          {failureReason}
+        </p>
+      )}
       {/* Show install progress if this dep is installing or has recent output */}
       {(isInstalling || lines.length > 0) && (
         <div className="mt-2">

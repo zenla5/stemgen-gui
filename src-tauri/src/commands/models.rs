@@ -293,7 +293,10 @@ async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<
     let python = find_python().ok_or("Python not found — cannot download model via sidecar")?;
     let sidecar = get_data_dir().join("stemgen_sidecar.py");
     if !sidecar.exists() {
-        return Err(format!("Sidecar script not found at {:?}", sidecar));
+        return Err(format!(
+            "Sidecar script not found at '{}'. Open Settings → System Status → Repair Installation.",
+            sidecar.display()
+        ));
     }
 
     reset_abort();

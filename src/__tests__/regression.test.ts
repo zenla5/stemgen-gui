@@ -269,7 +269,8 @@ describe('Regression: PackageStatus type guard (v1.1.5)', () => {
   it('should not throw when given a plain string', () => {
     // This was the crash: 'available' in "available" → TypeError
     expect(() => hasPackageStatusKey('available', 'available')).not.toThrow();
-    expect(hasPackageStatusKey('available', 'available')).toBe(false);
+    // Fixed: string "available" now correctly matches key "available"
+    expect(hasPackageStatusKey('available', 'available')).toBe(true);
   });
 
   it('should not throw when given null', () => {
@@ -324,10 +325,10 @@ describe('Regression: PackageStatus type guard (v1.1.5)', () => {
     const env = { ffmpeg: 'available', python: { available: null } };
 
     // Old code: 'available' in env.ffmpeg → TypeError
-    // New code: hasPackageStatusKey(env.ffmpeg, 'available') → false
+    // Fixed: string "available" correctly matches
     expect(() => {
       const isAvailable = hasPackageStatusKey(env.ffmpeg, 'available');
-      expect(isAvailable).toBe(false);
+      expect(isAvailable).toBe(true);
     }).not.toThrow();
 
     // Valid field still works

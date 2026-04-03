@@ -227,6 +227,32 @@ pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
     Ok(status)
 }
 
+/// Re-deploy the sidecar script from the resource bundle to the data directory.
+/// Returns the destination path on success, or an error message on failure.
+#[tauri::command]
+pub async fn deploy_sidecar(app: tauri::AppHandle) -> Result<String, String> {
+    info!("Deploying sidecar script via command");
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource dir: {e}"))?;
+    let resource_sidecar = resource_dir.join("stemgen_sidecar.py");
+
+    if !resource_sidecar.exists() {
+        return Err("Sidecar script not found in application resources".to_string());
+    }
+
+    let data_dir = get_data_dir();
+    let sidecar_path = data_dir.join("stemgen_sidecar.py");
+
+    std::fs::create_dir_all(&data_dir).map_err(|e| format!("Failed to create data dir: {e}"))?;
+    std::fs::copy(&resource_sidecar, &sidecar_path)
+        .map_err(|e| format!("Failed to copy sidecar to {}: {e}", sidecar_path.display()))?;
+
+    info!("Sidecar deployed to: {}", sidecar_path.display());
+    Ok(sidecar_path.to_string_lossy().to_string())
+}
+
 /// Check if a specific model is available for download/usage
 #[tauri::command]
 pub async fn check_model_available(model: String) -> Result<ModelAvailability, String> {
@@ -388,7 +414,8 @@ pub async fn validate_environment() -> Result<EnvironmentValidation, String> {
         && matches!(validation.pytorch, Some(PackageStatus::Available))
         && matches!(validation.demucs, Some(PackageStatus::Available))
         && matches!(validation.ffmpeg, Some(PackageStatus::Available))
-        && matches!(validation.ffprobe, Some(PackageStatus::Available));
+        && matches!(validation.ffprobe, Some(PackageStatus::Available))
+        && matches!(validation.sidecar_script, Some(PackageStatus::Available));
 
     validation.warnings = validation
         .python

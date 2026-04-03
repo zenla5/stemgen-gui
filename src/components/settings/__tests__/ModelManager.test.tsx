@@ -1,14 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { ModelManager } from '../ModelManager';
+import { useAppStore } from '@/stores/appStore';
 
 type ModelInfo = Record<string, unknown>;
 
 // ─── Mock Tauri APIs ───────────────────────────────────────────────────────────
-
-const mockInvoke = vi.fn();
-const mockListen = vi.fn();
-const mockUnlisten = vi.fn();
+// Use hoisted() to ensure mocks are available during module-level vi.mock() calls
+const { mockInvoke, mockListen, mockUnlisten } = vi.hoisted(() => ({
+  mockInvoke: vi.fn(),
+  mockListen: vi.fn(),
+  mockUnlisten: vi.fn(),
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -66,6 +69,14 @@ describe('ModelManager', () => {
     vi.clearAllMocks();
     mockListen.mockResolvedValue(mockUnlisten);
     mockInvoke.mockResolvedValue(MOCK_MODELS);
+    // Set up environmentValidation so the sidecar guard passes
+    useAppStore.setState({
+      environmentValidation: {
+        isReady: true,
+        sidecarScript: { available: null },
+        warnings: [],
+      },
+    });
   });
 
   afterEach(() => {
