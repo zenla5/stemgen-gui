@@ -192,18 +192,40 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     const wsUrl = await waitForCDP(CDP_PORT);
     console.log(`[binary-setup] CDP available at: ${wsUrl}`);
 
-    // Detect the app URL by polling the CDP /json/list endpoint.
-    // The Tauri WebView page may take a moment to appear alongside
-    // the about:blank DevTools landing page.
+    // Detect the app URL by polling the CDP /json/list endpoint and
+    // also checking Playwright's page list. The Tauri WebView page
+    // may take a moment to appear alongside the about:blank target.
     const fallbackUrl = process.platform === 'win32' ? 'http://tauri.localhost' : 'tauri://localhost';
-    const APP_URL_TIMEOUT = 15000;
-    const APP_URL_POLL = 500;
+    const APP_URL_TIMEOUT = 20000;
+    const APP_URL_POLL = 1000;
 
     let appUrl: string | null = null;
     const start = Date.now();
     while (Date.now() - start < APP_URL_TIMEOUT) {
+      // Method 1: CDP /json/list
       appUrl = await getAppUrlFromCDP(CDP_PORT);
       if (appUrl) break;
+
+      // Method 2: Playwright page list
+      try {
+        const { chromium } = await import('@playwright/test');
+        const browser = await chromium.connectOverCDP(wsUrl);
+        for (const ctx of browser.contexts()) {
+          for (const page of ctx.pages()) {
+            const url = page.url();
+            if (url && url !== 'about:blank') {
+              appUrl = url;
+              break;
+            }
+          }
+          if (appUrl) break;
+        }
+        await browser.close();
+      } catch {
+        // Playwright connection may fail intermittently
+      }
+      if (appUrl) break;
+
       await new Promise((r) => setTimeout(r, APP_URL_POLL));
     }
 
@@ -213,11 +235,6 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       console.warn('[binary-setup] Could not determine app URL, will use fallback');
       appUrl = fallbackUrl;
     }
-
-    // Connect briefly via Playwright to verify the URL is accessible
-    const { chromium } = await import('@playwright/test');
-    const browser = await chromium.connectOverCDP(wsUrl);
-    await browser.close();
 
     // Write success state
     fs.writeFileSync(
