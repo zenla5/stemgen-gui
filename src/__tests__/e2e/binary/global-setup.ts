@@ -159,27 +159,36 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     const wsUrl = await waitForCDP(CDP_PORT);
     console.log(`[binary-setup] CDP available at: ${wsUrl}`);
 
-    // Connect briefly to capture the app URL
+    // Connect to capture the app URL — the Tauri WebView page may take
+    // a moment to appear alongside the about:blank DevTools landing page.
     const { chromium } = await import('@playwright/test');
     const browser = await chromium.connectOverCDP(wsUrl);
-    const contexts = browser.contexts();
 
     const fallbackUrl = process.platform === 'win32' ? 'http://tauri.localhost' : 'tauri://localhost';
+    const APP_URL_TIMEOUT = 15000;
+    const APP_URL_POLL = 500;
 
     let appUrl: string | undefined;
-    if (contexts.length > 0 && contexts[0].pages().length > 0) {
-      appUrl = contexts[0].pages()[0].url();
-      console.log(`[binary-setup] App URL: ${appUrl}`);
-    } else {
-      // The app might still be loading — wait a bit and retry
-      await new Promise((r) => setTimeout(r, 2000));
-      if (contexts.length > 0 && contexts[0].pages().length > 0) {
-        appUrl = contexts[0].pages()[0].url();
+    const start = Date.now();
+    while (Date.now() - start < APP_URL_TIMEOUT) {
+      const contexts = browser.contexts();
+      for (const ctx of contexts) {
+        for (const page of ctx.pages()) {
+          const url = page.url();
+          if (url && url !== 'about:blank') {
+            appUrl = url;
+            break;
+          }
+        }
+        if (appUrl) break;
       }
+      if (appUrl) break;
+      await new Promise((r) => setTimeout(r, APP_URL_POLL));
     }
 
-    // about:blank doesn't support localStorage — treat it as missing
-    if (!appUrl || appUrl === 'about:blank') {
+    if (appUrl) {
+      console.log(`[binary-setup] App URL: ${appUrl}`);
+    } else {
       console.warn('[binary-setup] Could not determine app URL, will use fallback');
       appUrl = fallbackUrl;
     }
