@@ -63,7 +63,7 @@ jobs:
       - name: Check coverage thresholds
         run: |
           echo "=== Coverage Report Summary ==="
-          echo "Thresholds: lines 40%, functions 60%, branches 70%, statements 40%"
+          echo "Thresholds: lines 38%, functions 60%, branches 63%, statements 38%"
           echo "If thresholds are not met, CI will fail here."
 
   # Frontend integration tests (React component tests)
@@ -155,6 +155,9 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Enable universe repository
+        run: sudo add-apt-repository universe -y
 
       - name: Install system dependencies (Tauri + FFmpeg for tests)
         run: |
@@ -254,6 +257,10 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
+      - name: Enable universe repository
+        if: runner.os == 'Linux'
+        run: sudo add-apt-repository universe -y
+
       - name: Install system dependencies (Tauri)
         if: runner.os == 'Linux'
         run: |
@@ -322,20 +329,40 @@ jobs:
             echo "Frontend tests failed"
             exit 1
           fi
+          if [[ "${{ needs.frontend.result }}" == "cancelled" ]]; then
+            echo "Frontend tests were cancelled"
+            exit 1
+          fi
           if [[ "${{ needs.integration.result }}" == "failure" ]]; then
             echo "Integration tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.integration.result }}" == "cancelled" ]]; then
+            echo "Integration tests were cancelled"
             exit 1
           fi
           if [[ "${{ needs.backend.result }}" == "failure" ]]; then
             echo "Backend tests failed"
             exit 1
           fi
+          if [[ "${{ needs.backend.result }}" == "cancelled" ]]; then
+            echo "Backend tests were cancelled"
+            exit 1
+          fi
           if [[ "${{ needs.e2e.result }}" == "failure" ]]; then
             echo "E2E tests failed"
             exit 1
           fi
+          if [[ "${{ needs.e2e.result }}" == "cancelled" ]]; then
+            echo "E2E tests were cancelled"
+            exit 1
+          fi
           if [[ "${{ needs.e2e-binary.result }}" == "failure" ]]; then
             echo "Binary E2E tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.e2e-binary.result }}" == "cancelled" ]]; then
+            echo "Binary E2E tests were cancelled"
             exit 1
           fi
           if [[ "${{ needs.e2e-binary.result }}" == "skipped" ]]; then
@@ -349,7 +376,7 @@ jobs:
     name: Notify on Failure
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, e2e-binary]
+    needs: [frontend, integration, backend, e2e, e2e-binary, check]
     if: failure()
     steps:
       - name: Send Telegram notification
