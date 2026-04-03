@@ -40,6 +40,39 @@ async function waitForCDP(port: number, timeoutMs = 30000): Promise<string> {
 }
 
 /**
+ * Query the CDP /json/list endpoint to find the app page URL.
+ * Returns the URL of the first non-blank target, or null.
+ */
+function getAppUrlFromCDP(port: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${port}/json/list`, (res) => {
+      let data = '';
+      res.on('data', (chunk: Buffer) => (data += chunk.toString()));
+      res.on('end', () => {
+        try {
+          const targets: Array<{ url: string; type: string }> = JSON.parse(data);
+          // Find the first page-type target that isn't about:blank
+          for (const t of targets) {
+            if (t.type === 'page' && t.url && t.url !== 'about:blank') {
+              resolve(t.url);
+              return;
+            }
+          }
+          resolve(null);
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(5000, () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+/**
  * Check if the CDP endpoint is responding.
  */
 function checkCDPPort(port: number): Promise<string | null> {
@@ -159,29 +192,17 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     const wsUrl = await waitForCDP(CDP_PORT);
     console.log(`[binary-setup] CDP available at: ${wsUrl}`);
 
-    // Connect to capture the app URL — the Tauri WebView page may take
-    // a moment to appear alongside the about:blank DevTools landing page.
-    const { chromium } = await import('@playwright/test');
-    const browser = await chromium.connectOverCDP(wsUrl);
-
+    // Detect the app URL by polling the CDP /json/list endpoint.
+    // The Tauri WebView page may take a moment to appear alongside
+    // the about:blank DevTools landing page.
     const fallbackUrl = process.platform === 'win32' ? 'http://tauri.localhost' : 'tauri://localhost';
     const APP_URL_TIMEOUT = 15000;
     const APP_URL_POLL = 500;
 
-    let appUrl: string | undefined;
+    let appUrl: string | null = null;
     const start = Date.now();
     while (Date.now() - start < APP_URL_TIMEOUT) {
-      const contexts = browser.contexts();
-      for (const ctx of contexts) {
-        for (const page of ctx.pages()) {
-          const url = page.url();
-          if (url && url !== 'about:blank') {
-            appUrl = url;
-            break;
-          }
-        }
-        if (appUrl) break;
-      }
+      appUrl = await getAppUrlFromCDP(CDP_PORT);
       if (appUrl) break;
       await new Promise((r) => setTimeout(r, APP_URL_POLL));
     }
@@ -193,6 +214,9 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       appUrl = fallbackUrl;
     }
 
+    // Connect briefly via Playwright to verify the URL is accessible
+    const { chromium } = await import('@playwright/test');
+    const browser = await chromium.connectOverCDP(wsUrl);
     await browser.close();
 
     // Write success state
