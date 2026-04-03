@@ -164,6 +164,8 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     const browser = await chromium.connectOverCDP(wsUrl);
     const contexts = browser.contexts();
 
+    const fallbackUrl = process.platform === 'win32' ? 'http://tauri.localhost' : 'tauri://localhost';
+
     let appUrl: string | undefined;
     if (contexts.length > 0 && contexts[0].pages().length > 0) {
       appUrl = contexts[0].pages()[0].url();
@@ -174,10 +176,12 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       if (contexts.length > 0 && contexts[0].pages().length > 0) {
         appUrl = contexts[0].pages()[0].url();
       }
-      if (!appUrl) {
-        console.warn('[binary-setup] Could not determine app URL, will use fallback');
-        appUrl = process.platform === 'win32' ? 'http://tauri.localhost' : 'tauri://localhost';
-      }
+    }
+
+    // about:blank doesn't support localStorage — treat it as missing
+    if (!appUrl || appUrl === 'about:blank') {
+      console.warn('[binary-setup] Could not determine app URL, will use fallback');
+      appUrl = fallbackUrl;
     }
 
     await browser.close();
