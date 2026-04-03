@@ -44,17 +44,12 @@ function buildSettingsStorage(overrides: Record<string, unknown> = {}): string {
  * localStorage before React loads.
  */
 export async function navigateSkippingWizard(appUrl: string): Promise<void> {
-  await browser.url('about:blank');
-
-  await browser.execute(
-    (key: string, value: string) => {
-      localStorage.setItem(key, value);
-    },
-    SETTINGS_KEY,
-    buildSettingsStorage()
-  );
-
   await browser.url(appUrl);
+  await browser.execute(
+    (key: string, value: string) => { localStorage.setItem(key, value); },
+    SETTINGS_KEY, buildSettingsStorage()
+  );
+  await browser.refresh();
   await $('[data-testid="nav-files"]').waitForDisplayed({ timeout: 15000 });
 }
 

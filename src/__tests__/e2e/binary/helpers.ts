@@ -139,21 +139,12 @@ function buildSettingsStorage(overrides: Record<string, unknown> = {}): string {
  * @param appUrl - The app URL captured from CDP during global-setup
  */
 export async function navigateSkippingWizard(page: Page, appUrl: string): Promise<void> {
-  // Navigate to a blank page first to set localStorage in the correct origin
-  await page.goto('about:blank');
-
-  // Inject the settings with hasSeenFirstRun=true
+  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.evaluate(
-    ({ key, value }) => {
-      localStorage.setItem(key, value);
-    },
+    ({ key, value }) => { localStorage.setItem(key, value); },
     { key: SETTINGS_KEY, value: buildSettingsStorage() }
   );
-
-  // Now navigate to the actual app
-  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-  // Wait for the app shell to render (sidebar should appear after wizard skip)
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForSelector('[data-testid="nav-files"]', { timeout: 15000 });
 }
 

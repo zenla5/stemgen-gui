@@ -53,6 +53,11 @@ function checkCDPPort(port: number): Promise<string | null> {
           // Return the WebSocket URL or the HTTP base URL
           resolve(info.webSocketDebuggerUrl || `http://127.0.0.1:${port}`);
         } catch {
+          console.warn(
+            `[binary-setup] CDP parse error on port ${port}. ` +
+            `HTTP ${res.statusCode}. Raw body (first 500 chars): ` +
+            data.slice(0, 500)
+          );
           resolve(null);
         }
       });
@@ -128,6 +133,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
 
   // Pipe stdout to log file; buffer stderr for diagnostics
   child.stdout?.pipe(logStream);
+  child.stderr?.pipe(logStream);
 
   // Track early exits with stderr output
   let stderrBuf = '';
@@ -170,7 +176,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       }
       if (!appUrl) {
         console.warn('[binary-setup] Could not determine app URL, will use fallback');
-        appUrl = `http://localhost:${CDP_PORT}`;
+        appUrl = process.platform === 'win32' ? 'http://tauri.localhost' : 'tauri://localhost';
       }
     }
 

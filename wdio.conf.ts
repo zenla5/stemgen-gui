@@ -11,6 +11,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { STATE_FILE } from './src/__tests__/e2e/binary/helpers';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +31,7 @@ function getBinaryPath(): string | null {
 }
 
 const TAURI_DRIVER_PORT = 4444;
-const TAURI_NATIVE_PORT = 4445;
+const BINARY_PATH = getBinaryPath();
 
 let tauriDriverProcess: ChildProcess | null = null;
 
@@ -53,7 +54,7 @@ export const config: Options.Testrunner = {
     {
       maxInstances: 1,
       'tauri:options': {
-        application: '', // set in beforeSession
+        application: BINARY_PATH || '',
       },
     } as unknown as WebdriverIO.Capabilities,
   ],
@@ -86,12 +87,6 @@ export const config: Options.Testrunner = {
 
     console.log(`[wdio] Found binary: ${binaryPath}`);
 
-    // Update capability with the actual binary path
-    const caps = config.capabilities?.[0] as Record<string, unknown>;
-    if (caps) {
-      caps['tauri:options'] = { application: binaryPath };
-    }
-
     // Start tauri-driver
     const tauriDriverBin =
       process.env.TAURI_DRIVER_BIN ||
@@ -104,11 +99,11 @@ export const config: Options.Testrunner = {
     }
 
     console.log(
-      `[wdio] Starting tauri-driver: ${tauriDriverBin} (port ${TAURI_DRIVER_PORT}, native ${TAURI_NATIVE_PORT})`
+      `[wdio] Starting tauri-driver: ${tauriDriverBin} (port ${TAURI_DRIVER_PORT})`
     );
     tauriDriverProcess = spawn(
       tauriDriverBin,
-      ['--port', String(TAURI_DRIVER_PORT), '--native-port', String(TAURI_NATIVE_PORT)],
+      ['--port', String(TAURI_DRIVER_PORT)],
       {
         stdio: ['pipe', 'pipe', 'pipe'],
       }
@@ -148,6 +143,9 @@ export const config: Options.Testrunner = {
           });
         });
         console.log('[wdio] tauri-driver is ready');
+        // Write state file so Linux specs can read appUrl and availability
+        fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+        fs.writeFileSync(STATE_FILE, JSON.stringify({ available: true, appUrl: 'tauri://localhost' }));
         return;
       } catch {
         await new Promise((r) => setTimeout(r, 500));
@@ -160,6 +158,7 @@ export const config: Options.Testrunner = {
    * Stop tauri-driver after the test session.
    */
   afterSession: function () {
+    if (fs.existsSync(STATE_FILE)) fs.unlinkSync(STATE_FILE);
     if (tauriDriverProcess) {
       console.log('[wdio] Stopping tauri-driver');
       tauriDriverProcess.kill('SIGTERM');
