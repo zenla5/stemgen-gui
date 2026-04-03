@@ -7,7 +7,7 @@ pub mod commands;
 pub mod stems;
 
 use std::sync::Mutex as StdMutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex as TokioMutex;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -140,7 +140,8 @@ pub fn run() {
                             deploy_success = true;
                         }
                     } else {
-                        deploy_error = Some("Sidecar script not found in application resources".to_string());
+                        deploy_error =
+                            Some("Sidecar script not found in application resources".to_string());
                     }
                 } else {
                     deploy_error = Some("Failed to get resource directory".to_string());

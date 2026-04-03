@@ -11,6 +11,7 @@ pub mod sidecar;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use tauri::Manager;
 use tracing::info;
 
 use self::probe::*;
