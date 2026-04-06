@@ -138,15 +138,26 @@ function buildSettingsStorage(overrides: Record<string, unknown> = {}): string {
  */
 export async function ensureViewport(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 720 });
+  // Inject CSS fallback to guarantee html/body have minimum dimensions.
+  // On Windows WebView2, CDP viewport emulation may not override the
+  // WebView's actual 0x0 dimensions, causing all elements to report as hidden.
+  await page.addInitScript(() => {
+    if (!document.getElementById('__e2e-viewport-fallback')) {
+      const style = document.createElement('style');
+      style.id = '__e2e-viewport-fallback';
+      style.textContent = 'html, body { min-height: 100vh !important; min-width: 100vw !important; }';
+      document.head?.appendChild(style);
+    }
+  });
 }
 
 export async function navigateSkippingWizard(page: Page, appUrl: string): Promise<void> {
-  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
-  await page.evaluate(
+  await page.addInitScript(
     ({ key, value }) => { localStorage.setItem(key, value); },
     { key: SETTINGS_KEY, value: buildSettingsStorage() }
   );
+  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
   await page.waitForSelector('[data-testid="nav-files"]', { timeout: 15000 });
@@ -157,15 +168,16 @@ export async function navigateSkippingWizard(page: Page, appUrl: string): Promis
  * hasSeenFirstRun, and navigates back to the app.
  */
 export async function resetAppState(page: Page, appUrl: string): Promise<void> {
-  await page.evaluate(
+  await ensureViewport(page);
+  await page.addInitScript(
     ({ key, value }) => {
       localStorage.clear();
       localStorage.setItem(key, value);
     },
     { key: SETTINGS_KEY, value: buildSettingsStorage() }
   );
-
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
   await page.waitForSelector('[data-testid="nav-files"]', { timeout: 15000 });
 }

@@ -189,9 +189,9 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
           try {
             Object.defineProperty(origInternals, 'invoke', {
               value: mockInvoke,
-              writable: desc?.writable !== false,
-              configurable: desc?.configurable !== false,
-              enumerable: desc?.enumerable === true,
+              writable: !!desc?.writable,
+              configurable: !!desc?.configurable,
+              enumerable: !!desc?.enumerable,
             });
             w.__mockProxyInstalled = true;
             return { ok: true, method: 'defineProp', diag };
