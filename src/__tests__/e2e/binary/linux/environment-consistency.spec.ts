@@ -19,6 +19,9 @@ import {
   navigateSkippingWizard,
   navigateToView,
   mockValidateEnvironment,
+  mockTauriCommand,
+  setCommandFlag,
+  getCommandFlag,
   isDisplayedSafe,
   takeScreenshot,
 } from './helpers';
@@ -169,25 +172,15 @@ describe('Sidecar Deployment — repair and guard', () => {
     await $('[data-testid="refresh-env-btn"]').click();
     await browser.pause(1000);
 
-    // Set a window flag via browser.execute — no exposeFunction available.
-    // Patch __TAURI_INVOKE__ to set __deployCalled when deploy_sidecar is invoked.
-    await browser.execute(() => {
-      const w = window as any;
-      w.__deployCalled = false;
-      const orig = w.__TAURI_INVOKE__;
-      w.__TAURI_INVOKE__ = (cmd: string, ...args: unknown[]) => {
-        if (cmd === 'deploy_sidecar') {
-          w.__deployCalled = true;
-        }
-        return orig(cmd, ...args);
-      };
-    });
+    // Use setCommandFlag instead of exposeFunction (not available in WebdriverIO).
+    // This patches __TAURI_INTERNALS__ via Proxy to set a flag when deploy_sidecar is called.
+    await setCommandFlag('deploy_sidecar');
 
     if (await isDisplayedSafe('[data-testid="repair-sidecar-btn"]')) {
       await $('[data-testid="repair-sidecar-btn"]').click();
       await browser.pause(1000);
 
-      const deployCalled = await browser.execute(() => (window as any).__deployCalled);
+      const deployCalled = await getCommandFlag('deploy_sidecar');
       expect(deployCalled).toBe(true);
     }
     await takeScreenshot('linux-env-repair-call');
@@ -259,21 +252,9 @@ describe('Install All Missing — progress surfacing', () => {
       return; // Install All Missing button not visible
     }
 
-    // Mock install_dependency to return quickly
-    await browser.execute(() => {
-      const w = window as any;
-      const orig = w.__TAURI_INVOKE__;
-      w.__TAURI_INVOKE__ = (cmd: string, ...args: unknown[]) => {
-        if (cmd === 'install_dependency') {
-          const arg = args[0] as Record<string, unknown> | undefined;
-          return Promise.resolve({ success: true, depName: arg?.depName, output: [] });
-        }
-        if (cmd === 'get_available_installers') {
-          return Promise.resolve([{ id: 'pip', name: 'pip', commandDisplay: 'pip install', needsElevation: false }]);
-        }
-        return orig(cmd, ...args);
-      };
-    });
+    // Mock install_dependency and get_available_installers to return quickly
+    await mockTauriCommand('install_dependency', { success: true, depName: 'mock', output: [] });
+    await mockTauriCommand('get_available_installers', [{ id: 'pip', name: 'pip', commandDisplay: 'pip install', needsElevation: false }]);
 
     await $('[data-testid="install-all-btn"]').click();
 

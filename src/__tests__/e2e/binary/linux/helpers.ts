@@ -40,31 +40,24 @@ function buildSettingsStorage(overrides: Record<string, unknown> = {}): string {
 }
 
 /**
- * Build settings storage while preserving the current theme from localStorage.
- * This prevents navigateSkippingWizard from resetting the theme on reload.
- */
-function buildSettingsStoragePreservingTheme(): string {
-  let currentTheme = 'system';
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.state?.theme) currentTheme = parsed.state.theme;
-    }
-  } catch { /* ignore */ }
-  return buildSettingsStorage({ theme: currentTheme });
-}
-
-/**
  * Navigate to the app, skipping the first-run wizard by pre-injecting
  * localStorage before React loads.
+ * Preserves the current theme setting across the reload.
  */
 export async function navigateSkippingWizard(appUrl: string): Promise<void> {
   await browser.url(appUrl);
-  await browser.execute(
-    (key: string, value: string) => { localStorage.setItem(key, value); },
-    SETTINGS_KEY, buildSettingsStoragePreservingTheme()
-  );
+  // Read current theme from browser localStorage, then re-inject with hasSeenFirstRun=true
+  await browser.execute((key: string) => {
+    let theme = 'system';
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) theme = JSON.parse(raw)?.state?.theme || 'system';
+    } catch { /* ignore */ }
+    localStorage.setItem(key, JSON.stringify({
+      state: { hasSeenFirstRun: true, theme, language: 'en' },
+      version: 0,
+    }));
+  }, SETTINGS_KEY);
   await browser.refresh();
   await $('[data-testid="nav-files"]').waitForDisplayed({ timeout: 15000 });
 }
@@ -140,39 +133,42 @@ export async function navigateWithWizard(appUrl: string): Promise<void> {
  * We monkey-patch the invoke method to intercept specific commands.
  */
 export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
-  const result = await browser.execute((mockData: Record<string, unknown>) => {
+  await browser.execute((mockData: Record<string, unknown>) => {
     const w = window as any;
-    const hasInternals = !!w.__TAURI_INTERNALS__;
-    const hasInvoke = !!w.__TAURI_INTERNALS__?.invoke;
-    const invokeType = typeof w.__TAURI_INTERNALS__?.invoke;
+    if (!w.__TAURI_INTERNALS__?.invoke) return;
 
-    if (!w.__TAURI_INTERNALS__?.invoke) {
-      return { applied: false, reason: 'no __TAURI_INTERNALS__.invoke', hasInternals, hasInvoke, invokeType };
-    }
+    const origInternals = w.__TAURI_INTERNALS__;
+    const origInvoke = origInternals.invoke;
 
-    const internals = w.__TAURI_INTERNALS__;
-    const origInvoke = internals.invoke;
-
-    // Replace invoke with a wrapper that intercepts specific commands
-    internals.invoke = function(cmd: string, args?: Record<string, unknown>) {
-      if (cmd === 'validate_environment') {
-        return Promise.resolve(mockData);
-      }
-      return origInvoke.call(internals, cmd, args);
+    // __TAURI_INTERNALS__.invoke is non-writable in Tauri v2 WebKit.
+    // Replace the entire __TAURI_INTERNALS__ object with a Proxy that
+    // intercepts invoke while forwarding everything else.
+    const commandMocks: Record<string, unknown> = {
+      validate_environment: mockData,
     };
 
-    // Verify the patch stuck
-    const patched = internals.invoke !== origInvoke;
-
-    return { applied: true, patched, invokeType: typeof internals.invoke };
+    w.__TAURI_INTERNALS__ = new Proxy(origInternals, {
+      get(target, prop, receiver) {
+        if (prop === 'invoke') {
+          return function(cmd: string, args?: Record<string, unknown>) {
+            if (cmd in commandMocks) {
+              return Promise.resolve(commandMocks[cmd]);
+            }
+            return origInvoke.call(target, cmd, args);
+          };
+        }
+        const val = Reflect.get(target, prop, receiver);
+        return typeof val === 'function' ? val.bind(target) : val;
+      },
+    });
   }, data);
-
-  console.log(`[mockValidateEnvironment] applied=${result?.applied} patched=${result?.patched} reason=${result?.reason}`);
 }
 
 /**
  * Patch a specific Tauri command to return a custom result.
  * Useful for mocking install_dependency, deploy_sidecar, etc.
+ *
+ * Uses Proxy to replace __TAURI_INTERNALS__ since invoke is non-writable in Tauri v2.
  */
 export async function mockTauriCommand(
   command: string,
@@ -182,17 +178,23 @@ export async function mockTauriCommand(
     (cmd: string, result: unknown) => {
       const w = window as any;
       if (!w.__TAURI_INTERNALS__?.invoke) return;
-      const internals = w.__TAURI_INTERNALS__;
-      if (internals.invoke.__patched) return;
-      const origInvoke = internals.invoke.bind(internals);
-      const patchedInvoke = (command: string, args?: Record<string, unknown>) => {
-        if (command === cmd) {
-          return Promise.resolve(result);
-        }
-        return origInvoke(command, args);
-      };
-      patchedInvoke.__patched = true;
-      internals.invoke = patchedInvoke;
+      const origInternals = w.__TAURI_INTERNALS__;
+      const origInvoke = origInternals.invoke;
+
+      w.__TAURI_INTERNALS__ = new Proxy(origInternals, {
+        get(target, prop, receiver) {
+          if (prop === 'invoke') {
+            return function(command: string, args?: Record<string, unknown>) {
+              if (command === cmd) {
+                return Promise.resolve(result);
+              }
+              return origInvoke.call(target, command, args);
+            };
+          }
+          const val = Reflect.get(target, prop, receiver);
+          return typeof val === 'function' ? val.bind(target) : val;
+        },
+      });
     },
     command,
     mockResult
@@ -201,9 +203,9 @@ export async function mockTauriCommand(
 
 /**
  * Set a flag on window when a specific Tauri command is invoked.
- * Returns a function that reads the flag.
+ * Use with getCommandFlag() instead of page.exposeFunction() (not available in WebdriverIO).
  *
- * Use instead of page.exposeFunction() (not available in WebdriverIO).
+ * Uses Proxy to replace __TAURI_INTERNALS__ since invoke is non-writable in Tauri v2.
  */
 export async function setCommandFlag(command: string): Promise<void> {
   await browser.execute((cmd: string) => {
@@ -211,14 +213,24 @@ export async function setCommandFlag(command: string): Promise<void> {
     const flagName = `__${cmd}Called`;
     w[flagName] = false;
     if (!w.__TAURI_INTERNALS__?.invoke) return;
-    const internals = w.__TAURI_INTERNALS__;
-    const origInvoke = internals.invoke.bind(internals);
-    internals.invoke = (command: string, args?: Record<string, unknown>) => {
-      if (command === cmd) {
-        w[flagName] = true;
-      }
-      return origInvoke(command, args);
-    };
+
+    const origInternals = w.__TAURI_INTERNALS__;
+    const origInvoke = origInternals.invoke;
+
+    w.__TAURI_INTERNALS__ = new Proxy(origInternals, {
+      get(target, prop, receiver) {
+        if (prop === 'invoke') {
+          return function(command: string, args?: Record<string, unknown>) {
+            if (command === cmd) {
+              w[flagName] = true;
+            }
+            return origInvoke.call(target, command, args);
+          };
+        }
+        const val = Reflect.get(target, prop, receiver);
+        return typeof val === 'function' ? val.bind(target) : val;
+      },
+    });
   }, command);
 }
 
