@@ -127,13 +127,13 @@ export async function navigateWithWizard(appUrl: string): Promise<void> {
 }
 
 /**
- * Ensure the Tauri invoke bridge has a shared Proxy installed.
+ * Ensure the Tauri invoke bridge has a shared mock shim installed.
  *
  * All mock helpers (mockValidateEnvironment, mockTauriCommand, setCommandFlag)
- * register their interceptors on `window.__mockRegistry`. A single Proxy on
- * __TAURI_INTERNALS__ checks the registry before forwarding to the original
- * invoke. This avoids the Proxy-chaining problem where each helper replaced
- * the previous Proxy and lost earlier mocks.
+ * register their interceptors on `window.__mockRegistry`. A cloned
+ * __TAURI_INTERNALS__ object checks the registry before forwarding to the
+ * original invoke. This avoids the Proxy-chaining problem where each helper
+ * replaced the previous Proxy and lost earlier mocks.
  */
 async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
   return browser.execute(() => {
@@ -149,27 +149,29 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
     w.__mockRegistry = w.__mockRegistry || {};
     w.__mockFlags = w.__mockFlags || {};
 
-    const proxy = new Proxy(origInternals, {
-      get(target, prop, receiver) {
-        if (prop === 'invoke') {
-          return function(cmd: string, args?: Record<string, unknown>) {
-            // Flag tracking
-            if (w.__mockFlags[cmd] !== undefined) {
-              w.__mockFlags[cmd] = true;
-            }
-            // Command mock
-            if (w.__mockRegistry[cmd] !== undefined) {
-              return Promise.resolve(w.__mockRegistry[cmd]);
-            }
-            return origInvoke.call(target, cmd, args);
-          };
-        }
-        const val = Reflect.get(target, prop, receiver);
-        return typeof val === 'function' ? val.bind(target) : val;
-      },
-    });
+    // Clone the internals object and replace invoke directly.
+    // This avoids Proxy compatibility issues on WebKit2GTK where the
+    // get trap may not fire for __TAURI_INTERNALS__ property access.
+    const newInternals = Object.create(Object.getPrototypeOf(origInternals));
+    Object.defineProperties(newInternals, Object.getOwnPropertyDescriptors(origInternals));
 
-    w.__TAURI_INTERNALS__ = proxy;
+    newInternals.invoke = function(cmd: string, args?: Record<string, unknown>) {
+      // Flag tracking
+      if (w.__mockFlags[cmd] !== undefined) {
+        w.__mockFlags[cmd] = true;
+      }
+      // Command mock
+      if (w.__mockRegistry[cmd] !== undefined) {
+        return Promise.resolve(w.__mockRegistry[cmd]);
+      }
+      return origInvoke.call(origInternals, cmd, args);
+    };
+
+    Object.defineProperty(w, '__TAURI_INTERNALS__', {
+      value: newInternals,
+      writable: true,
+      configurable: true,
+    });
     w.__mockProxyInstalled = true;
     return { ok: true };
   });
