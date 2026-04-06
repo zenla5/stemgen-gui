@@ -94,6 +94,49 @@ export async function getToastMessage(): Promise<string | null> {
 }
 
 /**
+ * Navigate to the app with the first-run wizard visible
+ * (clears localStorage so the wizard triggers on load).
+ */
+export async function navigateWithWizard(appUrl: string): Promise<void> {
+  await browser.url('about:blank');
+  await browser.execute(() => localStorage.clear());
+  await browser.url(appUrl);
+  await $('[data-testid="wizard-step"]').waitForDisplayed({ timeout: 15000 });
+}
+
+/**
+ * Patch validate_environment on the Tauri invoke bridge to return custom data.
+ * Uses __TAURI_INVOKE__ (the bridge function exposed by the Linux binary).
+ */
+export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
+  await browser.execute((mockData: Record<string, unknown>) => {
+    const w = window as any;
+    if (!w.__TAURI_INVOKE__) return;
+    const orig = w.__TAURI_INVOKE__;
+    if (orig.__patched) return; // already patched
+    const patched = (cmd: string, ...args: unknown[]) => {
+      if (cmd === 'validate_environment') {
+        return Promise.resolve(mockData);
+      }
+      return orig(cmd, ...args);
+    };
+    patched.__patched = true;
+    w.__TAURI_INVOKE__ = patched;
+  }, data);
+}
+
+/**
+ * Check if an element is displayed, returning false if it doesn't exist.
+ */
+export async function isDisplayedSafe(selector: string): Promise<boolean> {
+  try {
+    return await $(selector).isDisplayed();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Take a named screenshot.
  */
 export async function takeScreenshot(label: string): Promise<void> {

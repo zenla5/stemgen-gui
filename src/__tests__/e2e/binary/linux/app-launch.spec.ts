@@ -62,4 +62,25 @@ describe('App Launch', () => {
     expect(await $('[data-testid="status-bar"]').isDisplayed()).toBe(true);
     await takeScreenshot('linux-app-launch-status-bar');
   });
+
+  // NOTE: Windows test checks console.error events via page.on('console', ...).
+  // WebKit/tauri-driver does not expose the console stream.
+  // This test asserts DOM health as an equivalent observable proxy.
+  it('app starts without visible error state', async () => {
+    const state = readBinaryState();
+    if (!state?.available) return;
+
+    await navigateSkippingWizard(appUrl);
+
+    // Verify sidebar and status bar are present (app booted correctly)
+    expect(await $('[data-testid="nav-files"]').isDisplayed()).toBe(true);
+    expect(await $('[data-testid="status-bar"]').isDisplayed()).toBe(true);
+
+    // Verify no obvious error text leaked into the DOM
+    const bodyText = await $('body').getText();
+    expect(bodyText).not.toContain('Unhandled');
+    expect(bodyText).not.toContain('Cannot read');
+
+    await takeScreenshot('linux-app-launch-no-errors');
+  });
 });
