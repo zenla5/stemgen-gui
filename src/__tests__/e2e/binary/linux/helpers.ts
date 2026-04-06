@@ -14,7 +14,6 @@ const __dirname = dirname(__filename);
 export {
   getBinaryPath,
   readBinaryState,
-  PROJECT_ROOT,
   CDP_PORT,
   STATE_FILE,
   FIXTURES_DIR,
@@ -23,6 +22,9 @@ export {
   waitForStemOutputs,
   type BinaryState,
 } from '../helpers';
+
+// Local import for diagnostic logging
+import { PROJECT_ROOT } from '../helpers';
 
 // Settings key for zustand persist
 const SETTINGS_KEY = 'stemgen-settings-storage';
@@ -134,6 +136,18 @@ export async function navigateWithWizard(appUrl: string): Promise<void> {
  * registry before forwarding to the original invoke, so multiple mock calls
  * coexist without overwriting each other.
  */
+/**
+ * Write a diagnostic line to a persistent log file on disk.
+ * This survives across browser.execute() calls and is uploaded as CI artifact.
+ */
+function diagLog(message: string): void {
+  try {
+    const logPath = path.join(PROJECT_ROOT, 'test-results', 'mock-diag.log');
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${message}\n`);
+  } catch { /* best effort */ }
+}
+
 async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
   try {
     return await browser.execute(() => {
@@ -149,6 +163,16 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
         if (typeof origInvoke !== 'function') {
           return { ok: false, reason: 'invoke is not a function: ' + typeof origInvoke };
         }
+
+        // Check object mutability
+        const isExtensible = Object.isExtensible(origInternals);
+        const isSealed = Object.isSealed(origInternals);
+        const isFrozen = Object.isFrozen(origInternals);
+        const invokeDesc = Object.getOwnPropertyDescriptor(origInternals, 'invoke');
+        const descInfo = invokeDesc
+          ? `writable=${invokeDesc.writable}, configurable=${invokeDesc.configurable}, enumerable=${invokeDesc.enumerable}`
+          : 'no own descriptor (inherited?)';
+
         w.__mockRegistry = w.__mockRegistry || {};
         w.__mockFlags = w.__mockFlags || {};
 
@@ -162,11 +186,13 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
           return origInvoke.call(origInternals, cmd, args);
         }
 
+        const diag = `ext=${isExtensible},sealed=${isSealed},frozen=${isFrozen},invoke:[${descInfo}]`;
+
         // Strategy 1: Replace invoke directly on the original object.
         try {
           origInternals.invoke = mockInvoke;
           w.__mockProxyInstalled = true;
-          return { ok: true, method: 'direct' };
+          return { ok: true, method: 'direct', diag };
         } catch (e1: any) {
           // Strategy 2: Object.defineProperty on the object (not window)
           try {
@@ -177,11 +203,11 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
               enumerable: true,
             });
             w.__mockProxyInstalled = true;
-            return { ok: true, method: 'defineProperty' };
+            return { ok: true, method: 'defineProperty', diag };
           } catch (e2: any) {
             return {
               ok: false,
-              reason: 'all strategies failed: direct=' + (e1?.message || e1) +
+              reason: 'all strategies failed [' + diag + ']: direct=' + (e1?.message || e1) +
                 ', defineProperty=' + (e2?.message || e2),
             };
           }
@@ -203,11 +229,11 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
  */
 export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
   const proxyResult = await ensureMockProxy();
+  diagLog(`[mockValidateEnvironment] proxyResult: ${JSON.stringify(proxyResult)}`);
   if (!proxyResult.ok) {
     console.error(`[mockValidateEnvironment] FAILED: ${proxyResult.reason}`);
     return;
   }
-  console.log(`[mockValidateEnvironment] proxy installed, applying mock data`);
   await browser.execute((mockData: Record<string, unknown>) => {
     (window as any).__mockRegistry['validate_environment'] = mockData;
   }, data);
