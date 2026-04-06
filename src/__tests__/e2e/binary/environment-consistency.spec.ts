@@ -116,14 +116,15 @@ test.describe('Environment Consistency — false-red regression', () => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
     await navigateSkippingWizard(page, appUrl);
+    // Apply default mock BEFORE navigating to settings to intercept mount-time
+    // validate_environment calls (avoids race where React fetches env on mount
+    // before the test body's mock is applied).
+    await mockValidateEnvironment(page, ALL_AVAILABLE_ENV);
     await navigateToView(page, 'settings');
   });
 
   test('(b) all-available environment renders every Detailed Status row green', async ({ page }) => {
-    // Mock validate_environment to return a fully valid environment
-    await mockValidateEnvironment(page, ALL_AVAILABLE_ENV);
-
-    // Click Refresh to trigger re-validation with our mock
+    // Mock was already applied in beforeEach; click Refresh to trigger re-validation
     await page.locator('[data-testid="refresh-env-btn"]').click();
     await page.waitForTimeout(1000);
 
@@ -146,7 +147,7 @@ test.describe('Environment Consistency — false-red regression', () => {
       }
     });
 
-    await mockValidateEnvironment(page, ALL_AVAILABLE_ENV);
+    // Mock already applied in beforeEach; click Refresh to trigger re-validation
     await page.locator('[data-testid="refresh-env-btn"]').click();
     await page.waitForTimeout(2000);
 
@@ -154,7 +155,7 @@ test.describe('Environment Consistency — false-red regression', () => {
   });
 
   test('(a) footer and Detailed Status agree when all deps valid', async ({ page }) => {
-    await mockValidateEnvironment(page, ALL_AVAILABLE_ENV);
+    // Mock already applied in beforeEach; click Refresh to trigger re-validation
     await page.locator('[data-testid="refresh-env-btn"]').click();
     await page.waitForTimeout(1500);
 
@@ -181,6 +182,8 @@ test.describe('Sidecar Deployment — repair and guard', () => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
     await navigateSkippingWizard(page, appUrl);
+    // Apply mock before navigating to settings to intercept mount-time calls
+    await mockValidateEnvironment(page, MISSING_SIDECAR_ENV);
     await navigateToView(page, 'settings');
   });
 
@@ -253,6 +256,8 @@ test.describe('Install All Missing — progress surfacing', () => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
     await navigateSkippingWizard(page, appUrl);
+    // Apply default mock before navigating to settings to intercept mount-time calls
+    await mockValidateEnvironment(page, ALL_AVAILABLE_ENV);
     await navigateToView(page, 'settings');
   });
 
@@ -314,11 +319,13 @@ test.describe('Model Download — sidecar guard', () => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
     await navigateSkippingWizard(page, appUrl);
+    // Apply mock before navigating to settings to intercept mount-time calls
+    await mockValidateEnvironment(page, MISSING_SIDECAR_ENV);
     await navigateToView(page, 'settings');
   });
 
   test('(e) model download shows error when sidecar is absent', async ({ page }) => {
-    await mockValidateEnvironment(page, MISSING_SIDECAR_ENV);
+    // Mock already applied in beforeEach; click Refresh to trigger re-validation
     await page.locator('[data-testid="refresh-env-btn"]').click();
     await page.waitForTimeout(1000);
 
