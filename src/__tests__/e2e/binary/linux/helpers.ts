@@ -40,6 +40,22 @@ function buildSettingsStorage(overrides: Record<string, unknown> = {}): string {
 }
 
 /**
+ * Build settings storage while preserving the current theme from localStorage.
+ * This prevents navigateSkippingWizard from resetting the theme on reload.
+ */
+function buildSettingsStoragePreservingTheme(): string {
+  let currentTheme = 'system';
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.state?.theme) currentTheme = parsed.state.theme;
+    }
+  } catch { /* ignore */ }
+  return buildSettingsStorage({ theme: currentTheme });
+}
+
+/**
  * Navigate to the app, skipping the first-run wizard by pre-injecting
  * localStorage before React loads.
  */
@@ -47,7 +63,7 @@ export async function navigateSkippingWizard(appUrl: string): Promise<void> {
   await browser.url(appUrl);
   await browser.execute(
     (key: string, value: string) => { localStorage.setItem(key, value); },
-    SETTINGS_KEY, buildSettingsStorage()
+    SETTINGS_KEY, buildSettingsStoragePreservingTheme()
   );
   await browser.refresh();
   await $('[data-testid="nav-files"]').waitForDisplayed({ timeout: 15000 });
@@ -96,33 +112,100 @@ export async function getToastMessage(): Promise<string | null> {
 /**
  * Navigate to the app with the first-run wizard visible
  * (clears localStorage so the wizard triggers on load).
+ *
+ * NOTE: We navigate to appUrl first (not about:blank) because WebKit2GTK
+ * blocks localStorage operations from cross-origin pages.
  */
 export async function navigateWithWizard(appUrl: string): Promise<void> {
-  await browser.url('about:blank');
-  await browser.execute(() => localStorage.clear());
   await browser.url(appUrl);
+  await browser.execute(() => localStorage.clear());
+  await browser.refresh();
   await $('[data-testid="wizard-step"]').waitForDisplayed({ timeout: 15000 });
 }
 
 /**
  * Patch validate_environment on the Tauri invoke bridge to return custom data.
- * Uses __TAURI_INVOKE__ (the bridge function exposed by the Linux binary).
+ *
+ * The Linux binary exposes __TAURI_INTERNALS__.invoke() (Tauri v2 bridge).
+ * We monkey-patch the invoke method to intercept specific commands.
  */
 export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
   await browser.execute((mockData: Record<string, unknown>) => {
     const w = window as any;
-    if (!w.__TAURI_INVOKE__) return;
-    const orig = w.__TAURI_INVOKE__;
-    if (orig.__patched) return; // already patched
-    const patched = (cmd: string, ...args: unknown[]) => {
+    if (!w.__TAURI_INTERNALS__?.invoke) return;
+    const internals = w.__TAURI_INTERNALS__;
+    if (internals.invoke.__patched) return; // already patched
+    const origInvoke = internals.invoke.bind(internals);
+    const patchedInvoke = (cmd: string, args?: Record<string, unknown>) => {
       if (cmd === 'validate_environment') {
         return Promise.resolve(mockData);
       }
-      return orig(cmd, ...args);
+      return origInvoke(cmd, args);
     };
-    patched.__patched = true;
-    w.__TAURI_INVOKE__ = patched;
+    patchedInvoke.__patched = true;
+    internals.invoke = patchedInvoke;
   }, data);
+}
+
+/**
+ * Patch a specific Tauri command to return a custom result.
+ * Useful for mocking install_dependency, deploy_sidecar, etc.
+ */
+export async function mockTauriCommand(
+  command: string,
+  mockResult: unknown
+): Promise<void> {
+  await browser.execute(
+    (cmd: string, result: unknown) => {
+      const w = window as any;
+      if (!w.__TAURI_INTERNALS__?.invoke) return;
+      const internals = w.__TAURI_INTERNALS__;
+      if (internals.invoke.__patched) return;
+      const origInvoke = internals.invoke.bind(internals);
+      const patchedInvoke = (command: string, args?: Record<string, unknown>) => {
+        if (command === cmd) {
+          return Promise.resolve(result);
+        }
+        return origInvoke(command, args);
+      };
+      patchedInvoke.__patched = true;
+      internals.invoke = patchedInvoke;
+    },
+    command,
+    mockResult
+  );
+}
+
+/**
+ * Set a flag on window when a specific Tauri command is invoked.
+ * Returns a function that reads the flag.
+ *
+ * Use instead of page.exposeFunction() (not available in WebdriverIO).
+ */
+export async function setCommandFlag(command: string): Promise<void> {
+  await browser.execute((cmd: string) => {
+    const w = window as any;
+    const flagName = `__${cmd}Called`;
+    w[flagName] = false;
+    if (!w.__TAURI_INTERNALS__?.invoke) return;
+    const internals = w.__TAURI_INTERNALS__;
+    const origInvoke = internals.invoke.bind(internals);
+    internals.invoke = (command: string, args?: Record<string, unknown>) => {
+      if (command === cmd) {
+        w[flagName] = true;
+      }
+      return origInvoke(command, args);
+    };
+  }, command);
+}
+
+/**
+ * Read back a command invocation flag set by setCommandFlag.
+ */
+export async function getCommandFlag(command: string): Promise<boolean> {
+  return browser.execute((cmd: string) => {
+    return (window as any)[`__${cmd}Called`] === true;
+  }, command);
 }
 
 /**
