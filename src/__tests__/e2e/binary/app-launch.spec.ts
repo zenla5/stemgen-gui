@@ -4,7 +4,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { readBinaryState, navigateSkippingWizard, takeScreenshot } from './helpers';
+import { readBinaryState, navigateSkippingWizard, takeScreenshot, ensureViewport } from './helpers';
 
 test.describe('App Launch', () => {
   let appUrl: string;
@@ -23,6 +23,7 @@ test.describe('App Launch', () => {
     test.skip(!state?.available, state?.reason || 'Binary not available');
 
     await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await ensureViewport(page);
     await expect(page.locator('body')).toBeVisible();
     await takeScreenshot(page, 'app-launch-initial-load');
   });
@@ -32,6 +33,7 @@ test.describe('App Launch', () => {
     test.skip(!state?.available, state?.reason || 'Binary not available');
 
     await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await ensureViewport(page);
     await expect(page).toHaveTitle(/Stemgen/i);
     await takeScreenshot(page, 'app-launch-title');
   });

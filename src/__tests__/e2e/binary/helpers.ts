@@ -132,19 +132,23 @@ function buildSettingsStorage(overrides: Record<string, unknown> = {}): string {
 }
 
 /**
- * Navigate to the app, skipping the first-run wizard by pre-injecting
- * localStorage before React loads.
- *
- * @param page - Playwright page connected to the Tauri binary
- * @param appUrl - The app URL captured from CDP during global-setup
+ * Ensure the page viewport is large enough for Playwright visibility checks.
+ * On CI, the WebView2 window may start at 0x0, causing all elements to report
+ * as "hidden". This must be called AFTER every page.goto() and page.reload().
  */
+export async function ensureViewport(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1280, height: 720 });
+}
+
 export async function navigateSkippingWizard(page: Page, appUrl: string): Promise<void> {
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await ensureViewport(page);
   await page.evaluate(
     ({ key, value }) => { localStorage.setItem(key, value); },
     { key: SETTINGS_KEY, value: buildSettingsStorage() }
   );
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+  await ensureViewport(page);
   await page.waitForSelector('[data-testid="nav-files"]', { timeout: 15000 });
 }
 
@@ -162,6 +166,7 @@ export async function resetAppState(page: Page, appUrl: string): Promise<void> {
   );
 
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await ensureViewport(page);
   await page.waitForSelector('[data-testid="nav-files"]', { timeout: 15000 });
 }
 

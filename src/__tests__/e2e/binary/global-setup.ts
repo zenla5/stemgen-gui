@@ -236,25 +236,6 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       appUrl = fallbackUrl;
     }
 
-    // Set viewport on the Tauri WebView page — on CI Windows the WebView2
-    // window may start at 0x0, causing Playwright's toBeVisible() to report
-    // all elements as "hidden".
-    try {
-      const { chromium: pw } = await import('@playwright/test');
-      const browser = await pw.connectOverCDP(wsUrl);
-      for (const ctx of browser.contexts()) {
-        for (const page of ctx.pages()) {
-          if (page.url() && page.url() !== 'about:blank') {
-            await page.setViewportSize({ width: 1280, height: 720 });
-            console.log(`[binary-setup] Set viewport to 1280x720 on ${page.url()}`);
-          }
-        }
-      }
-      await browser.close();
-    } catch (viewportErr) {
-      console.warn(`[binary-setup] Could not set viewport: ${viewportErr}`);
-    }
-
     // Write success state
     fs.writeFileSync(
       STATE_FILE,
