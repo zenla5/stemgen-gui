@@ -71,15 +71,25 @@ export async function navigateSkippingWizard(appUrl: string): Promise<void> {
 
 /**
  * Reset app state between tests.
+ * Preserves the current theme so theme persistence tests work correctly.
  */
 export async function resetAppState(appUrl: string): Promise<void> {
   await browser.execute(
-    (key: string, value: string) => {
+    (key: string) => {
+      // Preserve theme before clearing
+      let theme = 'system';
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) theme = JSON.parse(raw)?.state?.theme || 'system';
+      } catch { /* ignore */ }
+
       localStorage.clear();
-      localStorage.setItem(key, value);
+      localStorage.setItem(key, JSON.stringify({
+        state: { hasSeenFirstRun: true, theme, language: 'en' },
+        version: 0,
+      }));
     },
-    SETTINGS_KEY,
-    buildSettingsStorage()
+    SETTINGS_KEY
   );
 
   await browser.url(appUrl);
@@ -130,21 +140,34 @@ export async function navigateWithWizard(appUrl: string): Promise<void> {
  * We monkey-patch the invoke method to intercept specific commands.
  */
 export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
-  await browser.execute((mockData: Record<string, unknown>) => {
+  const result = await browser.execute((mockData: Record<string, unknown>) => {
     const w = window as any;
-    if (!w.__TAURI_INTERNALS__?.invoke) return;
+    const hasInternals = !!w.__TAURI_INTERNALS__;
+    const hasInvoke = !!w.__TAURI_INTERNALS__?.invoke;
+    const invokeType = typeof w.__TAURI_INTERNALS__?.invoke;
+
+    if (!w.__TAURI_INTERNALS__?.invoke) {
+      return { applied: false, reason: 'no __TAURI_INTERNALS__.invoke', hasInternals, hasInvoke, invokeType };
+    }
+
     const internals = w.__TAURI_INTERNALS__;
-    if (internals.invoke.__patched) return; // already patched
-    const origInvoke = internals.invoke.bind(internals);
-    const patchedInvoke = (cmd: string, args?: Record<string, unknown>) => {
+    const origInvoke = internals.invoke;
+
+    // Replace invoke with a wrapper that intercepts specific commands
+    internals.invoke = function(cmd: string, args?: Record<string, unknown>) {
       if (cmd === 'validate_environment') {
         return Promise.resolve(mockData);
       }
-      return origInvoke(cmd, args);
+      return origInvoke.call(internals, cmd, args);
     };
-    patchedInvoke.__patched = true;
-    internals.invoke = patchedInvoke;
+
+    // Verify the patch stuck
+    const patched = internals.invoke !== origInvoke;
+
+    return { applied: true, patched, invokeType: typeof internals.invoke };
   }, data);
+
+  console.log(`[mockValidateEnvironment] applied=${result?.applied} patched=${result?.patched} reason=${result?.reason}`);
 }
 
 /**
