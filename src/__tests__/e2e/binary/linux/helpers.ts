@@ -133,9 +133,11 @@ export async function navigateWithWizard(appUrl: string): Promise<void> {
  * We monkey-patch the invoke method to intercept specific commands.
  */
 export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
-  await browser.execute((mockData: Record<string, unknown>) => {
+  const debug = await browser.execute((mockData: Record<string, unknown>) => {
     const w = window as any;
-    if (!w.__TAURI_INTERNALS__?.invoke) return;
+    if (!w.__TAURI_INTERNALS__?.invoke) {
+      return { ok: false, reason: 'no __TAURI_INTERNALS__.invoke' };
+    }
 
     const origInternals = w.__TAURI_INTERNALS__;
     const origInvoke = origInternals.invoke;
@@ -147,7 +149,7 @@ export async function mockValidateEnvironment(data: Record<string, unknown>): Pr
       validate_environment: mockData,
     };
 
-    w.__TAURI_INTERNALS__ = new Proxy(origInternals, {
+    const proxy = new Proxy(origInternals, {
       get(target, prop, receiver) {
         if (prop === 'invoke') {
           return function(cmd: string, args?: Record<string, unknown>) {
@@ -161,7 +163,17 @@ export async function mockValidateEnvironment(data: Record<string, unknown>): Pr
         return typeof val === 'function' ? val.bind(target) : val;
       },
     });
+
+    w.__TAURI_INTERNALS__ = proxy;
+
+    // Verify: did the assignment stick?
+    const afterInvoke = w.__TAURI_INTERNALS__?.invoke;
+    const isMock = afterInvoke !== origInvoke;
+
+    return { ok: true, isMock, invokeType: typeof afterInvoke };
   }, data);
+
+  console.log(`[mockValidateEnvironment] debug=${JSON.stringify(debug)}`);
 }
 
 /**
