@@ -164,60 +164,58 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
           return { ok: false, reason: 'invoke is not a function: ' + typeof origInvoke };
         }
 
-        // Check object mutability
-        const isExtensible = Object.isExtensible(origInternals);
-        const isSealed = Object.isSealed(origInternals);
+        // Diagnostic info
+        const isExt = Object.isExtensible(origInternals);
         const isFrozen = Object.isFrozen(origInternals);
-        const invokeDesc = Object.getOwnPropertyDescriptor(origInternals, 'invoke');
-        const descInfo = invokeDesc
-          ? `writable=${invokeDesc.writable}, configurable=${invokeDesc.configurable}, enumerable=${invokeDesc.enumerable}`
-          : 'no own descriptor (inherited?)';
+        const desc = Object.getOwnPropertyDescriptor(origInternals, 'invoke');
+        const diag = `ext=${isExt},frozen=${isFrozen},invoke:writable=${desc?.writable},configurable=${desc?.configurable}`;
 
         w.__mockRegistry = w.__mockRegistry || {};
         w.__mockFlags = w.__mockFlags || {};
 
         function mockInvoke(cmd: string, args?: Record<string, unknown>) {
-          if (w.__mockFlags[cmd] !== undefined) {
-            w.__mockFlags[cmd] = true;
-          }
-          if (w.__mockRegistry[cmd] !== undefined) {
-            return Promise.resolve(w.__mockRegistry[cmd]);
-          }
+          if (w.__mockFlags[cmd] !== undefined) w.__mockFlags[cmd] = true;
+          if (w.__mockRegistry[cmd] !== undefined) return Promise.resolve(w.__mockRegistry[cmd]);
           return origInvoke.call(origInternals, cmd, args);
         }
 
-        const diag = `ext=${isExtensible},sealed=${isSealed},frozen=${isFrozen},invoke:[${descInfo}]`;
-
-        // Strategy 1: Replace invoke directly on the original object.
+        // Strategy 1: Direct assignment
         try {
           origInternals.invoke = mockInvoke;
           w.__mockProxyInstalled = true;
           return { ok: true, method: 'direct', diag };
         } catch (e1: any) {
-          // Strategy 2: Object.defineProperty on the object (not window)
+          // Strategy 2: Object.defineProperty (matching existing descriptor)
           try {
             Object.defineProperty(origInternals, 'invoke', {
               value: mockInvoke,
-              writable: true,
-              configurable: true,
-              enumerable: true,
+              writable: desc?.writable !== false,
+              configurable: desc?.configurable !== false,
+              enumerable: desc?.enumerable === true,
             });
             w.__mockProxyInstalled = true;
-            return { ok: true, method: 'defineProperty', diag };
+            return { ok: true, method: 'defineProp', diag };
           } catch (e2: any) {
-            return {
-              ok: false,
-              reason: 'all strategies failed [' + diag + ']: direct=' + (e1?.message || e1) +
-                ', defineProperty=' + (e2?.message || e2),
-            };
+            // Strategy 3: Delete and re-add (if configurable, this works)
+            try {
+              delete origInternals.invoke;
+              origInternals.invoke = mockInvoke;
+              w.__mockProxyInstalled = true;
+              return { ok: true, method: 'delete+assign', diag };
+            } catch (e3: any) {
+              return {
+                ok: false,
+                reason: `all failed [${diag}]: assign=${e1?.message}, defProp=${e2?.message}, delete=${e3?.message}`,
+              };
+            }
           }
         }
       } catch (innerErr: any) {
-        return { ok: false, reason: 'inner error: ' + (innerErr?.message || innerErr) };
+        return { ok: false, reason: 'inner: ' + (innerErr?.message || innerErr) };
       }
     });
   } catch (outerErr: any) {
-    return { ok: false, reason: 'execute error: ' + (outerErr?.message || outerErr) };
+    return { ok: false, reason: 'execute: ' + (outerErr?.message || outerErr) };
   }
 }
 
@@ -231,9 +229,10 @@ export async function mockValidateEnvironment(data: Record<string, unknown>): Pr
   const proxyResult = await ensureMockProxy();
   diagLog(`[mockValidateEnvironment] proxyResult: ${JSON.stringify(proxyResult)}`);
   if (!proxyResult.ok) {
-    console.error(`[mockValidateEnvironment] FAILED: ${proxyResult.reason}`);
+    console.error(`[MOCK_FAIL] mockValidateEnvironment: ${proxyResult.reason}`);
     return;
   }
+  diagLog(`[mockValidateEnvironment] proxy installed via ${JSON.stringify(proxyResult)}, applying mock`);
   await browser.execute((mockData: Record<string, unknown>) => {
     (window as any).__mockRegistry['validate_environment'] = mockData;
   }, data);
