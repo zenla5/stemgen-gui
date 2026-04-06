@@ -145,26 +145,44 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
 
     const origInternals = w.__TAURI_INTERNALS__;
     const origInvoke = origInternals.invoke;
+    if (typeof origInvoke !== 'function') {
+      return { ok: false, reason: 'invoke is not a function: ' + typeof origInvoke };
+    }
     w.__mockRegistry = w.__mockRegistry || {};
     w.__mockFlags = w.__mockFlags || {};
 
-    // Replace invoke directly on the original object.
-    // This avoids Object.defineProperty on window.__TAURI_INTERNALS__ which
-    // fails on WebKit2GTK where the property is non-configurable.
-    origInternals.invoke = function(cmd: string, args?: Record<string, unknown>) {
-      // Flag tracking
+    function mockInvoke(cmd: string, args?: Record<string, unknown>) {
       if (w.__mockFlags[cmd] !== undefined) {
         w.__mockFlags[cmd] = true;
       }
-      // Command mock
       if (w.__mockRegistry[cmd] !== undefined) {
         return Promise.resolve(w.__mockRegistry[cmd]);
       }
       return origInvoke.call(origInternals, cmd, args);
-    };
+    }
 
-    w.__mockProxyInstalled = true;
-    return { ok: true };
+    // Strategy 1: Replace invoke directly on the original object.
+    // This avoids Object.defineProperty on window.__TAURI_INTERNALS__ which
+    // fails on WebKit2GTK where the property is non-configurable.
+    try {
+      origInternals.invoke = mockInvoke;
+      w.__mockProxyInstalled = true;
+      return { ok: true, method: 'direct' };
+    } catch {
+      // Strategy 2: If the object is frozen, try Object.defineProperty
+      try {
+        Object.defineProperty(origInternals, 'invoke', {
+          value: mockInvoke,
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
+        w.__mockProxyInstalled = true;
+        return { ok: true, method: 'defineProperty' };
+      } catch {
+        return { ok: false, reason: 'cannot replace invoke — object may be frozen' };
+      }
+    }
   });
 }
 
