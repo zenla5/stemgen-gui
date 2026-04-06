@@ -130,10 +130,9 @@ export async function navigateWithWizard(appUrl: string): Promise<void> {
  * Ensure the Tauri invoke bridge has a shared mock shim installed.
  *
  * All mock helpers (mockValidateEnvironment, mockTauriCommand, setCommandFlag)
- * register their interceptors on `window.__mockRegistry`. A cloned
- * __TAURI_INTERNALS__ object checks the registry before forwarding to the
- * original invoke. This avoids the Proxy-chaining problem where each helper
- * replaced the previous Proxy and lost earlier mocks.
+ * register their interceptors on `window.__mockRegistry`. The shim checks the
+ * registry before forwarding to the original invoke, so multiple mock calls
+ * coexist without overwriting each other.
  */
 async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
   return browser.execute(() => {
@@ -149,13 +148,10 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
     w.__mockRegistry = w.__mockRegistry || {};
     w.__mockFlags = w.__mockFlags || {};
 
-    // Clone the internals object and replace invoke directly.
-    // This avoids Proxy compatibility issues on WebKit2GTK where the
-    // get trap may not fire for __TAURI_INTERNALS__ property access.
-    const newInternals = Object.create(Object.getPrototypeOf(origInternals));
-    Object.defineProperties(newInternals, Object.getOwnPropertyDescriptors(origInternals));
-
-    newInternals.invoke = function(cmd: string, args?: Record<string, unknown>) {
+    // Replace invoke directly on the original object.
+    // This avoids Object.defineProperty on window.__TAURI_INTERNALS__ which
+    // fails on WebKit2GTK where the property is non-configurable.
+    origInternals.invoke = function(cmd: string, args?: Record<string, unknown>) {
       // Flag tracking
       if (w.__mockFlags[cmd] !== undefined) {
         w.__mockFlags[cmd] = true;
@@ -167,11 +163,6 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
       return origInvoke.call(origInternals, cmd, args);
     };
 
-    Object.defineProperty(w, '__TAURI_INTERNALS__', {
-      value: newInternals,
-      writable: true,
-      configurable: true,
-    });
     w.__mockProxyInstalled = true;
     return { ok: true };
   });
@@ -180,9 +171,8 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
 /**
  * Patch validate_environment on the Tauri invoke bridge to return custom data.
  *
- * Uses a shared Proxy + registry (installed by ensureMockProxy) so that
- * multiple mock calls and setCommandFlag calls coexist without overwriting
- * each other.
+ * Uses a shared registry (installed by ensureMockProxy) so that multiple mock
+ * calls and setCommandFlag calls coexist without overwriting each other.
  */
 export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
   const proxyResult = await ensureMockProxy();
