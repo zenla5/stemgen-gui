@@ -135,55 +135,64 @@ export async function navigateWithWizard(appUrl: string): Promise<void> {
  * coexist without overwriting each other.
  */
 async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
-  return browser.execute(() => {
-    const w = window as any;
-    if (!w.__TAURI_INTERNALS__?.invoke) {
-      return { ok: false, reason: 'no __TAURI_INTERNALS__.invoke' };
-    }
-    // Already installed — nothing to do
-    if (w.__mockProxyInstalled) return { ok: true };
-
-    const origInternals = w.__TAURI_INTERNALS__;
-    const origInvoke = origInternals.invoke;
-    if (typeof origInvoke !== 'function') {
-      return { ok: false, reason: 'invoke is not a function: ' + typeof origInvoke };
-    }
-    w.__mockRegistry = w.__mockRegistry || {};
-    w.__mockFlags = w.__mockFlags || {};
-
-    function mockInvoke(cmd: string, args?: Record<string, unknown>) {
-      if (w.__mockFlags[cmd] !== undefined) {
-        w.__mockFlags[cmd] = true;
-      }
-      if (w.__mockRegistry[cmd] !== undefined) {
-        return Promise.resolve(w.__mockRegistry[cmd]);
-      }
-      return origInvoke.call(origInternals, cmd, args);
-    }
-
-    // Strategy 1: Replace invoke directly on the original object.
-    // This avoids Object.defineProperty on window.__TAURI_INTERNALS__ which
-    // fails on WebKit2GTK where the property is non-configurable.
-    try {
-      origInternals.invoke = mockInvoke;
-      w.__mockProxyInstalled = true;
-      return { ok: true, method: 'direct' };
-    } catch {
-      // Strategy 2: If the object is frozen, try Object.defineProperty
+  try {
+    return await browser.execute(() => {
       try {
-        Object.defineProperty(origInternals, 'invoke', {
-          value: mockInvoke,
-          writable: true,
-          configurable: true,
-          enumerable: true,
-        });
-        w.__mockProxyInstalled = true;
-        return { ok: true, method: 'defineProperty' };
-      } catch {
-        return { ok: false, reason: 'cannot replace invoke — object may be frozen' };
+        const w = window as any;
+        if (!w.__TAURI_INTERNALS__?.invoke) {
+          return { ok: false, reason: 'no __TAURI_INTERNALS__.invoke' };
+        }
+        if (w.__mockProxyInstalled) return { ok: true };
+
+        const origInternals = w.__TAURI_INTERNALS__;
+        const origInvoke = origInternals.invoke;
+        if (typeof origInvoke !== 'function') {
+          return { ok: false, reason: 'invoke is not a function: ' + typeof origInvoke };
+        }
+        w.__mockRegistry = w.__mockRegistry || {};
+        w.__mockFlags = w.__mockFlags || {};
+
+        function mockInvoke(cmd: string, args?: Record<string, unknown>) {
+          if (w.__mockFlags[cmd] !== undefined) {
+            w.__mockFlags[cmd] = true;
+          }
+          if (w.__mockRegistry[cmd] !== undefined) {
+            return Promise.resolve(w.__mockRegistry[cmd]);
+          }
+          return origInvoke.call(origInternals, cmd, args);
+        }
+
+        // Strategy 1: Replace invoke directly on the original object.
+        try {
+          origInternals.invoke = mockInvoke;
+          w.__mockProxyInstalled = true;
+          return { ok: true, method: 'direct' };
+        } catch (e1: any) {
+          // Strategy 2: Object.defineProperty on the object (not window)
+          try {
+            Object.defineProperty(origInternals, 'invoke', {
+              value: mockInvoke,
+              writable: true,
+              configurable: true,
+              enumerable: true,
+            });
+            w.__mockProxyInstalled = true;
+            return { ok: true, method: 'defineProperty' };
+          } catch (e2: any) {
+            return {
+              ok: false,
+              reason: 'all strategies failed: direct=' + (e1?.message || e1) +
+                ', defineProperty=' + (e2?.message || e2),
+            };
+          }
+        }
+      } catch (innerErr: any) {
+        return { ok: false, reason: 'inner error: ' + (innerErr?.message || innerErr) };
       }
-    }
-  });
+    });
+  } catch (outerErr: any) {
+    return { ok: false, reason: 'execute error: ' + (outerErr?.message || outerErr) };
+  }
 }
 
 /**
@@ -195,9 +204,10 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
 export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
   const proxyResult = await ensureMockProxy();
   if (!proxyResult.ok) {
-    console.warn(`[mockValidateEnvironment] skipped: ${proxyResult.reason}`);
+    console.error(`[mockValidateEnvironment] FAILED: ${proxyResult.reason}`);
     return;
   }
+  console.log(`[mockValidateEnvironment] proxy installed, applying mock data`);
   await browser.execute((mockData: Record<string, unknown>) => {
     (window as any).__mockRegistry['validate_environment'] = mockData;
   }, data);
@@ -212,7 +222,10 @@ export async function mockTauriCommand(
   mockResult: unknown
 ): Promise<void> {
   const proxyResult = await ensureMockProxy();
-  if (!proxyResult.ok) return;
+  if (!proxyResult.ok) {
+    console.error(`[mockTauriCommand] FAILED for ${command}: ${proxyResult.reason}`);
+    return;
+  }
   await browser.execute(
     (cmd: string, result: unknown) => {
       (window as any).__mockRegistry[cmd] = result;
@@ -228,7 +241,10 @@ export async function mockTauriCommand(
  */
 export async function setCommandFlag(command: string): Promise<void> {
   const proxyResult = await ensureMockProxy();
-  if (!proxyResult.ok) return;
+  if (!proxyResult.ok) {
+    console.error(`[setCommandFlag] FAILED for ${command}: ${proxyResult.reason}`);
+    return;
+  }
   await browser.execute((cmd: string) => {
     (window as any).__mockFlags[cmd] = false;
   }, command);
