@@ -10,7 +10,7 @@
  */
 
 import { readBinaryState } from '../helpers';
-import { navigateSkippingWizard, navigateToView, takeScreenshot } from './helpers';
+import { navigateSkippingWizard, navigateToView, mockValidateEnvironment, takeScreenshot } from './helpers';
 
 let appUrl: string;
 
@@ -47,7 +47,22 @@ describe('System Status — colour and consistency', () => {
     const state = readBinaryState();
     if (!state?.available) return;
 
-    await browser.pause(2000); // allow validation to complete
+    // Mock environment with all deps available so green icons render
+    // (CI has no real deps installed — without mock, all show as "Not checked")
+    await mockValidateEnvironment({
+      isReady: true,
+      python: 'available',
+      pytorch: 'available',
+      torchaudio: 'available',
+      demucs: 'available',
+      cuda: 'available',
+      ffmpeg: 'available',
+      ffprobe: 'available',
+      sidecarScript: 'available',
+      warnings: [],
+    });
+    await $('[data-testid="refresh-env-btn"]').click();
+    await browser.pause(2000);
 
     // Check that at least one green icon appears in Detailed Status
     const greenIcons = await $$('[data-testid="detailed-status"] .text-green-600, [data-testid="detailed-status"] .text-green-500');
@@ -59,6 +74,21 @@ describe('System Status — colour and consistency', () => {
     const state = readBinaryState();
     if (!state?.available) return;
 
+    // Mock env with CUDA unavailable (but not errored) to verify it doesn't render red
+    await mockValidateEnvironment({
+      isReady: true,
+      python: 'available',
+      pytorch: 'available',
+      torchaudio: 'available',
+      demucs: 'available',
+      cuda: 'unavailable',
+      gpuName: 'Intel UHD 630',
+      ffmpeg: 'available',
+      ffprobe: 'available',
+      sidecarScript: 'available',
+      warnings: [],
+    });
+    await $('[data-testid="refresh-env-btn"]').click();
     await browser.pause(2000);
 
     // Find the CUDA row and check it has no red error icons
@@ -134,9 +164,16 @@ describe('Model Download — error surfacing', () => {
   });
 
   for (const modelId of ['htdemucs', 'htdemucs_ft', 'bs_roformer', 'demucs']) {
-    it(`${modelId}: download button does not silently reset bar`, async () => {
+    it(`${modelId}: download button does not silently reset bar`, async function () {
       const state = readBinaryState();
       if (!state?.available) return;
+
+      // Model download requires network + working sidecar — skip on CI
+      // where neither is reliably available.
+      if (process.env.CI) {
+        this.skip();
+        return;
+      }
 
       const downloadBtn = $(`[data-testid="download-btn-${modelId}"]`);
       const isPresent = await downloadBtn.isDisplayed().catch(() => false);

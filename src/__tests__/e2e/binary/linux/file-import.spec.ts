@@ -40,7 +40,9 @@ describe('File Import', () => {
     const state = readBinaryState();
     if (!state?.available) return;
 
-    expect(await $('[data-testid="drop-zone"]').isDisplayed()).toBe(true);
+    const dropZone = $('[data-testid="drop-zone"]');
+    await dropZone.waitForDisplayed({ timeout: 10000 });
+    expect(await dropZone.isDisplayed()).toBe(true);
     await takeScreenshot('linux-file-import-drop-zone');
   });
 

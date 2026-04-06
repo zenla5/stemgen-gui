@@ -127,34 +127,39 @@ export async function navigateWithWizard(appUrl: string): Promise<void> {
 }
 
 /**
- * Patch validate_environment on the Tauri invoke bridge to return custom data.
+ * Ensure the Tauri invoke bridge has a shared Proxy installed.
  *
- * The Linux binary exposes __TAURI_INTERNALS__.invoke() (Tauri v2 bridge).
- * We monkey-patch the invoke method to intercept specific commands.
+ * All mock helpers (mockValidateEnvironment, mockTauriCommand, setCommandFlag)
+ * register their interceptors on `window.__mockRegistry`. A single Proxy on
+ * __TAURI_INTERNALS__ checks the registry before forwarding to the original
+ * invoke. This avoids the Proxy-chaining problem where each helper replaced
+ * the previous Proxy and lost earlier mocks.
  */
-export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
-  const debug = await browser.execute((mockData: Record<string, unknown>) => {
+async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
+  return browser.execute(() => {
     const w = window as any;
     if (!w.__TAURI_INTERNALS__?.invoke) {
       return { ok: false, reason: 'no __TAURI_INTERNALS__.invoke' };
     }
+    // Already installed — nothing to do
+    if (w.__mockProxyInstalled) return { ok: true };
 
     const origInternals = w.__TAURI_INTERNALS__;
     const origInvoke = origInternals.invoke;
-
-    // __TAURI_INTERNALS__.invoke is non-writable in Tauri v2 WebKit.
-    // Replace the entire __TAURI_INTERNALS__ object with a Proxy that
-    // intercepts invoke while forwarding everything else.
-    const commandMocks: Record<string, unknown> = {
-      validate_environment: mockData,
-    };
+    w.__mockRegistry = w.__mockRegistry || {};
+    w.__mockFlags = w.__mockFlags || {};
 
     const proxy = new Proxy(origInternals, {
       get(target, prop, receiver) {
         if (prop === 'invoke') {
           return function(cmd: string, args?: Record<string, unknown>) {
-            if (cmd in commandMocks) {
-              return Promise.resolve(commandMocks[cmd]);
+            // Flag tracking
+            if (w.__mockFlags[cmd] !== undefined) {
+              w.__mockFlags[cmd] = true;
+            }
+            // Command mock
+            if (w.__mockRegistry[cmd] !== undefined) {
+              return Promise.resolve(w.__mockRegistry[cmd]);
             }
             return origInvoke.call(target, cmd, args);
           };
@@ -165,48 +170,42 @@ export async function mockValidateEnvironment(data: Record<string, unknown>): Pr
     });
 
     w.__TAURI_INTERNALS__ = proxy;
+    w.__mockProxyInstalled = true;
+    return { ok: true };
+  });
+}
 
-    // Verify: did the assignment stick?
-    const afterInvoke = w.__TAURI_INTERNALS__?.invoke;
-    const isMock = afterInvoke !== origInvoke;
-
-    return { ok: true, isMock, invokeType: typeof afterInvoke };
+/**
+ * Patch validate_environment on the Tauri invoke bridge to return custom data.
+ *
+ * Uses a shared Proxy + registry (installed by ensureMockProxy) so that
+ * multiple mock calls and setCommandFlag calls coexist without overwriting
+ * each other.
+ */
+export async function mockValidateEnvironment(data: Record<string, unknown>): Promise<void> {
+  const proxyResult = await ensureMockProxy();
+  if (!proxyResult.ok) {
+    console.warn(`[mockValidateEnvironment] skipped: ${proxyResult.reason}`);
+    return;
+  }
+  await browser.execute((mockData: Record<string, unknown>) => {
+    (window as any).__mockRegistry['validate_environment'] = mockData;
   }, data);
-
-  console.log(`[mockValidateEnvironment] debug=${JSON.stringify(debug)}`);
 }
 
 /**
  * Patch a specific Tauri command to return a custom result.
  * Useful for mocking install_dependency, deploy_sidecar, etc.
- *
- * Uses Proxy to replace __TAURI_INTERNALS__ since invoke is non-writable in Tauri v2.
  */
 export async function mockTauriCommand(
   command: string,
   mockResult: unknown
 ): Promise<void> {
+  const proxyResult = await ensureMockProxy();
+  if (!proxyResult.ok) return;
   await browser.execute(
     (cmd: string, result: unknown) => {
-      const w = window as any;
-      if (!w.__TAURI_INTERNALS__?.invoke) return;
-      const origInternals = w.__TAURI_INTERNALS__;
-      const origInvoke = origInternals.invoke;
-
-      w.__TAURI_INTERNALS__ = new Proxy(origInternals, {
-        get(target, prop, receiver) {
-          if (prop === 'invoke') {
-            return function(command: string, args?: Record<string, unknown>) {
-              if (command === cmd) {
-                return Promise.resolve(result);
-              }
-              return origInvoke.call(target, command, args);
-            };
-          }
-          const val = Reflect.get(target, prop, receiver);
-          return typeof val === 'function' ? val.bind(target) : val;
-        },
-      });
+      (window as any).__mockRegistry[cmd] = result;
     },
     command,
     mockResult
@@ -216,33 +215,12 @@ export async function mockTauriCommand(
 /**
  * Set a flag on window when a specific Tauri command is invoked.
  * Use with getCommandFlag() instead of page.exposeFunction() (not available in WebdriverIO).
- *
- * Uses Proxy to replace __TAURI_INTERNALS__ since invoke is non-writable in Tauri v2.
  */
 export async function setCommandFlag(command: string): Promise<void> {
+  const proxyResult = await ensureMockProxy();
+  if (!proxyResult.ok) return;
   await browser.execute((cmd: string) => {
-    const w = window as any;
-    const flagName = `__${cmd}Called`;
-    w[flagName] = false;
-    if (!w.__TAURI_INTERNALS__?.invoke) return;
-
-    const origInternals = w.__TAURI_INTERNALS__;
-    const origInvoke = origInternals.invoke;
-
-    w.__TAURI_INTERNALS__ = new Proxy(origInternals, {
-      get(target, prop, receiver) {
-        if (prop === 'invoke') {
-          return function(command: string, args?: Record<string, unknown>) {
-            if (command === cmd) {
-              w[flagName] = true;
-            }
-            return origInvoke.call(target, command, args);
-          };
-        }
-        const val = Reflect.get(target, prop, receiver);
-        return typeof val === 'function' ? val.bind(target) : val;
-      },
-    });
+    (window as any).__mockFlags[cmd] = false;
   }, command);
 }
 
@@ -251,7 +229,7 @@ export async function setCommandFlag(command: string): Promise<void> {
  */
 export async function getCommandFlag(command: string): Promise<boolean> {
   return browser.execute((cmd: string) => {
-    return (window as any)[`__${cmd}Called`] === true;
+    return (window as any).__mockFlags?.[cmd] === true;
   }, command);
 }
 

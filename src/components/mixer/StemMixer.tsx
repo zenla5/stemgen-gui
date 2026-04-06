@@ -260,9 +260,32 @@ export function StemMixer() {
         </div>
       )}
 
-      {/* Playback Controls */}
+      {/* Play/Pause — always visible (disabled when no stems) */}
+      <div className="flex justify-center">
+        <button
+          data-testid="play-pause-btn"
+          onClick={handlePlayPause}
+          disabled={!hasStems}
+          className={cn(
+            'flex h-10 w-10 items-center justify-center rounded-full transition-colors',
+            'bg-primary text-primary-foreground hover:bg-primary/90',
+            'disabled:opacity-50 disabled:cursor-not-allowed'
+          )}
+          aria-label={player.state.isPlaying ? 'Pause' : 'Play'}
+          aria-pressed={player.state.isPlaying}
+          title={player.state.isPlaying ? 'Pause' : 'Play'}
+        >
+          {player.state.isPlaying ? (
+            <Pause className="h-5 w-5" aria-hidden="true" />
+          ) : (
+            <Play className="h-5 w-5 ml-0.5" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+
+      {/* Full Playback Controls */}
       {hasStems && (
-        <div 
+        <div
           className="mt-auto rounded-lg border bg-card p-4"
           role="region"
           aria-label="Playback controls"
@@ -301,26 +324,6 @@ export function StemMixer() {
               title="Restart"
             >
               <SkipBack className="h-4 w-4" aria-hidden="true" />
-            </button>
-
-            <button
-              data-testid="play-pause-btn"
-              onClick={handlePlayPause}
-              disabled={!hasStems}
-              className={cn(
-                'flex h-10 w-10 items-center justify-center rounded-full transition-colors',
-                'bg-primary text-primary-foreground hover:bg-primary/90',
-                'disabled:opacity-50 disabled:cursor-not-allowed'
-              )}
-              aria-label={player.state.isPlaying ? 'Pause' : 'Play'}
-              aria-pressed={player.state.isPlaying}
-              title={player.state.isPlaying ? 'Pause' : 'Play'}
-            >
-              {player.state.isPlaying ? (
-                <Pause className="h-5 w-5" aria-hidden="true" />
-              ) : (
-                <Play className="h-5 w-5 ml-0.5" aria-hidden="true" />
-              )}
             </button>
 
             <button

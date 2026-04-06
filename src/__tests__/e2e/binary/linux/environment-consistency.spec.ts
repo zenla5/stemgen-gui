@@ -73,6 +73,9 @@ describe('Environment Consistency — false-red regression', () => {
     const state = readBinaryState();
     if (!state?.available) return;
     await navigateSkippingWizard(appUrl);
+    // Apply default mock BEFORE navigating to settings so the initial
+    // validate_environment call on component mount is intercepted.
+    await mockValidateEnvironment(ALL_AVAILABLE_ENV);
     await navigateToView('settings');
   });
 
@@ -80,10 +83,7 @@ describe('Environment Consistency — false-red regression', () => {
     const state = readBinaryState();
     if (!state?.available) return;
 
-    // Mock validate_environment to return a fully valid environment
-    await mockValidateEnvironment(ALL_AVAILABLE_ENV);
-
-    // Click Refresh to trigger re-validation with our mock
+    // Mock already applied in beforeEach — click Refresh to trigger re-validation
     await $('[data-testid="refresh-env-btn"]').click();
     await browser.pause(1000);
 
@@ -105,7 +105,7 @@ describe('Environment Consistency — false-red regression', () => {
     const state = readBinaryState();
     if (!state?.available) return;
 
-    await mockValidateEnvironment(ALL_AVAILABLE_ENV);
+    // Mock already applied in beforeEach
     await $('[data-testid="refresh-env-btn"]').click();
     await browser.pause(2000);
 
@@ -119,7 +119,7 @@ describe('Environment Consistency — false-red regression', () => {
     const state = readBinaryState();
     if (!state?.available) return;
 
-    await mockValidateEnvironment(ALL_AVAILABLE_ENV);
+    // Mock already applied in beforeEach
     await $('[data-testid="refresh-env-btn"]').click();
     await browser.pause(1500);
 
@@ -149,6 +149,8 @@ describe('Sidecar Deployment — repair and guard', () => {
     const state = readBinaryState();
     if (!state?.available) return;
     await navigateSkippingWizard(appUrl);
+    // Default mock — tests override with MISSING_SIDECAR_ENV as needed
+    await mockValidateEnvironment(ALL_AVAILABLE_ENV);
     await navigateToView('settings');
   });
 
@@ -230,6 +232,7 @@ describe('Install All Missing — progress surfacing', () => {
     const state = readBinaryState();
     if (!state?.available) return;
     await navigateSkippingWizard(appUrl);
+    await mockValidateEnvironment(ALL_AVAILABLE_ENV);
     await navigateToView('settings');
   });
 
@@ -288,6 +291,7 @@ describe('Model Download — sidecar guard', () => {
     const state = readBinaryState();
     if (!state?.available) return;
     await navigateSkippingWizard(appUrl);
+    await mockValidateEnvironment(ALL_AVAILABLE_ENV);
     await navigateToView('settings');
   });
 
