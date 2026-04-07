@@ -156,7 +156,7 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
         if (!w.__TAURI_INTERNALS__?.invoke) {
           return { ok: false, reason: 'no __TAURI_INTERNALS__.invoke' };
         }
-        if (w.__mockProxyInstalled) return { ok: true };
+        if (w.__mockProxyInstalled && w.__mockRegistry) return { ok: true };
 
         const origInternals = w.__TAURI_INTERNALS__;
         const origInvoke = origInternals.invoke;

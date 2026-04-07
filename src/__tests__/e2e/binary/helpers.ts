@@ -138,21 +138,22 @@ function buildSettingsStorage(overrides: Record<string, unknown> = {}): string {
  */
 export async function ensureViewport(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 720 });
-  // Inject CSS fallback to guarantee html/body have minimum dimensions.
-  // On Windows WebView2, CDP viewport emulation may not override the
-  // WebView's actual 0x0 dimensions, causing all elements to report as hidden.
-  await page.addInitScript(() => {
-    if (!document.getElementById('__e2e-viewport-fallback')) {
-      const style = document.createElement('style');
-      style.id = '__e2e-viewport-fallback';
-      style.textContent = 'html, body { min-height: 100vh !important; min-width: 100vw !important; }';
-      document.head?.appendChild(style);
-    }
-  });
+  // Force html/body dimensions via DOM manipulation.
+  // On Windows WebView2, the window may have 0x0 dimensions, making
+  // Playwright report all elements as hidden. This is a no-op if the
+  // page hasn't loaded yet (evaluate throws), which is fine.
+  try {
+    await page.evaluate(() => {
+      document.documentElement.style.minHeight = '100vh';
+      document.documentElement.style.minWidth = '100vw';
+      document.body.style.minHeight = '100vh';
+      document.body.style.minWidth = '100vw';
+    });
+  } catch { /* page may not be loaded yet */ }
 }
 
 export async function navigateSkippingWizard(page: Page, appUrl: string): Promise<void> {
-  await ensureViewport(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.addInitScript(
     ({ key, value }) => { localStorage.setItem(key, value); },
     { key: SETTINGS_KEY, value: buildSettingsStorage() }
@@ -168,7 +169,7 @@ export async function navigateSkippingWizard(page: Page, appUrl: string): Promis
  * hasSeenFirstRun, and navigates back to the app.
  */
 export async function resetAppState(page: Page, appUrl: string): Promise<void> {
-  await ensureViewport(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.addInitScript(
     ({ key, value }) => {
       localStorage.clear();
