@@ -50,6 +50,7 @@ export const test = base.extend<{ page: Page }>({
       );
     }
 
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(appPage);
     // Don't close — the page is the running Tauri app, shared across serial tests.
   },
