@@ -35,7 +35,7 @@ test.describe('Settings', () => {
   });
 
   test('settings view heading is present', async ({ page }) => {
-    await expect(page.locator('h2')).toContainText('Settings');
+    await expect(page.locator('h2').filter({ hasText: 'Settings' })).toBeVisible();
   });
 
   test('theme buttons are visible', async ({ page }) => {
