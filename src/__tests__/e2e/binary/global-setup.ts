@@ -50,7 +50,12 @@ function getAppUrlFromCDP(port: number): Promise<string | null> {
       res.on('data', (chunk: Buffer) => (data += chunk.toString()));
       res.on('end', () => {
         try {
-          const targets: Array<{ url: string; type: string }> = JSON.parse(data);
+          const targets: Array<{ url: string; type: string; id?: string }> = JSON.parse(data);
+          // Log all targets for diagnostics
+          console.log(`[binary-setup] CDP targets (${targets.length}):`);
+          for (const t of targets) {
+            console.log(`[binary-setup]   - type=${t.type} url=${t.url} id=${t.id || '?'}`);
+          }
           // Find the first page-type target that isn't about:blank
           for (const t of targets) {
             if (t.type === 'page' && t.url && t.url !== 'about:blank') {
@@ -234,6 +239,27 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     } else {
       console.warn('[binary-setup] Could not determine app URL, will use fallback');
       appUrl = fallbackUrl;
+    }
+
+    // Diagnostic: connect via Playwright and dump page state at setup time
+    try {
+      const { chromium: pw } = await import('@playwright/test');
+      const browser = await pw.connectOverCDP(wsUrl);
+      for (const ctx of browser.contexts()) {
+        for (const page of ctx.pages()) {
+          const url = page.url();
+          console.log(`[binary-setup] CDP page: url=${url}`);
+          if (url === appUrl || url === 'http://tauri.localhost/' || url === 'tauri://localhost') {
+            const title = await page.title().catch(() => '<error>');
+            const bodyLen = await page.evaluate(() => document.body?.innerHTML?.length || 0).catch(() => -1);
+            const hasRoot = await page.evaluate(() => !!document.getElementById('root')).catch(() => false);
+            console.log(`[binary-setup] Page state: title="${title}" bodyLen=${bodyLen} hasRoot=${hasRoot}`);
+          }
+        }
+      }
+      await browser.close();
+    } catch (diagErr) {
+      console.warn(`[binary-setup] Page state diagnostic failed: ${diagErr}`);
     }
 
     // Write success state
