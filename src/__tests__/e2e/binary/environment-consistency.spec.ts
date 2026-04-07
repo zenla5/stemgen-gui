@@ -9,7 +9,8 @@
  *  (e) Model download blocked with actionable error when sidecar absent
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './test-fixtures';
+import type { Page } from '@playwright/test';
 import { readBinaryState, navigateSkippingWizard, navigateToView } from './helpers';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

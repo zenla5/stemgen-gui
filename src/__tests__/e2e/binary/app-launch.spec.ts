@@ -3,7 +3,7 @@
  * the window appears, and the app shell renders correctly.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { readBinaryState, navigateSkippingWizard, takeScreenshot, ensureViewport } from './helpers';
 
 test.describe('App Launch', () => {

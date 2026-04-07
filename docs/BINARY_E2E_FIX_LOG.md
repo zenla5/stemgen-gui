@@ -6,10 +6,7 @@ Multi-session log for debugging CI binary E2E test failures. This file ensures c
 
 CI pipeline binary E2E tests:
 - **Linux**: FIXED in Session 3 — all 11 spec files PASS (run 24079516286)
-- **Windows**: STILL FAILING — 37 tests fail, 1 passes, job times out at 45 minutes
-  - Root symptom: `page.title()` returns `""` (empty) despite HTML having `<title>Stemgen GUI</title>`
-  - React never mounts (`[data-testid="nav-files"]` never visible)
-  - The only passing test checks body visibility (works even without JS)
+- **Windows**: FIXED in Session 6 — root cause was Playwright `page` fixture creating blank page (see Session 6)
 
 ## Architecture Overview
 
@@ -258,3 +255,36 @@ Changes made:
 **Conclusion**: All known issues have been addressed according to the fix log. The tests should now pass in CI.
 
 **Next Steps**: Commit, push, and monitor CI results.
+
+### Session 6 (2026-04-07) — Root cause: Playwright `page` fixture creates blank page
+
+**Root cause identified**: When Playwright runs `--project=binary`, each test's `page` fixture creates a **new blank page** (about:blank) in a locally-launched Chromium browser. The actual Tauri app is running in a separate WebView2 process (connected via CDP on port 9515), but the tests NEVER connect to it.
+
+The binary project in `playwright.config.ts` had no `connectOptions`, so Playwright launched a local Chromium instead of connecting to the Tauri WebView2 CDP endpoint. Every `page.evaluate()` call that accesses localStorage fails with:
+```
+SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document.
+```
+This is because about:blank has no accessible document.
+
+**Why previous fix (Session 4) didn't work**: Session 4 correctly identified that `page.goto()` replaces page content and removed all `page.goto()` calls. But without `page.goto()`, the tests stayed on the blank page. `page.evaluate()` for localStorage still fails on about:blank.
+
+**Fix**: Override the `page` fixture so it returns the existing Tauri app page from the CDP-connected browser.
+
+**Changes made**:
+1. **`playwright.config.ts`** — Added `connectOptions` to the binary project:
+   ```typescript
+   connectOptions: {
+     wsEndpoint: `http://127.0.0.1:${process.env.CDP_PORT || 9515}`,
+   },
+   ```
+   This makes Playwright's `browser` fixture connect to the Tauri WebView2 via CDP.
+
+2. **`src/__tests__/e2e/binary/test-fixtures.ts`** — New file: custom `page` fixture that finds the existing Tauri app page in the default browser context instead of creating a new blank page. Includes 10-second polling for robustness.
+
+3. **All 11 spec files** — Changed import from `@playwright/test` to `./test-fixtures`:
+   - app-launch, environment-consistency, error-handling, file-import, first-run-wizard, mixer, navigation, queue, separation, settings, system-status
+
+**Verification**: Pending CI run results.
+
+**CI Runs**:
+- Run 24098989694: FAILED — 82 tests all fail with localStorage SecurityError (before Session 6 fix)

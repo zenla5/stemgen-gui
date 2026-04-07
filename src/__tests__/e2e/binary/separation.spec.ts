@@ -5,7 +5,7 @@
  * They are marked as slow and will be skipped if dependencies are not available.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import {
   readBinaryState,
   navigateSkippingWizard,

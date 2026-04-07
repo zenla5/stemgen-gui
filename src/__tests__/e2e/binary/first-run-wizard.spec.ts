@@ -3,7 +3,7 @@
  * shows dependency checks, and allows skipping to the main app.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { readBinaryState, takeScreenshot, ensureViewport, logPageDiagnostics } from './helpers';
 
 test.describe('First Run Wizard', () => {

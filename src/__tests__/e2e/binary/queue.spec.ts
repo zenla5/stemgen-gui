@@ -3,7 +3,7 @@
  * empty state shows, and queue management controls are present.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import {
   readBinaryState,
   navigateSkippingWizard,

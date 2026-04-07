@@ -6,7 +6,7 @@
  * triggered from Playwright. File injection is done via Zustand store.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import {
   readBinaryState,
   navigateSkippingWizard,

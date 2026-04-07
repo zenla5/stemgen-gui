@@ -3,7 +3,7 @@
  * including corrupt files and invalid invocations.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import path from 'path';
 import {
   readBinaryState,

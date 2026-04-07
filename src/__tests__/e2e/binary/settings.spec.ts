@@ -3,7 +3,7 @@
  * and settings persistence across page reloads.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import {
   readBinaryState,
   navigateSkippingWizard,

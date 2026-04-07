@@ -9,7 +9,7 @@
  *  (e) Model download surfaces a clear error for unsupported models
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { readBinaryState, navigateSkippingWizard, navigateToView } from './helpers';
 
 test.describe('System Status — colour and consistency', () => {

@@ -3,7 +3,7 @@
  * switch between views correctly.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { readBinaryState, navigateSkippingWizard, navigateToView } from './helpers';
 
 test.describe('Navigation', () => {
