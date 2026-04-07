@@ -22,7 +22,6 @@ export function FileBrowser() {
     const cleanups: Array<() => void> = [];
 
     // Wrap each listen call so a failure doesn't prevent the others from registering.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const register = async (event: string, handler: (...args: any[]) => void) => {
       try {
         const unlisten = await listen(event, handler);
