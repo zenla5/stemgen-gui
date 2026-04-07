@@ -61,6 +61,8 @@ export async function navigateSkippingWizard(appUrl: string): Promise<void> {
     }));
   }, SETTINGS_KEY);
   await browser.refresh();
+  // Ensure viewport is large enough for element visibility in xvfb
+  try { await browser.setWindowSize(1280, 720); } catch { /* tauri-driver may not support this */ }
   await $('[data-testid="nav-files"]').waitForDisplayed({ timeout: 15000 });
 }
 
@@ -88,6 +90,7 @@ export async function resetAppState(appUrl: string): Promise<void> {
   );
 
   await browser.url(appUrl);
+  try { await browser.setWindowSize(1280, 720); } catch { /* tauri-driver may not support this */ }
   await $('[data-testid="nav-files"]').waitForDisplayed({ timeout: 15000 });
 }
 
@@ -153,10 +156,11 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
     return await browser.execute(() => {
       try {
         const w = window as any;
+        if (w.__mockProxyInstalled && w.__mockRegistry) return { ok: true };
+
         if (!w.__TAURI_INTERNALS__?.invoke) {
           return { ok: false, reason: 'no __TAURI_INTERNALS__.invoke' };
         }
-        if (w.__mockProxyInstalled && w.__mockRegistry) return { ok: true };
 
         const origInternals = w.__TAURI_INTERNALS__;
         const origInvoke = origInternals.invoke;
@@ -164,61 +168,43 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
           return { ok: false, reason: 'invoke is not a function: ' + typeof origInvoke };
         }
 
-        // Diagnostic info
-        const isExt = Object.isExtensible(origInternals);
-        const isFrozen = Object.isFrozen(origInternals);
-        const desc = Object.getOwnPropertyDescriptor(origInternals, 'invoke');
-        const diag = `ext=${isExt},frozen=${isFrozen},invoke:writable=${desc?.writable},configurable=${desc?.configurable}`;
-
         w.__mockRegistry = w.__mockRegistry || {};
         w.__mockFlags = w.__mockFlags || {};
 
-        function mockInvoke(cmd: string, args?: Record<string, unknown>) {
+        function mockInvoke(cmd: string, args?: Record<string, unknown>, options?: unknown) {
           if (w.__mockFlags[cmd] !== undefined) w.__mockFlags[cmd] = true;
           if (w.__mockRegistry[cmd] !== undefined) return Promise.resolve(w.__mockRegistry[cmd]);
-          return origInvoke.call(origInternals, cmd, args);
+          return origInvoke.call(origInternals, cmd, args, options);
         }
 
-        let e1msg = '';
-        // Strategy 1: Direct assignment (may silently fail on non-writable properties)
+        // Replace window.__TAURI_INTERNALS__ with a new object that has
+        // the mocked invoke while inheriting all other methods via prototype.
+        // This avoids mutating the original object which may have non-writable
+        // properties in WebKit2GTK.
+        const mockInternals = Object.create(origInternals);
+        mockInternals.invoke = mockInvoke;
+
+        // Strategy 1: Direct window property assignment
         try {
-          origInternals.invoke = mockInvoke;
-          if (origInternals.invoke === mockInvoke) {
+          w.__TAURI_INTERNALS__ = mockInternals;
+          if (w.__TAURI_INTERNALS__ === mockInternals) {
             w.__mockProxyInstalled = true;
-            return { ok: true, method: 'direct', diag };
+            return { ok: true, method: 'window-assign' };
           }
-          // Assignment silently failed (non-writable property in non-strict mode)
-          e1msg = 'silent fail (writable=false)';
-        } catch (e1: any) {
-          e1msg = e1?.message || String(e1);
-        }
+        } catch { /* fall through */ }
 
-        // Strategy 2: Object.defineProperty (matching existing descriptor)
-        let e2msg = '';
+        // Strategy 2: Object.defineProperty on window
         try {
-          Object.defineProperty(origInternals, 'invoke', {
-            value: mockInvoke,
-            writable: !!desc?.writable,
-            configurable: !!desc?.configurable,
-            enumerable: !!desc?.enumerable,
+          Object.defineProperty(w, '__TAURI_INTERNALS__', {
+            value: mockInternals,
+            writable: true,
+            configurable: true,
+            enumerable: true,
           });
           w.__mockProxyInstalled = true;
-          return { ok: true, method: 'defineProp', diag };
-        } catch (e2: any) {
-          e2msg = e2?.message || String(e2);
-        }
-
-        // Strategy 3: Delete and re-add
-        try {
-          delete origInternals.invoke;
-          origInternals.invoke = mockInvoke;
-          w.__mockProxyInstalled = true;
-          return { ok: true, method: 'delete+assign', diag };
-        } catch (e3: any) {
-          return {
-            ok: false,
-            reason: `all failed [${diag}]: assign=${e1msg}, defProp=${e2msg}, delete=${e3?.message}`,
-          };
+          return { ok: true, method: 'window-defineProp' };
+        } catch (e: any) {
+          return { ok: false, reason: 'window replacement failed: ' + (e?.message || e) };
         }
       } catch (innerErr: any) {
         return { ok: false, reason: 'inner: ' + (innerErr?.message || innerErr) };

@@ -96,14 +96,18 @@ test.describe('System Status — colour and consistency', () => {
 
     // Patch the store action via window injection
     await page.evaluate(() => {
-      const orig = (window as any).__TAURI_INVOKE__;
-      if (!orig) return;
-      (window as any).__TAURI_INVOKE__ = (cmd: string, ...args: unknown[]) => {
+      const w = window as any;
+      if (!w.__TAURI_INTERNALS__?.invoke) return;
+      const origInternals = w.__TAURI_INTERNALS__;
+      const origInvoke = origInternals.invoke;
+      const mockInternals = Object.create(origInternals);
+      mockInternals.invoke = (cmd: string, args?: Record<string, unknown>) => {
         if (cmd === 'validate_environment') {
-          (window as any).__onValidateCalled();
+          w.__onValidateCalled();
         }
-        return orig(cmd, ...args);
+        return origInvoke.call(origInternals, cmd, args);
       };
+      try { w.__TAURI_INTERNALS__ = mockInternals; } catch { /* best effort */ }
     });
 
     await installBtn.click();

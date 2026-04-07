@@ -19,45 +19,56 @@ export function FileBrowser() {
 
   // Listen for Tauri's native drag-drop events
   useEffect(() => {
-    const unlistenDrop = listen<DragDropPayload>('tauri://drag-drop', async (event) => {
-      setIsDraggingOver(false);
-      const paths = event.payload.paths;
-      
-      if (paths && paths.length > 0) {
-        const newFiles: AudioFileMetadata[] = [];
-        
-        for (const path of paths) {
-          // Check if it's an audio file
-          const ext = path.split('.').pop()?.toLowerCase();
-          if (ext && SUPPORTED_AUDIO_FORMATS.includes(ext)) {
-            try {
-              const info = await invoke<AudioFileMetadata>('get_audio_info', { path });
-              newFiles.push(info);
-            } catch (error) {
-              console.error('Failed to get audio info:', error);
+    const cleanups: (() => void)[] = [];
+
+    const setup = async () => {
+      try {
+        const unlistenDrop = await listen<DragDropPayload>('tauri://drag-drop', async (event) => {
+          setIsDraggingOver(false);
+          const paths = event.payload.paths;
+
+          if (paths && paths.length > 0) {
+            const newFiles: AudioFileMetadata[] = [];
+
+            for (const path of paths) {
+              // Check if it's an audio file
+              const ext = path.split('.').pop()?.toLowerCase();
+              if (ext && SUPPORTED_AUDIO_FORMATS.includes(ext)) {
+                try {
+                  const info = await invoke<AudioFileMetadata>('get_audio_info', { path });
+                  newFiles.push(info);
+                } catch (error) {
+                  console.error('Failed to get audio info:', error);
+                }
+              }
+            }
+
+            if (newFiles.length > 0) {
+              addFiles(newFiles);
             }
           }
-        }
-        
-        if (newFiles.length > 0) {
-          addFiles(newFiles);
-        }
-      }
-    });
+        });
+        cleanups.push(unlistenDrop);
+      } catch (e) { console.warn('Failed to listen for drag-drop events:', e); }
 
-    const unlistenDragEnter = listen('tauri://drag-enter', () => {
-      setIsDraggingOver(true);
-    });
+      try {
+        const unlistenDragEnter = await listen('tauri://drag-enter', () => {
+          setIsDraggingOver(true);
+        });
+        cleanups.push(unlistenDragEnter);
+      } catch (e) { console.warn('Failed to listen for drag-enter events:', e); }
 
-    const unlistenDragLeave = listen('tauri://drag-leave', () => {
-      setIsDraggingOver(false);
-    });
-
-    return () => {
-      unlistenDrop.then((fn) => fn());
-      unlistenDragEnter.then((fn) => fn());
-      unlistenDragLeave.then((fn) => fn());
+      try {
+        const unlistenDragLeave = await listen('tauri://drag-leave', () => {
+          setIsDraggingOver(false);
+        });
+        cleanups.push(unlistenDragLeave);
+      } catch (e) { console.warn('Failed to listen for drag-leave events:', e); }
     };
+
+    setup();
+
+    return () => { cleanups.forEach(fn => fn()); };
   }, [addFiles]);
 
   const handleOpenFiles = async () => {

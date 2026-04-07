@@ -18,18 +18,17 @@ import { readBinaryState, navigateSkippingWizard, navigateToView } from './helpe
 async function mockValidateEnvironment(page: Page, data: Record<string, unknown>) {
   await page.evaluate((mockData) => {
     const w = window as any;
-    if (!w.__TAURI_INVOKE__) return;
-    // Wrap the original invoke to intercept validate_environment
-    const orig = w.__TAURI_INVOKE__;
-    if (orig.__patched) return; // already patched
-    const patched = (cmd: string, ...args: unknown[]) => {
-      if (cmd === 'validate_environment') {
-        return Promise.resolve(mockData);
-      }
-      return orig(cmd, ...args);
+    if (!w.__TAURI_INTERNALS__?.invoke) return;
+    const origInternals = w.__TAURI_INTERNALS__;
+    const origInvoke = origInternals.invoke;
+    const mockInternals = Object.create(origInternals);
+    mockInternals.invoke = (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'validate_environment') return Promise.resolve(mockData);
+      return origInvoke.call(origInternals, cmd, args);
     };
-    patched.__patched = true;
-    w.__TAURI_INVOKE__ = patched;
+    try { w.__TAURI_INTERNALS__ = mockInternals; } catch {
+      try { Object.defineProperty(w, '__TAURI_INTERNALS__', { value: mockInternals, writable: true, configurable: true }); } catch { /* best effort */ }
+    }
   }, data);
 }
 
@@ -38,18 +37,17 @@ async function mockValidateEnvironment(page: Page, data: Record<string, unknown>
 async function _mockSidecarStatus(page: Page, data: Record<string, unknown>) {
   await page.evaluate((mockData) => {
     const w = window as any;
-    if (!w.__TAURI_INVOKE__) return;
-    const orig = w.__TAURI_INVOKE__;
-    if (orig.__patched_sidecar) return;
-    const patched = (cmd: string, ...args: unknown[]) => {
-      if (cmd === 'get_sidecar_status') {
-        return Promise.resolve(mockData);
-      }
-      return orig(cmd, ...args);
+    if (!w.__TAURI_INTERNALS__?.invoke) return;
+    const origInternals = w.__TAURI_INTERNALS__;
+    const origInvoke = origInternals.invoke;
+    const mockInternals = Object.create(origInternals);
+    mockInternals.invoke = (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'get_sidecar_status') return Promise.resolve(mockData);
+      return origInvoke.call(origInternals, cmd, args);
     };
-    patched.__patched_sidecar = true;
-    patched.__patched = orig.__patched;
-    w.__TAURI_INVOKE__ = patched;
+    try { w.__TAURI_INTERNALS__ = mockInternals; } catch {
+      try { Object.defineProperty(w, '__TAURI_INTERNALS__', { value: mockInternals, writable: true, configurable: true }); } catch { /* best effort */ }
+    }
   }, data);
 }
 
@@ -58,19 +56,21 @@ async function _mockSidecarStatus(page: Page, data: Record<string, unknown>) {
 async function _mockDeploySidecar(page: Page, result: string | Error) {
   await page.evaluate((mockResult) => {
     const w = window as any;
-    if (!w.__TAURI_INVOKE__) return;
-    const orig = w.__TAURI_INVOKE__;
-    const patched = (cmd: string, ...args: unknown[]) => {
+    if (!w.__TAURI_INTERNALS__?.invoke) return;
+    const origInternals = w.__TAURI_INTERNALS__;
+    const origInvoke = origInternals.invoke;
+    const mockInternals = Object.create(origInternals);
+    mockInternals.invoke = (cmd: string, args?: Record<string, unknown>) => {
       if (cmd === 'deploy_sidecar') {
         return typeof mockResult === 'string'
           ? Promise.resolve(mockResult)
           : Promise.reject(mockResult);
       }
-      return orig(cmd, ...args);
+      return origInvoke.call(origInternals, cmd, args);
     };
-    patched.__patched = orig.__patched;
-    patched.__patched_sidecar = orig.__patched_sidecar;
-    w.__TAURI_INVOKE__ = patched;
+    try { w.__TAURI_INTERNALS__ = mockInternals; } catch {
+      try { Object.defineProperty(w, '__TAURI_INTERNALS__', { value: mockInternals, writable: true, configurable: true }); } catch { /* best effort */ }
+    }
   }, result);
 }
 
@@ -206,13 +206,16 @@ test.describe('Sidecar Deployment — repair and guard', () => {
 
     await page.evaluate(() => {
       const w = window as any;
-      const orig = w.__TAURI_INVOKE__;
-      w.__TAURI_INVOKE__ = (cmd: string, ...args: unknown[]) => {
+      const origInternals = w.__TAURI_INTERNALS__;
+      const origInvoke = origInternals.invoke;
+      const mockInternals = Object.create(origInternals);
+      mockInternals.invoke = (cmd: string, args?: Record<string, unknown>) => {
         if (cmd === 'deploy_sidecar') {
           (window as any).__onDeployCalled();
         }
-        return orig(cmd, ...args);
+        return origInvoke.call(origInternals, cmd, args);
       };
+      try { w.__TAURI_INTERNALS__ = mockInternals; } catch { /* best effort */ }
     });
 
     const repairBtn = page.locator('[data-testid="repair-sidecar-btn"]');
@@ -281,17 +284,19 @@ test.describe('Install All Missing — progress surfacing', () => {
     // Mock install_dependency to return quickly
     await page.evaluate(() => {
       const w = window as any;
-      const orig = w.__TAURI_INVOKE__;
-      w.__TAURI_INVOKE__ = (cmd: string, ...args: unknown[]) => {
+      const origInternals = w.__TAURI_INTERNALS__;
+      const origInvoke = origInternals.invoke;
+      const mockInternals = Object.create(origInternals);
+      mockInternals.invoke = (cmd: string, args?: Record<string, unknown>) => {
         if (cmd === 'install_dependency') {
-          const arg = args[0] as Record<string, unknown> | undefined;
-          return Promise.resolve({ success: true, depName: arg?.depName, output: [] });
+          return Promise.resolve({ success: true, depName: args?.depName, output: [] });
         }
         if (cmd === 'get_available_installers') {
           return Promise.resolve([{ id: 'pip', name: 'pip', commandDisplay: 'pip install', needsElevation: false }]);
         }
-        return orig(cmd, ...args);
+        return origInvoke.call(origInternals, cmd, args);
       };
+      try { w.__TAURI_INTERNALS__ = mockInternals; } catch { /* best effort */ }
     });
 
     await installBtn.click();
