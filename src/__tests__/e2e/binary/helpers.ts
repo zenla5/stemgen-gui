@@ -186,7 +186,7 @@ export async function logPageDiagnostics(page: Page, context: string): Promise<v
   }
 }
 
-export async function navigateSkippingWizard(page: Page, appUrl: string): Promise<void> {
+export async function navigateSkippingWizard(page: Page, _appUrl: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 720 });
 
   // Collect console errors for diagnostics
@@ -196,17 +196,15 @@ export async function navigateSkippingWizard(page: Page, appUrl: string): Promis
   };
   page.on('console', consoleHandler);
 
-  await page.addInitScript(
-    ({ key, value }) => {
-      localStorage.setItem(key, value);
-      // Force body visibility immediately on page load (WebView2 0x0 fix)
-      const style = document.createElement('style');
-      style.textContent = 'html, body { min-height: 100vh !important; min-width: 100vw !important; visibility: visible !important; display: block !important; }';
-      (document.head || document.documentElement).appendChild(style);
-    },
-    { key: SETTINGS_KEY, value: buildSettingsStorage() }
-  );
-  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  // NOTE: Do NOT call page.goto(appUrl) on Windows!
+  // The page is already at the correct URL from CDP connection.
+  // page.goto() replaces the page content with an empty document
+  // on the http://tauri.localhost/ custom protocol.
+  // Instead, set localStorage and reload the existing page.
+  await page.evaluate(({ key, value }) => {
+    localStorage.setItem(key, value);
+  }, { key: SETTINGS_KEY, value: buildSettingsStorage() });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
   try {
     await page.waitForSelector('[data-testid="nav-files"]', { timeout: 30000 });
@@ -223,20 +221,13 @@ export async function navigateSkippingWizard(page: Page, appUrl: string): Promis
  * Reset app state between tests. Clears localStorage, re-injects
  * hasSeenFirstRun, and navigates back to the app.
  */
-export async function resetAppState(page: Page, appUrl: string): Promise<void> {
+export async function resetAppState(page: Page, _appUrl: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.addInitScript(
-    ({ key, value }) => {
-      localStorage.clear();
-      localStorage.setItem(key, value);
-      // Force body visibility immediately on page load (WebView2 0x0 fix)
-      const style = document.createElement('style');
-      style.textContent = 'html, body { min-height: 100vh !important; min-width: 100vw !important; visibility: visible !important; display: block !important; }';
-      (document.head || document.documentElement).appendChild(style);
-    },
-    { key: SETTINGS_KEY, value: buildSettingsStorage() }
-  );
-  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.evaluate(({ key, value }) => {
+    localStorage.clear();
+    localStorage.setItem(key, value);
+  }, { key: SETTINGS_KEY, value: buildSettingsStorage() });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
   try {
     await page.waitForSelector('[data-testid="nav-files"]', { timeout: 30000 });

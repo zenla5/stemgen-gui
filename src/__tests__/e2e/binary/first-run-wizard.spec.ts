@@ -7,12 +7,9 @@ import { test, expect } from '@playwright/test';
 import { readBinaryState, takeScreenshot, ensureViewport, logPageDiagnostics } from './helpers';
 
 test.describe('First Run Wizard', () => {
-  let appUrl: string;
-
   test.beforeAll(() => {
     const state = readBinaryState();
     if (!state?.available) return;
-    appUrl = state.appUrl!;
   });
 
   /**
@@ -23,8 +20,10 @@ test.describe('First Run Wizard', () => {
    */
   async function navigateWithWizard(page: import('@playwright/test').Page) {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.addInitScript(() => { localStorage.clear(); });
-    await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Don't use page.goto() — it destroys the existing page on Windows custom protocol.
+    // Clear localStorage and reload the existing page instead.
+    await page.evaluate(() => { localStorage.clear(); });
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
     await ensureViewport(page);
     try {
       await page.waitForSelector('[data-testid="wizard-step"]', { timeout: 15000 });

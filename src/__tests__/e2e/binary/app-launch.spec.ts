@@ -22,7 +22,8 @@ test.describe('App Launch', () => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
 
-    await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // NOTE: Don't use page.goto() — it destroys the existing page on Windows custom protocol.
+    // The page is already loaded from the CDP connection.
     await ensureViewport(page);
     await expect(page.locator('body')).toBeVisible();
     await takeScreenshot(page, 'app-launch-initial-load');
@@ -32,7 +33,6 @@ test.describe('App Launch', () => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
 
-    await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await ensureViewport(page);
     await expect(page).toHaveTitle(/Stemgen/i);
     await takeScreenshot(page, 'app-launch-title');

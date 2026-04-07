@@ -82,15 +82,28 @@ Likely cause: WebKit2GTK CSS rendering issue or viewport size problem. `browser.
 
 **Pattern**: 37 of 38 tests fail (run 24079516286), all at `waitForSelector('[data-testid="nav-files"]')`.
 **Job timeout**: 45 minutes (tests spend 31.8m in timeout waits)
-**Key finding**: `page.title()` returns `""` (empty string) — the HTML `<title>` tag is not being served. React never mounts.
 
-**Root cause hypothesis (Session 4)**: `page.reload()` on the `http://tauri.localhost/` custom protocol URL produces a blank/empty page on Windows WebView2. The Tauri protocol handler does not handle reload requests correctly on Windows.
+**ROOT CAUSE FOUND (Session 4, run 24092703666)**:
 
-**Evidence**:
-- `navigateSkippingWizard` calls `page.goto()` then `page.reload()` — the reload likely blanks the page
-- `waitForNavFiles` retry loop calls `page.reload()` again, creating infinite failure cycle
-- Linux (WebdriverIO) uses `browser.refresh()` which works correctly on WebKit2GTK
-- The `app-launch` test "binary starts and window appears" passes (it uses `page.goto()` WITHOUT reload)
+`page.goto('http://tauri.localhost/')` REPLACES the existing page content with an empty document on Windows WebView2.
+
+**Evidence from diagnostic logging**:
+- At SETUP TIME (global-setup.ts connects via Playwright CDP):
+  ```
+  Page state: title="Stemgen GUI" bodyLen=32 hasRoot=true
+  ```
+  The page HAS content!
+
+- When TEST calls `page.goto(appUrl)`:
+  ```
+  [diag] title="" scriptCount=0 #root="<no #root>" head="<no head>"
+  body="<body style="..."></body>"
+  ```
+  The page is EMPTY!
+
+**The page is already at the correct URL from CDP connection. Calling `page.goto()` on a fresh Playwright page navigates it to `http://tauri.localhost/` through the CDP bridge, which on Windows creates an empty document instead of loading the custom protocol content.**
+
+**Fix**: Remove ALL `page.goto()` calls. The page is already loaded. Use `page.evaluate()` to set localStorage and `page.reload()` to refresh the existing page.
 
 ## What Was Tried
 
@@ -196,27 +209,33 @@ Changes made:
 
 **Pending**: Commit, push, and verify CI results
 
-### Session 4 (2026-04-07) — Windows fix attempt: remove reload
+### Session 4 (2026-04-07) — Windows fix: remove page.goto()
 
-**Problem identified**: `page.reload()` on `http://tauri.localhost/` custom protocol produces blank page on Windows WebView2.
+**Initial hypothesis (WRONG)**: `page.reload()` produces blank page.
+**Actual root cause (FOUND via diagnostics)**: `page.goto()` replaces page content.
 
-**Evidence from CI run 24079516286**:
-- Linux: ALL 11 spec files PASS (confirmed fixed)
-- Windows: 37/38 tests fail, 1 passes ("binary starts and window appears" — only checks body)
-- `page.title()` returns `""` (empty string) — HTML not served correctly after reload
-- `waitForNavFiles` retry loop: 15s + reload + 15s, repeats until 45min timeout
+**CI runs during this session**:
+- Run 24079516286: Linux PASS, Windows TIMEOUT (before Session 4 changes)
+- Run 24086273666: Backend timeout x2 (transient CI issue), re-triggered x3
+- Run 24092703666: Backend PASS (10m), Linux PASS (37m), Windows TIMEOUT
+  - Diagnostic logging revealed: page has content at setup, empty after page.goto()
+- Run 24095770365: Added CDP target logging
+  - CRITICAL FINDING: `Page state: title="Stemgen GUI" bodyLen=32 hasRoot=true` at setup
+  - After `page.goto()`: `title="" scriptCount=0 #root="<no #root>"`
 
-**Changes made**:
-1. **`helpers.ts`** — Added `logPageDiagnostics()` function (logs URL, title, script count, #root content, head HTML, body snippet)
-2. **`helpers.ts`** — Simplified `navigateSkippingWizard`:
-   - Removed `page.reload()` after `page.goto()`
-   - Replaced `waitForNavFiles(page)` with direct `page.waitForSelector(..., { timeout: 30000 })`
-   - Added console error listener + diagnostic logging on failure
-3. **`helpers.ts`** — Simplified `resetAppState`: same pattern (remove reload, direct wait, diagnostics)
-4. **`helpers.ts`** — Deleted `waitForNavFiles()` function entirely
-5. **`first-run-wizard.spec.ts`** — Rewrote `navigateWithWizard`:
-   - Changed from `goto → evaluate(clear) → reload` to `addInitScript(clear) → goto`
-   - Added diagnostic logging on failure
-   - Imported `logPageDiagnostics` from helpers
+**Changes made (Phase 1 - wrong approach)**:
+1. Removed `page.reload()` from navigateSkippingWizard and resetAppState
+2. Deleted `waitForNavFiles()` function
+3. Added `logPageDiagnostics()` and console error collection
+
+**Changes made (Phase 2 - correct fix)**:
+1. **`helpers.ts`** — Removed ALL `page.goto(appUrl)` calls from navigateSkippingWizard and resetAppState
+   - Replaced with `page.evaluate()` to set localStorage + `page.reload()` to refresh
+   - The page is already at the correct URL from CDP connection
+2. **`app-launch.spec.ts`** — Removed `page.goto(appUrl)` from first 2 tests
+3. **`first-run-wizard.spec.ts`** — Removed `page.goto(appUrl)` from navigateWithWizard
+4. **`global-setup.ts`** — Added CDP target logging and page state diagnostic
+5. **`ci.yml`** — Increased backend timeout from 30 to 45 minutes
+6. **`BINARY_E2E_FIX_LOG.md`** — Updated with root cause findings
 
 **Pending**: Commit, push, and verify CI results
