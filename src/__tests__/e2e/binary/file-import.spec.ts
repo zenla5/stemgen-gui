@@ -27,6 +27,9 @@ test.describe('File Import', () => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
     await navigateSkippingWizard(page, appUrl);
+    // Click Files nav to ensure the view is fully rendered on WebView2
+    await page.locator('[data-testid="nav-files"]').click();
+    await page.waitForTimeout(500);
   });
 
   test.afterEach(async ({ page }) => {

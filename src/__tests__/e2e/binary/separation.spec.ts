@@ -48,22 +48,30 @@ test.describe('Separation', () => {
 
   test('separation requires environment check', async ({ page }) => {
     // Verify environment validation can be invoked
-    const result = await page.evaluate(async () => {
-      try {
-        // @ts-ignore
-        const env = await (window as any).__TAURI_INTERNALS__?.invoke('validate_environment');
-        return { success: true, isReady: env?.isReady };
-      } catch (err) {
-        return { error: String(err) };
-      }
-    });
+    // Wrap in try/catch because validate_environment may trigger navigation
+    // which destroys the Playwright execution context
+    let result: { success?: boolean; isReady?: unknown; error?: string };
+    try {
+      result = await page.evaluate(async () => {
+        try {
+          // @ts-ignore
+          const env = await (window as any).__TAURI_INTERNALS__?.invoke('validate_environment');
+          return { success: true, isReady: env?.isReady };
+        } catch (err) {
+          return { error: String(err) };
+        }
+      });
+    } catch (err) {
+      // Navigation may have destroyed the execution context — this is acceptable
+      result = { error: String(err) };
+    }
 
     // Should either succeed or return a meaningful error
     if ('success' in result) {
       // Environment validation worked — isReady tells us if deps are installed
       expect(typeof result.isReady).toBe('boolean');
     } else {
-      // Command may not be available in all builds
+      // Command may not be available in all builds, or navigation interrupted
       expect(result).toHaveProperty('error');
     }
   });

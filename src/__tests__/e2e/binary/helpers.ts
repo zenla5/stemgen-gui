@@ -117,21 +117,6 @@ export function skipIfNoBinary(): void {
 const SETTINGS_KEY = 'stemgen-settings-storage';
 
 /**
- * Build a valid zustand persist value with hasSeenFirstRun set to true.
- */
-function buildSettingsStorage(overrides: Record<string, unknown> = {}): string {
-  return JSON.stringify({
-    state: {
-      hasSeenFirstRun: true,
-      theme: 'system',
-      language: 'en',
-      ...overrides,
-    },
-    version: 0,
-  });
-}
-
-/**
  * Ensure the page viewport is large enough for Playwright visibility checks.
  * On CI, the WebView2 window may start at 0x0, causing all elements to report
  * as "hidden". This must be called AFTER every page.goto() and page.reload().
@@ -201,9 +186,18 @@ export async function navigateSkippingWizard(page: Page, _appUrl: string): Promi
   // page.goto() replaces the page content with an empty document
   // on the http://tauri.localhost/ custom protocol.
   // Instead, set localStorage and reload the existing page.
-  await page.evaluate(({ key, value }) => {
-    localStorage.setItem(key, value);
-  }, { key: SETTINGS_KEY, value: buildSettingsStorage() });
+  // Preserve the current theme across reload (match Linux behavior).
+  await page.evaluate((key: string) => {
+    let theme = 'system';
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) theme = JSON.parse(raw)?.state?.theme || 'system';
+    } catch { /* ignore */ }
+    localStorage.setItem(key, JSON.stringify({
+      state: { hasSeenFirstRun: true, theme, language: 'en' },
+      version: 0,
+    }));
+  }, SETTINGS_KEY);
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
   try {
@@ -223,10 +217,19 @@ export async function navigateSkippingWizard(page: Page, _appUrl: string): Promi
  */
 export async function resetAppState(page: Page, _appUrl: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.evaluate(({ key, value }) => {
+  // Preserve the current theme across reset (match Linux behavior).
+  await page.evaluate((key: string) => {
+    let theme = 'system';
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) theme = JSON.parse(raw)?.state?.theme || 'system';
+    } catch { /* ignore */ }
     localStorage.clear();
-    localStorage.setItem(key, value);
-  }, { key: SETTINGS_KEY, value: buildSettingsStorage() });
+    localStorage.setItem(key, JSON.stringify({
+      state: { hasSeenFirstRun: true, theme, language: 'en' },
+      version: 0,
+    }));
+  }, SETTINGS_KEY);
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
   try {
