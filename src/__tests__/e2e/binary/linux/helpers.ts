@@ -179,36 +179,46 @@ async function ensureMockProxy(): Promise<{ ok: boolean; reason?: string }> {
           return origInvoke.call(origInternals, cmd, args);
         }
 
-        // Strategy 1: Direct assignment
+        let e1msg = '';
+        // Strategy 1: Direct assignment (may silently fail on non-writable properties)
         try {
           origInternals.invoke = mockInvoke;
-          w.__mockProxyInstalled = true;
-          return { ok: true, method: 'direct', diag };
-        } catch (e1: any) {
-          // Strategy 2: Object.defineProperty (matching existing descriptor)
-          try {
-            Object.defineProperty(origInternals, 'invoke', {
-              value: mockInvoke,
-              writable: !!desc?.writable,
-              configurable: !!desc?.configurable,
-              enumerable: !!desc?.enumerable,
-            });
+          if (origInternals.invoke === mockInvoke) {
             w.__mockProxyInstalled = true;
-            return { ok: true, method: 'defineProp', diag };
-          } catch (e2: any) {
-            // Strategy 3: Delete and re-add (if configurable, this works)
-            try {
-              delete origInternals.invoke;
-              origInternals.invoke = mockInvoke;
-              w.__mockProxyInstalled = true;
-              return { ok: true, method: 'delete+assign', diag };
-            } catch (e3: any) {
-              return {
-                ok: false,
-                reason: `all failed [${diag}]: assign=${e1?.message}, defProp=${e2?.message}, delete=${e3?.message}`,
-              };
-            }
+            return { ok: true, method: 'direct', diag };
           }
+          // Assignment silently failed (non-writable property in non-strict mode)
+          e1msg = 'silent fail (writable=false)';
+        } catch (e1: any) {
+          e1msg = e1?.message || String(e1);
+        }
+
+        // Strategy 2: Object.defineProperty (matching existing descriptor)
+        let e2msg = '';
+        try {
+          Object.defineProperty(origInternals, 'invoke', {
+            value: mockInvoke,
+            writable: !!desc?.writable,
+            configurable: !!desc?.configurable,
+            enumerable: !!desc?.enumerable,
+          });
+          w.__mockProxyInstalled = true;
+          return { ok: true, method: 'defineProp', diag };
+        } catch (e2: any) {
+          e2msg = e2?.message || String(e2);
+        }
+
+        // Strategy 3: Delete and re-add
+        try {
+          delete origInternals.invoke;
+          origInternals.invoke = mockInvoke;
+          w.__mockProxyInstalled = true;
+          return { ok: true, method: 'delete+assign', diag };
+        } catch (e3: any) {
+          return {
+            ok: false,
+            reason: `all failed [${diag}]: assign=${e1msg}, defProp=${e2msg}, delete=${e3?.message}`,
+          };
         }
       } catch (innerErr: any) {
         return { ok: false, reason: 'inner: ' + (innerErr?.message || innerErr) };
