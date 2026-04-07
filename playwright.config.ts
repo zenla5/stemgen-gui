@@ -36,9 +36,6 @@ export default defineConfig({
       retries: 0, // No retries for binary tests
       outputDir: './test-results/binary-screenshots',
       use: {
-        connectOptions: {
-          wsEndpoint: `http://127.0.0.1:${process.env.CDP_PORT || 9515}`,
-        },
         trace: 'on-first-retry',
         screenshot: 'on',
       },
