@@ -138,30 +138,56 @@ function buildSettingsStorage(overrides: Record<string, unknown> = {}): string {
  */
 export async function ensureViewport(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 720 });
-  // Force html/body dimensions via DOM manipulation.
+  // Force html/body dimensions and visibility via DOM manipulation.
   // On Windows WebView2, the window may have 0x0 dimensions, making
-  // Playwright report all elements as hidden. This is a no-op if the
-  // page hasn't loaded yet (evaluate throws), which is fine.
+  // Playwright report all elements as hidden.
   try {
     await page.evaluate(() => {
       document.documentElement.style.minHeight = '100vh';
       document.documentElement.style.minWidth = '100vw';
+      document.documentElement.style.visibility = 'visible';
+      document.documentElement.style.display = 'block';
       document.body.style.minHeight = '100vh';
       document.body.style.minWidth = '100vw';
+      document.body.style.visibility = 'visible';
+      document.body.style.display = 'block';
     });
   } catch { /* page may not be loaded yet */ }
+}
+
+/**
+ * Wait for the nav-files element to appear, with a retry on failure.
+ * On Windows CI, the WebView2 may need an extra reload to render properly.
+ */
+async function waitForNavFiles(page: Page): Promise<void> {
+  const selector = '[data-testid="nav-files"]';
+  try {
+    await page.waitForSelector(selector, { timeout: 15000 });
+  } catch {
+    // First attempt failed — retry with a reload
+    console.warn('[waitForNavFiles] nav-files not found after 15s, retrying with reload...');
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+    await ensureViewport(page);
+    await page.waitForSelector(selector, { timeout: 15000 });
+  }
 }
 
 export async function navigateSkippingWizard(page: Page, appUrl: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.addInitScript(
-    ({ key, value }) => { localStorage.setItem(key, value); },
+    ({ key, value }) => {
+      localStorage.setItem(key, value);
+      // Force body visibility immediately on page load (WebView2 0x0 fix)
+      const style = document.createElement('style');
+      style.textContent = 'html, body { min-height: 100vh !important; min-width: 100vw !important; visibility: visible !important; display: block !important; }';
+      (document.head || document.documentElement).appendChild(style);
+    },
     { key: SETTINGS_KEY, value: buildSettingsStorage() }
   );
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
-  await page.waitForSelector('[data-testid="nav-files"]', { timeout: 15000 });
+  await waitForNavFiles(page);
 }
 
 /**
@@ -174,13 +200,17 @@ export async function resetAppState(page: Page, appUrl: string): Promise<void> {
     ({ key, value }) => {
       localStorage.clear();
       localStorage.setItem(key, value);
+      // Force body visibility immediately on page load (WebView2 0x0 fix)
+      const style = document.createElement('style');
+      style.textContent = 'html, body { min-height: 100vh !important; min-width: 100vw !important; visibility: visible !important; display: block !important; }';
+      (document.head || document.documentElement).appendChild(style);
     },
     { key: SETTINGS_KEY, value: buildSettingsStorage() }
   );
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
-  await page.waitForSelector('[data-testid="nav-files"]', { timeout: 15000 });
+  await waitForNavFiles(page);
 }
 
 /**

@@ -27,6 +27,10 @@ describe('File Import', () => {
     const state = readBinaryState();
     if (!state?.available) return;
     await navigateSkippingWizard(appUrl);
+    // Click Files nav to ensure the view is fully rendered on WebKit2GTK
+    // (Tailwind CSS may need extra time to process after initial load)
+    await $('[data-testid="nav-files"]').click();
+    await browser.pause(500);
   });
 
   afterEach(async () => {
