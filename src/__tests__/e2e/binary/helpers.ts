@@ -156,24 +156,46 @@ export async function ensureViewport(page: Page): Promise<void> {
 }
 
 /**
- * Wait for the nav-files element to appear, with a retry on failure.
- * On Windows CI, the WebView2 may need an extra reload to render properly.
+ * Log page diagnostics for debugging blank-page failures on Windows CI.
+ * Captures URL, title, script count, #root content, and body snippet.
  */
-async function waitForNavFiles(page: Page): Promise<void> {
-  const selector = '[data-testid="nav-files"]';
+export async function logPageDiagnostics(page: Page, context: string): Promise<void> {
   try {
-    await page.waitForSelector(selector, { timeout: 15000 });
-  } catch {
-    // First attempt failed — retry with a reload
-    console.warn('[waitForNavFiles] nav-files not found after 15s, retrying with reload...');
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-    await ensureViewport(page);
-    await page.waitForSelector(selector, { timeout: 15000 });
+    const url = page.url();
+    const title = await page.title();
+    const bodySnippet = await page.evaluate(
+      () => document.body?.outerHTML?.slice(0, 500) || '<no body>'
+    );
+    const scriptCount = await page.evaluate(
+      () => document.querySelectorAll('script').length
+    );
+    const rootHtml = await page.evaluate(
+      () => document.getElementById('root')?.innerHTML?.slice(0, 200) || '<no #root>'
+    );
+    const headHtml = await page.evaluate(
+      () => document.head?.innerHTML?.slice(0, 500) || '<no head>'
+    );
+    console.log(`[diag:${context}] url=${url}`);
+    console.log(`[diag:${context}] title="${title}"`);
+    console.log(`[diag:${context}] scriptCount=${scriptCount}`);
+    console.log(`[diag:${context}] #root="${rootHtml}"`);
+    console.log(`[diag:${context}] head="${headHtml}"`);
+    console.log(`[diag:${context}] body="${bodySnippet}"`);
+  } catch (err) {
+    console.warn(`[diag:${context}] Failed to capture: ${err}`);
   }
 }
 
 export async function navigateSkippingWizard(page: Page, appUrl: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 720 });
+
+  // Collect console errors for diagnostics
+  const consoleErrors: string[] = [];
+  const consoleHandler = (msg: { type(): string; text(): string }) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  };
+  page.on('console', consoleHandler);
+
   await page.addInitScript(
     ({ key, value }) => {
       localStorage.setItem(key, value);
@@ -185,9 +207,16 @@ export async function navigateSkippingWizard(page: Page, appUrl: string): Promis
     { key: SETTINGS_KEY, value: buildSettingsStorage() }
   );
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
-  await waitForNavFiles(page);
+  try {
+    await page.waitForSelector('[data-testid="nav-files"]', { timeout: 30000 });
+  } catch (err) {
+    await logPageDiagnostics(page, 'navigateSkippingWizard');
+    console.error(`[navigateSkippingWizard] Console errors: ${JSON.stringify(consoleErrors)}`);
+    page.off('console', consoleHandler);
+    throw err;
+  }
+  page.off('console', consoleHandler);
 }
 
 /**
@@ -208,9 +237,13 @@ export async function resetAppState(page: Page, appUrl: string): Promise<void> {
     { key: SETTINGS_KEY, value: buildSettingsStorage() }
   );
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   await ensureViewport(page);
-  await waitForNavFiles(page);
+  try {
+    await page.waitForSelector('[data-testid="nav-files"]', { timeout: 30000 });
+  } catch (err) {
+    await logPageDiagnostics(page, 'resetAppState');
+    throw err;
+  }
 }
 
 /**

@@ -4,9 +4,12 @@ Multi-session log for debugging CI binary E2E test failures. This file ensures c
 
 ## Problem Summary
 
-CI pipeline binary E2E tests fail on both Linux (ubuntu-latest) and Windows (windows-latest):
-- **Linux**: 2 of 11 spec files fail (`environment-consistency.spec.ts` and `file-import.spec.ts`)
-- **Windows**: 60 of 83 tests fail + job times out at 45 minutes
+CI pipeline binary E2E tests:
+- **Linux**: FIXED in Session 3 — all 11 spec files PASS (run 24079516286)
+- **Windows**: STILL FAILING — 37 tests fail, 1 passes, job times out at 45 minutes
+  - Root symptom: `page.title()` returns `""` (empty) despite HTML having `<title>Stemgen GUI</title>`
+  - React never mounts (`[data-testid="nav-files"]` never visible)
+  - The only passing test checks body visibility (works even without JS)
 
 ## Architecture Overview
 
@@ -77,19 +80,17 @@ Likely cause: WebKit2GTK CSS rendering issue or viewport size problem. `browser.
 
 ### Windows: Tests Timing Out
 
-**Pattern**: 60 of 83 tests fail, all at `resetAppState` / `navigateSkippingWizard` line:
-```
-await page.waitForSelector('[data-testid="nav-files"]', { timeout: 15000 });
-```
-**Job timeout**: 45 minutes (tests run so slowly due to 15s timeouts per test)
+**Pattern**: 37 of 38 tests fail (run 24079516286), all at `waitForSelector('[data-testid="nav-files"]')`.
+**Job timeout**: 45 minutes (tests spend 31.8m in timeout waits)
+**Key finding**: `page.title()` returns `""` (empty string) — the HTML `<title>` tag is not being served. React never mounts.
 
-The app fails to load on Windows CI. The `page.goto()` + `page.reload()` sequence doesn't produce a page with `[data-testid="nav-files"]` visible. This causes every test to timeout at 15s, making the entire suite take 30+ minutes.
+**Root cause hypothesis (Session 4)**: `page.reload()` on the `http://tauri.localhost/` custom protocol URL produces a blank/empty page on Windows WebView2. The Tauri protocol handler does not handle reload requests correctly on Windows.
 
-Possible causes:
-- WebView2 binary crash after first test
-- CDP connection lost
-- Viewport 0x0 issue (ensureViewport may not be working)
-- Page navigation issue (appUrl incorrect after first test)
+**Evidence**:
+- `navigateSkippingWizard` calls `page.goto()` then `page.reload()` — the reload likely blanks the page
+- `waitForNavFiles` retry loop calls `page.reload()` again, creating infinite failure cycle
+- Linux (WebdriverIO) uses `browser.refresh()` which works correctly on WebKit2GTK
+- The `app-launch` test "binary starts and window appears" passes (it uses `page.goto()` WITHOUT reload)
 
 ## What Was Tried
 
@@ -192,5 +193,30 @@ Changes made:
    - Updated `navigateSkippingWizard` and `resetAppState` to use `waitForNavFiles`
    - Added CSS injection in `addInitScript` forcing `html, body { min-height: 100vh !important; visibility: visible !important; display: block !important; }`
    - Enhanced `ensureViewport` to also force `visibility: visible` and `display: block`
+
+**Pending**: Commit, push, and verify CI results
+
+### Session 4 (2026-04-07) — Windows fix attempt: remove reload
+
+**Problem identified**: `page.reload()` on `http://tauri.localhost/` custom protocol produces blank page on Windows WebView2.
+
+**Evidence from CI run 24079516286**:
+- Linux: ALL 11 spec files PASS (confirmed fixed)
+- Windows: 37/38 tests fail, 1 passes ("binary starts and window appears" — only checks body)
+- `page.title()` returns `""` (empty string) — HTML not served correctly after reload
+- `waitForNavFiles` retry loop: 15s + reload + 15s, repeats until 45min timeout
+
+**Changes made**:
+1. **`helpers.ts`** — Added `logPageDiagnostics()` function (logs URL, title, script count, #root content, head HTML, body snippet)
+2. **`helpers.ts`** — Simplified `navigateSkippingWizard`:
+   - Removed `page.reload()` after `page.goto()`
+   - Replaced `waitForNavFiles(page)` with direct `page.waitForSelector(..., { timeout: 30000 })`
+   - Added console error listener + diagnostic logging on failure
+3. **`helpers.ts`** — Simplified `resetAppState`: same pattern (remove reload, direct wait, diagnostics)
+4. **`helpers.ts`** — Deleted `waitForNavFiles()` function entirely
+5. **`first-run-wizard.spec.ts`** — Rewrote `navigateWithWizard`:
+   - Changed from `goto → evaluate(clear) → reload` to `addInitScript(clear) → goto`
+   - Added diagnostic logging on failure
+   - Imported `logPageDiagnostics` from helpers
 
 **Pending**: Commit, push, and verify CI results

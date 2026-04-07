@@ -4,7 +4,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { readBinaryState, takeScreenshot, ensureViewport } from './helpers';
+import { readBinaryState, takeScreenshot, ensureViewport, logPageDiagnostics } from './helpers';
 
 test.describe('First Run Wizard', () => {
   let appUrl: string;
@@ -18,15 +18,20 @@ test.describe('First Run Wizard', () => {
   /**
    * Navigate to the app with localStorage cleared so the wizard shows.
    *
-   * We navigate to appUrl first (not about:blank) because the WebView2
-   * runtime blocks localStorage operations from cross-origin pages.
+   * Uses addInitScript to clear localStorage before React initializes,
+   * avoiding a reload (which is unreliable on Windows custom protocol).
    */
   async function navigateWithWizard(page: import('@playwright/test').Page) {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.addInitScript(() => { localStorage.clear(); });
     await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await ensureViewport(page);
-    await page.evaluate(() => localStorage.clear());
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-    await ensureViewport(page);
+    try {
+      await page.waitForSelector('[data-testid="wizard-step"]', { timeout: 15000 });
+    } catch (err) {
+      await logPageDiagnostics(page, 'navigateWithWizard');
+      throw err;
+    }
   }
 
   test('wizard shows welcome step by default', async ({ page }) => {
