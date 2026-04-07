@@ -119,9 +119,9 @@ Likely cause: WebKit2GTK CSS rendering issue or viewport size problem. `browser.
 | Delete + reassign internals.invoke | `delete origInternals.invoke; origInternals.invoke = mockInvoke` | Delete fails (non-configurable) |
 | Object.create prototype chain | `Object.create(origInternals); mockInternals.invoke = mockInvoke` | Works on mockInternals, but can't assign to window |
 
-## Approaches to Try Next
+### Approaches to Try Next
 
-### Approach A: Force `configurable: true` on Window Property
+#### Approach A: Force `configurable: true` on Window Property
 Even though ECMAScript spec says you can't change configurable from false to true, try:
 ```js
 Object.defineProperty(w, '__TAURI_INTERNALS__', {
@@ -133,13 +133,13 @@ Object.defineProperty(w, '__TAURI_INTERNALS__', {
 ```
 This works IF `__TAURI_INTERNALS__` is an inherited property from the prototype chain (not an own property). Need to verify with diagnostics.
 
-### Approach B: Test Without Mocking
+#### Approach B: Test Without Mocking
 Rewrite environment-consistency tests to work with the REAL environment state instead of mocking validate_environment. The system-status tests already do this successfully.
 
-### Approach C: Override Module-Level Invoke
+#### Approach C: Override Module-Level Invoke
 Instead of replacing `window.__TAURI_INTERNALS__`, override the `invoke` function at the module level. Since the app uses bundled code, this might require finding and modifying the loaded module's exports.
 
-### Approach D: Skip Broken Tests on Linux
+#### Approach D: Skip Broken Tests on Linux
 As a last resort, mark environment-consistency and file-import tests as Linux-skipped. NOT recommended by user.
 
 ## Files to Modify
@@ -239,3 +239,22 @@ Changes made:
 6. **`BINARY_E2E_FIX_LOG.md`** — Updated with root cause findings
 
 **Pending**: Commit, push, and verify CI results
+
+### Session 5 (2026-04-07) — Verification and Final Fix
+**Investigation**: Verified that all `page.goto()` calls have been removed from Windows binary E2E tests and Linux mocking code has been removed.
+
+**Findings**:
+1. **Windows E2E tests**: Confirmed no remaining `page.goto()` calls in:
+   - `src/__tests__/e2e/binary/helpers.ts` - Uses `page.evaluate()` + `page.reload()` instead
+   - `src/__tests__/e2e/binary/app-launch.spec.ts` - Only contains warnings about not using page.goto()
+   - `src/__tests__/e2e/binary/first-run-wizard.spec.ts` - Only contains warnings about not using page.goto()
+   - The only `page.goto()` calls found were in non-CI scripts (`scripts/capture-screenshots.mjs`) and temporary files
+
+2. **Linux E2E tests**: Confirmed mocking code has been removed:
+   - `src/__tests__/e2e/binary/linux/helpers.ts` - No mock functions present (ensureMockProxy, mockValidateEnvironment, etc.)
+   - `src/__tests__/e2e/binary/linux/environment-consistency.spec.ts` - Uses real environment state, no mocking
+   - `src/__tests__/e2e/binary/linux/file-import.spec.ts` - Already has rendering wait added (nav-files click + 500ms pause)
+
+**Conclusion**: All known issues have been addressed according to the fix log. The tests should now pass in CI.
+
+**Next Steps**: Commit, push, and monitor CI results.
