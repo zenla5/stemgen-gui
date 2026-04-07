@@ -268,23 +268,35 @@ This is because about:blank has no accessible document.
 
 **Why previous fix (Session 4) didn't work**: Session 4 correctly identified that `page.goto()` replaces page content and removed all `page.goto()` calls. But without `page.goto()`, the tests stayed on the blank page. `page.evaluate()` for localStorage still fails on about:blank.
 
-**Fix**: Override the `page` fixture so it returns the existing Tauri app page from the CDP-connected browser.
+**Fix**: Override `browser` and `page` fixtures so Playwright connects to the Tauri WebView2 CDP endpoint and returns the existing app page.
 
 **Changes made**:
-1. **`playwright.config.ts`** — Added `connectOptions` to the binary project:
-   ```typescript
-   connectOptions: {
-     wsEndpoint: `http://127.0.0.1:${process.env.CDP_PORT || 9515}`,
-   },
-   ```
-   This makes Playwright's `browser` fixture connect to the Tauri WebView2 via CDP.
+1. **`playwright.config.ts`** — Removed `connectOptions` (WebView2 CDP doesn't return `webSocketDebuggerUrl`, causing Playwright to crash). Reverted to default.
 
-2. **`src/__tests__/e2e/binary/test-fixtures.ts`** — New file: custom `page` fixture that finds the existing Tauri app page in the default browser context instead of creating a new blank page. Includes 10-second polling for robustness.
+2. **`src/__tests__/e2e/binary/test-fixtures.ts`** — New file with two fixture overrides:
+   - `browser` fixture: Reads `wsUrl` from the state file. If it's a `ws://` URL, connects directly via `chromium.connectOverCDP(wsUrl)`. If it's an HTTP URL, queries `/json/version` to get `webSocketDebuggerUrl` first.
+   - `page` fixture: Finds the existing Tauri app page in the default context (with 10s polling), not a new blank page.
 
 3. **All 11 spec files** — Changed import from `@playwright/test` to `./test-fixtures`:
    - app-launch, environment-consistency, error-handling, file-import, first-run-wizard, mixer, navigation, queue, separation, settings, system-status
 
-**Verification**: Pending CI run results.
+4. **`settings.spec.ts`** — Fixed `h2` selector to use `.filter({ hasText: 'Settings' })` instead of bare `h2` (strict mode violation).
+
+**Verification**: CI run 24106007105 — **68 passed, 13 failed, 2 skipped** (was 82 failing).
+The CDP connection fix works — all tests that rely on the page fixture now connect to the real app.
+
+**Remaining 13 failures** (test logic issues, NOT infrastructure):
+| Test | Error | Root Cause |
+|------|-------|------------|
+| environment-consistency (3 tests) | Mock `__TAURI_INTERNALS__.invoke` doesn't intercept after refresh | `mockValidateEnvironment` patches invoke, but refresh button re-fetches env from real backend |
+| error-handling (1 test) | `expect(result).toHaveProperty('error')` | `get_audio_info` on corrupt.wav might not return error on CI |
+| file-import (1 test) | `drop-zone` not visible | WebKit2GTK viewport or CSS rendering issue |
+| separation (1 test) | `Execution context was destroyed, navigation` | Page navigates during test |
+| settings (1 test) | `theme persists across page reload` | `page.reload()` on custom protocol may lose state |
+| system-status (5 tests) | Mock/visibility assertions fail | Similar mock issues or real env state differs |
 
 **CI Runs**:
 - Run 24098989694: FAILED — 82 tests all fail with localStorage SecurityError (before Session 6 fix)
+- Run 24104559905: FAILED — Lint error (react-hooks/rules-of-hooks on Playwright `use()`)
+- Run 24104665802: FAILED — `browserType.connect: Cannot read properties of undefined` (WebView2 CDP missing webSocketDebuggerUrl)
+- Run 24106007105: PARTIAL — 68/83 pass, 13 test logic failures remain
