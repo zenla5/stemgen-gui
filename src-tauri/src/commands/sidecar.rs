@@ -256,7 +256,7 @@ impl SidecarManager {
     }
 
     /// Collect the generated stem files
-    fn collect_stems(&self, output_dir: &Path, source_path: &Path) -> Result<Vec<StemResult>> {
+    pub fn collect_stems(&self, output_dir: &Path, source_path: &Path) -> Result<Vec<StemResult>> {
         let mut stems = Vec::new();
         let stem_names = ["drums", "bass", "other", "vocals"];
         let source_stem = source_path
