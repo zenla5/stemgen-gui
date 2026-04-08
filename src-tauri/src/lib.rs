@@ -299,6 +299,12 @@ pub fn run() {
             commands::log_separation_job,
             commands::get_separation_log,
             commands::get_library_stats,
+            // Library root management
+            commands::library_roots::add_library_root,
+            commands::library_roots::list_library_roots,
+            commands::library_roots::get_library_root,
+            commands::library_roots::update_library_root,
+            commands::library_roots::delete_library_root,
             // Environment validation
             commands::validate_environment,
             commands::get_sidecar_status,
