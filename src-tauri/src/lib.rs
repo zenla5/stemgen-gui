@@ -9,8 +9,16 @@ pub mod stems;
 use std::sync::Mutex as StdMutex;
 use tauri::{Emitter, Manager};
 use tokio::sync::Mutex as TokioMutex;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+/// Compute SHA-256 hash of a file, returned as a lowercase hex string.
+fn compute_file_sha256(path: &std::path::Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    let data = std::fs::read(path)?;
+    let hash = Sha256::digest(&data);
+    Ok(format!("{:x}", hash))
+}
 
 /// Application state shared across commands
 pub struct AppState {
@@ -122,17 +130,18 @@ pub fn run() {
                         }
                     }
                     if resource_sidecar.exists() {
-                        let should_copy = !sidecar_path.exists()
-                            || std::fs::metadata(&resource_sidecar)
-                                .and_then(|s| s.modified())
-                                .ok()
-                                .and_then(|src_mtime| {
-                                    std::fs::metadata(&sidecar_path)
-                                        .and_then(|d| d.modified())
-                                        .ok()
-                                        .map(|d_mtime| src_mtime > d_mtime)
-                                })
-                                .unwrap_or(true);
+                        // Hash-based staleness detection (replaces unreliable mtime)
+                        let should_copy = if !sidecar_path.exists() {
+                            true
+                        } else {
+                            match (
+                                compute_file_sha256(&resource_sidecar),
+                                compute_file_sha256(&sidecar_path),
+                            ) {
+                                (Ok(src_hash), Ok(dst_hash)) => src_hash != dst_hash,
+                                _ => true, // If hash fails, re-copy to be safe
+                            }
+                        };
                         if should_copy {
                             info!(
                                 "Deploying sidecar script: {} -> {}",
@@ -140,7 +149,40 @@ pub fn run() {
                                 sidecar_path.display()
                             );
                             match std::fs::copy(&resource_sidecar, &sidecar_path) {
-                                Ok(_) => deploy_success = true,
+                                Ok(_) => {
+                                    // SHA-256 integrity verification after copy
+                                    match (
+                                        compute_file_sha256(&resource_sidecar),
+                                        compute_file_sha256(&sidecar_path),
+                                    ) {
+                                        (Ok(src_hash), Ok(dst_hash))
+                                            if src_hash == dst_hash =>
+                                        {
+                                            deploy_success = true;
+                                        }
+                                        (Ok(src_hash), Ok(dst_hash)) => {
+                                            let msg = format!(
+                                                "Sidecar integrity check FAILED after copy: \
+                                                 source hash {} != destination hash {}. \
+                                                 Deleting corrupted file. Please reinstall \
+                                                 Stemgen GUI v{}. If the problem persists, \
+                                                 please report it at \
+                                                 https://github.com/zenla5/stemgen-gui/issues.",
+                                                src_hash, dst_hash, version,
+                                            );
+                                            error!("{}", msg);
+                                            let _ = std::fs::remove_file(&sidecar_path);
+                                            deploy_error = Some(msg);
+                                        }
+                                        _ => {
+                                            warn!(
+                                                "Could not compute hashes for integrity check, \
+                                                 assuming copy succeeded"
+                                            );
+                                            deploy_success = true;
+                                        }
+                                    }
+                                }
                                 Err(e) => {
                                     let msg = format!(
                                         "Sidecar script (stemgen_sidecar.py) could not be copied \
@@ -157,7 +199,7 @@ pub fn run() {
                                 }
                             }
                         } else {
-                            // Already up to date
+                            // Already up to date (hashes match)
                             deploy_success = true;
                         }
                     } else {

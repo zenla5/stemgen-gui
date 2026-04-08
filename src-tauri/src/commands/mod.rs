@@ -270,6 +270,21 @@ pub async fn deploy_sidecar(app: tauri::AppHandle) -> Result<String, String> {
     std::fs::copy(&resource_sidecar, &sidecar_path)
         .map_err(|e| format!("Failed to copy sidecar to {}: {e}", sidecar_path.display()))?;
 
+    // SHA-256 integrity verification
+    let src_hash = crate::compute_file_sha256(&resource_sidecar)
+        .map_err(|e| format!("Failed to hash source sidecar: {e}"))?;
+    let dst_hash = crate::compute_file_sha256(&sidecar_path)
+        .map_err(|e| format!("Failed to hash destination sidecar: {e}"))?;
+    if src_hash != dst_hash {
+        let _ = std::fs::remove_file(&sidecar_path);
+        return Err(format!(
+            "Sidecar integrity check FAILED: source hash {} != destination hash {}. \
+             Deleted corrupted file. Please reinstall Stemgen GUI v{}. If the problem \
+             persists, please report it at https://github.com/zenla5/stemgen-gui/issues.",
+            src_hash, dst_hash, version,
+        ));
+    }
+
     info!("Sidecar deployed to: {}", sidecar_path.display());
     Ok(sidecar_path.to_string_lossy().to_string())
 }
