@@ -233,6 +233,7 @@ pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
 #[tauri::command]
 pub async fn deploy_sidecar(app: tauri::AppHandle) -> Result<String, String> {
     info!("Deploying sidecar script via command");
+    let version = env!("CARGO_PKG_VERSION");
     let resource_dir = app
         .path()
         .resource_dir()
@@ -250,7 +251,13 @@ pub async fn deploy_sidecar(app: tauri::AppHandle) -> Result<String, String> {
     }
 
     if !resource_sidecar.exists() {
-        return Err("Sidecar script not found in application resources".to_string());
+        return Err(format!(
+            "Sidecar script (stemgen_sidecar.py) was not found in the application resources \
+             directory ({}). Please reinstall Stemgen GUI v{} and try again. If the problem \
+             persists, please report it at https://github.com/zenla5/stemgen-gui/issues.",
+            resource_dir.display(),
+            version,
+        ));
     }
 
     let data_dir = get_data_dir();

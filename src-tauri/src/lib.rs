@@ -9,7 +9,7 @@ pub mod stems;
 use std::sync::Mutex as StdMutex;
 use tauri::{Emitter, Manager};
 use tokio::sync::Mutex as TokioMutex;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Application state shared across commands
@@ -105,6 +105,7 @@ pub fn run() {
 
             // Deploy sidecar script from resource bundle to data dir
             {
+                let version = env!("CARGO_PKG_VERSION");
                 let mut deploy_success = false;
                 let mut deploy_error: Option<String> = None;
 
@@ -141,8 +142,18 @@ pub fn run() {
                             match std::fs::copy(&resource_sidecar, &sidecar_path) {
                                 Ok(_) => deploy_success = true,
                                 Err(e) => {
-                                    tracing::warn!("Failed to deploy sidecar script: {}", e);
-                                    deploy_error = Some(e.to_string());
+                                    let msg = format!(
+                                        "Sidecar script (stemgen_sidecar.py) could not be copied \
+                                         from {} to {}: {}. Please reinstall Stemgen GUI v{} \
+                                         and try again. If the problem persists, please report \
+                                         it at https://github.com/zenla5/stemgen-gui/issues.",
+                                        resource_sidecar.display(),
+                                        sidecar_path.display(),
+                                        e,
+                                        version,
+                                    );
+                                    error!("{}", msg);
+                                    deploy_error = Some(msg);
                                 }
                             }
                         } else {
@@ -150,11 +161,26 @@ pub fn run() {
                             deploy_success = true;
                         }
                     } else {
-                        deploy_error =
-                            Some("Sidecar script not found in application resources".to_string());
+                        let searched = resource_dir.display().to_string();
+                        let msg = format!(
+                            "Sidecar script (stemgen_sidecar.py) was not found in the \
+                             application resources directory ({}). Please reinstall Stemgen \
+                             GUI v{} and try again. If the problem persists, please report \
+                             it at https://github.com/zenla5/stemgen-gui/issues.",
+                            searched, version,
+                        );
+                        error!("{}", msg);
+                        deploy_error = Some(msg);
                     }
                 } else {
-                    deploy_error = Some("Failed to get resource directory".to_string());
+                    let msg = format!(
+                        "Failed to get the application resource directory. Please reinstall \
+                         Stemgen GUI v{} and try again. If the problem persists, please report \
+                         it at https://github.com/zenla5/stemgen-gui/issues.",
+                        version,
+                    );
+                    error!("{}", msg);
+                    deploy_error = Some(msg);
                 }
 
                 // Emit event so frontend can react
@@ -163,7 +189,12 @@ pub fn run() {
                     "path": sidecar_path.to_string_lossy(),
                     "error": deploy_error,
                 });
-                let _ = app.emit("sidecar-deployed", payload);
+                let _ = app.emit("sidecar-deployed", payload.clone());
+
+                // Emit a distinct error event so the frontend can show a banner immediately
+                if !deploy_success {
+                    let _ = app.emit("sidecar-deploy-error", payload);
+                }
             }
 
             info!("Output directory: {}", output_dir.display());
