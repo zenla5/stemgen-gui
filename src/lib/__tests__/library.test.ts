@@ -9,8 +9,11 @@ import {
   formatDuration,
   formatBitdepth,
   PROVENANCE_SCHEMA_VERSION,
+  stemStateLabel,
+  stemStateColor,
+  getStalenessReasonDescriptionExtended,
 } from '@/lib/types/library';
-import type { StalenessStatus, StalenessReason } from '@/lib/types/library';
+import type { StalenessStatus, StalenessReason, StemFileState } from '@/lib/types/library';
 
 describe('library types', () => {
   describe('PROVENANCE_SCHEMA_VERSION', () => {
@@ -166,6 +169,67 @@ describe('library types', () => {
 
     it('returns em dash for undefined', () => {
       expect(formatBitdepth(undefined)).toBe('\u2014');
+    });
+  });
+
+  describe('stemStateLabel', () => {
+    it('returns correct labels for all states', () => {
+      expect(stemStateLabel('NoStem')).toBe('No Stem');
+      expect(stemStateLabel('HasStemCurrent')).toBe('Current');
+      expect(stemStateLabel('HasStemOutdated')).toBe('Outdated');
+      expect(stemStateLabel('HasStemUnknownProvenance')).toBe('Unknown');
+      expect(stemStateLabel('OrphanedStem')).toBe('Orphaned');
+      expect(stemStateLabel('Ignored')).toBe('Ignored');
+    });
+  });
+
+  describe('stemStateColor', () => {
+    it('returns correct Tailwind classes for all states', () => {
+      expect(stemStateColor('NoStem')).toBe('text-gray-500');
+      expect(stemStateColor('HasStemCurrent')).toBe('text-green-500');
+      expect(stemStateColor('HasStemOutdated')).toBe('text-yellow-500');
+      expect(stemStateColor('HasStemUnknownProvenance')).toBe('text-blue-500');
+      expect(stemStateColor('OrphanedStem')).toBe('text-red-500');
+      expect(stemStateColor('Ignored')).toBe('text-gray-400');
+    });
+  });
+
+  describe('getStalenessReasonDescriptionExtended', () => {
+    it('describes PreferredModelFamily reason', () => {
+      const reason: StalenessReason = {
+        type: 'PreferredModelFamily',
+        current_family: 'demucs',
+        preferred: 'roformer',
+      };
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('demucs');
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('roformer');
+    });
+
+    it('describes QualityRankBelowThreshold reason', () => {
+      const reason: StalenessReason = {
+        type: 'QualityRankBelowThreshold',
+        current_rank: 1,
+        best_rank: 4,
+      };
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('1');
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('4');
+    });
+
+    it('describes StemTooOld reason', () => {
+      const reason: StalenessReason = {
+        type: 'StemTooOld',
+        age_days: 365,
+        threshold: 180,
+      };
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('365');
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('180');
+    });
+
+    it('describes SourceModified reason', () => {
+      const reason: StalenessReason = { type: 'SourceModified' };
+      expect(getStalenessReasonDescriptionExtended(reason)).toBe(
+        'Source file has been modified'
+      );
     });
   });
 });

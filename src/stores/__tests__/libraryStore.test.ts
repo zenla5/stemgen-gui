@@ -68,6 +68,7 @@ const fakeStalenessRules: StalenessRules = {
   check_model_outdated: true,
   minimum_stemgen_gui_version: '1.0.0',
   check_parameters_changed: false,
+  flag_unknown_provenance: false,
 };
 
 const fakeDuplicates: DuplicateEntry[] = [
@@ -163,6 +164,7 @@ describe('libraryStore', () => {
         check_model_outdated: true,
         minimum_stemgen_gui_version: '1.1.0',
         check_parameters_changed: true,
+        flag_unknown_provenance: false,
       };
       mockInvoke.mockResolvedValueOnce(rules);
 
@@ -179,6 +181,7 @@ describe('libraryStore', () => {
         check_source_modified: false,
         check_model_outdated: false,
         check_parameters_changed: true,
+        flag_unknown_provenance: false,
       };
       await useLibraryStore.getState().saveStalenessRules(newRules);
 
@@ -396,6 +399,7 @@ describe('libraryStore', () => {
         check_source_modified: false,
         check_model_outdated: false,
         check_parameters_changed: false,
+        flag_unknown_provenance: false,
       };
 
       await expect(

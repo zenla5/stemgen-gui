@@ -82,6 +82,7 @@ const defaultStalenessRules: StalenessRules = {
   minimum_stemgen_gui_version: '1.0.0',
   check_parameters_changed: false,
   default_separation_params: undefined,
+  flag_unknown_provenance: false,
 };
 
 
