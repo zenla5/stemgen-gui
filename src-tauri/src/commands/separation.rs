@@ -60,6 +60,12 @@ pub struct ProvenanceFields {
     /// Batch identifier (optional)
     #[serde(default)]
     pub batch_id: Option<String>,
+    /// Device used for separation (optional, e.g., "cpu", "cuda", "mps")
+    #[serde(default)]
+    pub device: Option<String>,
+    /// DJ preset (optional, e.g., "traktor", "rekordbox")
+    #[serde(default)]
+    pub dj_preset: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -402,6 +408,34 @@ pub async fn pack_stems_with_provenance(
     prov.separation_quality_preset = request.provenance.separation_quality_preset;
     prov.separation_params = request.provenance.separation_params;
     prov.batch_id = request.provenance.batch_id;
+    prov.device = request.provenance.device;
+    prov.export_dj_preset = request.provenance.dj_preset;
+    prov.export_codec = Some(request.output_format.clone());
+
+    // Derive model family from model ID
+    prov.model_family = if prov.separation_model.contains("roformer") {
+        Some("roformer".to_string())
+    } else if prov.separation_model.contains("demucs") {
+        Some("demucs".to_string())
+    } else {
+        None
+    };
+
+    // Look up human-readable model name
+    prov.model_name = get_available_models()
+        .into_iter()
+        .find(|m| m.id == prov.separation_model)
+        .map(|m| m.name);
+
+    // Source file metadata
+    prov.source_format = master_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+
+    prov.source_size_bytes = std::fs::metadata(&master_path)
+        .ok()
+        .map(|m| m.len());
 
     // Pack stems and write provenance sidecar
     let prov_path = packer
