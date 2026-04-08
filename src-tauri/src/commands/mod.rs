@@ -237,7 +237,14 @@ pub async fn deploy_sidecar(app: tauri::AppHandle) -> Result<String, String> {
         .path()
         .resource_dir()
         .map_err(|e| format!("Failed to get resource dir: {e}"))?;
-    let resource_sidecar = resource_dir.join("stemgen_sidecar.py");
+    let mut resource_sidecar = resource_dir.join("stemgen_sidecar.py");
+    if !resource_sidecar.exists() {
+        // Dev mode fallback: Tauri preserves directory structure as _up_/python/
+        let fallback = resource_dir.join("_up_").join("python").join("stemgen_sidecar.py");
+        if fallback.exists() {
+            resource_sidecar = fallback;
+        }
+    }
 
     if !resource_sidecar.exists() {
         return Err("Sidecar script not found in application resources".to_string());

@@ -109,7 +109,14 @@ pub fn run() {
                 let mut deploy_error: Option<String> = None;
 
                 if let Ok(resource_dir) = app.path().resource_dir() {
-                    let resource_sidecar = resource_dir.join("stemgen_sidecar.py");
+                    let mut resource_sidecar = resource_dir.join("stemgen_sidecar.py");
+                    if !resource_sidecar.exists() {
+                        // Dev mode fallback: Tauri preserves directory structure as _up_/python/
+                        let fallback = resource_dir.join("_up_").join("python").join("stemgen_sidecar.py");
+                        if fallback.exists() {
+                            resource_sidecar = fallback;
+                        }
+                    }
                     if resource_sidecar.exists() {
                         let should_copy = !sidecar_path.exists()
                             || std::fs::metadata(&resource_sidecar)
