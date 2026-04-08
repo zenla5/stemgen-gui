@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run copy-sidecar && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -41,7 +41,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": { "../python/stemgen_sidecar.py": "stemgen_sidecar.py" },
+    "resources": { "resources/stemgen_sidecar.py": "stemgen_sidecar.py" },
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
