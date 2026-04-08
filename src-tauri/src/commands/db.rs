@@ -291,6 +291,38 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     )
     .ok();
 
+    // Migration: create batch_queue table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS batch_queue (
+            id            TEXT PRIMARY KEY,
+            root_id       TEXT NOT NULL REFERENCES library_roots(id) ON DELETE CASCADE,
+            source_path   TEXT NOT NULL,
+            status        TEXT NOT NULL DEFAULT 'pending',
+            model_id      TEXT NOT NULL,
+            dj_preset     TEXT,
+            output_format TEXT,
+            created_at    TEXT NOT NULL,
+            started_at    TEXT,
+            finished_at   TEXT,
+            error_message TEXT,
+            priority      INTEGER NOT NULL DEFAULT 0
+        )",
+        [],
+    )?;
+
+    // Migration: create indexes for batch_queue
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_batch_queue_root_id ON batch_queue(root_id)",
+        [],
+    )
+    .ok();
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_batch_queue_status ON batch_queue(status)",
+        [],
+    )
+    .ok();
+
     info!("Database migrations complete");
     Ok(())
 }

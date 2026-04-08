@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod batch;
 pub mod db;
 pub mod install_executor;
 pub mod install_manifest;
