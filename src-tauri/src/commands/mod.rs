@@ -145,23 +145,27 @@ pub async fn check_dependencies() -> Result<CheckDependenciesResult, String> {
 
 /// Get detailed Python/sidecar health status
 #[tauri::command]
-pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
+pub async fn get_sidecar_status(app: tauri::AppHandle) -> Result<SidecarStatus, String> {
     info!("Getting sidecar health status");
+
+    let state = app.state::<crate::AppState>();
+    let sidecar_path = state.sidecar_path.clone();
 
     let mut status = SidecarStatus::default();
 
     // 1. Find Python executable
-    match find_python() {
+    let python_path = find_python();
+    match &python_path {
         Some(path) => {
             status.python_found = true;
             status.python_path = Some(path.to_string_lossy().to_string());
-            status.python_version = probe_python_version(&path);
+            status.python_version = probe_python_version(path);
 
             // Check PyTorch
-            status.pytorch_version = probe_python_package_version(&path, "torch");
+            status.pytorch_version = probe_python_package_version(path, "torch");
 
             if status.pytorch_version.is_some() {
-                let device = probe_torch_device(&path).unwrap_or_else(|| "cpu".to_string());
+                let device = probe_torch_device(path).unwrap_or_else(|| "cpu".to_string());
                 status.gpu_available = device == "cuda";
                 status.gpu_device = Some(device);
             }
@@ -172,19 +176,19 @@ pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
     }
 
     // 2. Check Python packages
-    if let Some(python_path) = find_python() {
-        status.demucs_version = probe_python_package_version(&python_path, "demucs");
+    if let Some(ref py_path) = python_path {
+        status.demucs_version = probe_python_package_version(py_path, "demucs");
         status.demucs_available = status.demucs_version.is_some();
         if !status.demucs_available {
             status.errors.push("demucs not installed".to_string());
         }
 
-        status.torchaudio_version = probe_python_package_version(&python_path, "torchaudio");
+        status.torchaudio_version = probe_python_package_version(py_path, "torchaudio");
         if status.torchaudio_version.is_none() {
             status.errors.push("torchaudio not installed".to_string());
         }
 
-        status.bs_roformer_version = probe_python_package_version(&python_path, "bs_roformer");
+        status.bs_roformer_version = probe_python_package_version(py_path, "bs_roformer");
         status.bs_roformer_available = status.bs_roformer_version.is_some();
         if !status.bs_roformer_available {
             status
@@ -193,8 +197,7 @@ pub async fn get_sidecar_status() -> Result<SidecarStatus, String> {
         }
     }
 
-    // 3. Check sidecar script
-    let sidecar_path = get_sidecar_script_path();
+    // 3. Check sidecar script (from AppState)
     if sidecar_path.exists() {
         status.sidecar_script_found = true;
         status.sidecar_script_path = Some(sidecar_path.to_string_lossy().to_string());
@@ -311,8 +314,11 @@ pub async fn check_model_available(model: String) -> Result<ModelAvailability, S
 
 /// Validate the entire Python environment for stem separation
 #[tauri::command]
-pub async fn validate_environment() -> Result<EnvironmentValidation, String> {
+pub async fn validate_environment(app: tauri::AppHandle) -> Result<EnvironmentValidation, String> {
     info!("Validating Python environment");
+
+    let state = app.state::<crate::AppState>();
+    let sidecar_path = state.sidecar_path.clone();
 
     // Refresh PATH to pick up recently installed binaries
     refresh_path_from_registry();
@@ -414,8 +420,7 @@ pub async fn validate_environment() -> Result<EnvironmentValidation, String> {
             }
         }
 
-        // sidecar script
-        let sidecar_path = get_sidecar_script_path();
+        // sidecar script (from AppState)
         if sidecar_path.exists() {
             validation.sidecar_script = Some(PackageStatus::Available);
             validation.sidecar_script_path = Some(sidecar_path.to_string_lossy().to_string());
@@ -537,10 +542,6 @@ pub struct EnvironmentValidation {
     pub sidecar_script: Option<PackageStatus>,
     pub sidecar_script_path: Option<String>,
     pub warnings: Vec<String>,
-}
-
-fn get_sidecar_script_path() -> PathBuf {
-    get_data_dir().join("stemgen_sidecar.py")
 }
 
 fn get_model_directory() -> PathBuf {
