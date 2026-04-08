@@ -43,6 +43,15 @@ pub enum StalenessReason {
     StemgenGuiOutdated { current: String, minimum: String },
     /// Separation parameters differ from current defaults
     ParametersChanged,
+    /// Model family doesn't match the preferred family
+    PreferredModelFamily {
+        current_family: String,
+        preferred: String,
+    },
+    /// Quality rank is below threshold compared to best available model
+    QualityRankBelowThreshold { current_rank: u8, best_rank: u8 },
+    /// Stem is older than the configured age threshold and a better model exists
+    StemTooOld { age_days: u32, threshold: u32 },
 }
 
 /// Overall staleness status.
@@ -96,6 +105,14 @@ pub struct StalenessRules {
     pub check_parameters_changed: bool,
     /// Custom separation params considered "default"
     pub default_separation_params: Option<serde_json::Value>,
+    /// Preferred model family — flag if the stem was not separated with this family
+    pub prefer_model_family: Option<String>,
+    /// Flag if the stem's quality rank is below (best_available - threshold)
+    pub quality_rank_threshold: Option<u8>,
+    /// Flag if the stem is older than N days AND a better model exists
+    pub age_days_threshold: Option<u32>,
+    /// If true, treat stems with no provenance as staleness candidates
+    pub flag_unknown_provenance: bool,
 }
 
 impl Default for StalenessRules {
@@ -106,8 +123,21 @@ impl Default for StalenessRules {
             minimum_stemgen_gui_version: Some("1.0.0".to_string()),
             check_parameters_changed: false,
             default_separation_params: None,
+            prefer_model_family: None,
+            quality_rank_threshold: None,
+            age_days_threshold: None,
+            flag_unknown_provenance: false,
         }
     }
+}
+
+/// Information about the best available model, used for quality-rank and age checks.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BestModelInfo {
+    /// Model family of the best available model (e.g., "roformer", "demucs")
+    pub model_family: String,
+    /// Quality rank of the best available model (higher = better)
+    pub quality_rank: u8,
 }
 
 /// Check if a specific version string is considered "newer" than another.
@@ -156,6 +186,16 @@ pub fn check_stem_staleness(
     stem_path: &Path,
     rules: &StalenessRules,
     registry: &ModelVersionRegistry,
+) -> StalenessReport {
+    check_stem_staleness_with_best(stem_path, rules, registry, None)
+}
+
+/// Evaluate staleness with optional best-model information for quality/age checks.
+pub fn check_stem_staleness_with_best(
+    stem_path: &Path,
+    rules: &StalenessRules,
+    registry: &ModelVersionRegistry,
+    best_model: Option<&BestModelInfo>,
 ) -> StalenessReport {
     let stem_path_str = stem_path.to_string_lossy().to_string();
     let stem_name = stem_path
@@ -297,6 +337,61 @@ pub fn check_stem_staleness(
         }
     }
 
+    // Rule 5: Check preferred model family
+    if let Some(ref preferred) = rules.prefer_model_family {
+        if let Some(ref current_family) = provenance.model_family {
+            if current_family != preferred {
+                reasons.push(StalenessReason::PreferredModelFamily {
+                    current_family: current_family.clone(),
+                    preferred: preferred.clone(),
+                });
+                debug!(
+                    "Model family mismatch for {}: {} vs preferred {}",
+                    stem_path_str, current_family, preferred
+                );
+            }
+        }
+    }
+
+    // Rule 6: Check quality rank threshold
+    if let (Some(threshold), Some(best)) = (rules.quality_rank_threshold, best_model) {
+        // Derive quality rank from separation_model by looking up known models
+        let current_rank = derive_quality_rank(&provenance.separation_model);
+        if current_rank > 0 && best.quality_rank > current_rank {
+            let gap = best.quality_rank - current_rank;
+            if gap > threshold {
+                reasons.push(StalenessReason::QualityRankBelowThreshold {
+                    current_rank,
+                    best_rank: best.quality_rank,
+                });
+                debug!(
+                    "Quality rank below threshold for {}: {} vs best {} (gap {} > threshold {})",
+                    stem_path_str, current_rank, best.quality_rank, gap, threshold
+                );
+            }
+        }
+    }
+
+    // Rule 7: Check age-based staleness
+    if let (Some(age_threshold), Some(best)) = (rules.age_days_threshold, best_model) {
+        if let Some(age_days) = compute_stem_age_days(&provenance.separation_timestamp) {
+            if age_days > age_threshold {
+                // Only flag if a better model exists
+                let current_rank = derive_quality_rank(&provenance.separation_model);
+                if best.quality_rank > current_rank {
+                    reasons.push(StalenessReason::StemTooOld {
+                        age_days,
+                        threshold: age_threshold,
+                    });
+                    debug!(
+                        "Stem too old for {}: {} days > {} days threshold",
+                        stem_path_str, age_days, age_threshold
+                    );
+                }
+            }
+        }
+    }
+
     let status = if reasons.is_empty() {
         StalenessStatus::Current
     } else {
@@ -354,6 +449,46 @@ pub fn save_registry(registry: &ModelVersionRegistry, registry_path: &Path) -> R
 
     info!("Registry saved to: {}", registry_path.display());
     Ok(())
+}
+
+// =============================================================================
+// Helper functions for quality-rank and age-based rules
+// =============================================================================
+
+/// Derive a quality rank from a model ID string.
+///
+/// Known model ranks (from models.rs):
+/// - bs_roformer: 4
+/// - htdemucs_ft: 3
+/// - htdemucs: 2
+/// - demucs: 1
+/// - unknown: 0
+fn derive_quality_rank(model_id: &str) -> u8 {
+    let lower = model_id.to_lowercase();
+    if lower.contains("bs_roformer") || lower.contains("roformer") {
+        4
+    } else if lower.contains("htdemucs_ft") {
+        3
+    } else if lower.contains("htdemucs") {
+        2
+    } else if lower.contains("demucs") {
+        1
+    } else {
+        0
+    }
+}
+
+/// Compute the age of a stem in days from its separation timestamp.
+///
+/// Returns `None` if the timestamp cannot be parsed.
+fn compute_stem_age_days(separation_timestamp: &str) -> Option<u32> {
+    let sep_time = chrono::DateTime::parse_from_rfc3339(separation_timestamp).ok()?;
+    let now = chrono::Utc::now();
+    let duration = now.signed_duration_since(sep_time);
+    if duration.num_seconds() < 0 {
+        return Some(0);
+    }
+    Some(duration.num_days() as u32)
 }
 
 // =============================================================================
@@ -537,5 +672,96 @@ mod tests {
             available: "v2".to_string(),
         };
         assert_eq!(r3, r4);
+    }
+
+    #[test]
+    fn test_preferred_model_family_serialization() {
+        let reason = StalenessReason::PreferredModelFamily {
+            current_family: "demucs".to_string(),
+            preferred: "roformer".to_string(),
+        };
+        let json = serde_json::to_string(&reason).unwrap();
+        assert!(json.contains("PreferredModelFamily"));
+        assert!(json.contains("demucs"));
+        assert!(json.contains("roformer"));
+
+        let deserialized: StalenessReason = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, reason);
+    }
+
+    #[test]
+    fn test_quality_rank_below_threshold_serialization() {
+        let reason = StalenessReason::QualityRankBelowThreshold {
+            current_rank: 1,
+            best_rank: 4,
+        };
+        let json = serde_json::to_string(&reason).unwrap();
+        assert!(json.contains("QualityRankBelowThreshold"));
+
+        let deserialized: StalenessReason = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, reason);
+    }
+
+    #[test]
+    fn test_stem_too_old_serialization() {
+        let reason = StalenessReason::StemTooOld {
+            age_days: 365,
+            threshold: 180,
+        };
+        let json = serde_json::to_string(&reason).unwrap();
+        assert!(json.contains("StemTooOld"));
+
+        let deserialized: StalenessReason = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, reason);
+    }
+
+    #[test]
+    fn test_staleness_rules_default_new_fields() {
+        let rules = StalenessRules::default();
+        assert!(rules.prefer_model_family.is_none());
+        assert!(rules.quality_rank_threshold.is_none());
+        assert!(rules.age_days_threshold.is_none());
+        assert!(!rules.flag_unknown_provenance);
+    }
+
+    #[test]
+    fn test_derive_quality_rank() {
+        assert_eq!(derive_quality_rank("bs_roformer"), 4);
+        assert_eq!(derive_quality_rank("htdemucs_ft"), 3);
+        assert_eq!(derive_quality_rank("htdemucs"), 2);
+        assert_eq!(derive_quality_rank("demucs"), 1);
+        assert_eq!(derive_quality_rank("unknown_model"), 0);
+        // Case-insensitive matching
+        assert_eq!(derive_quality_rank("BS_RoFormer"), 4);
+    }
+
+    #[test]
+    fn test_compute_stem_age_days() {
+        // A timestamp from 10 days ago should give ~10
+        let ten_days_ago = (chrono::Utc::now() - chrono::Duration::days(10)).to_rfc3339();
+        let age = compute_stem_age_days(&ten_days_ago);
+        assert!(age.is_some());
+        let age_val = age.unwrap();
+        assert!(age_val == 9 || age_val == 10 || age_val == 11);
+
+        // Future timestamp should return 0
+        let future = (chrono::Utc::now() + chrono::Duration::days(5)).to_rfc3339();
+        assert_eq!(compute_stem_age_days(&future), Some(0));
+
+        // Invalid timestamp
+        assert!(compute_stem_age_days("not-a-date").is_none());
+    }
+
+    #[test]
+    fn test_best_model_info_serialization() {
+        let info = BestModelInfo {
+            model_family: "roformer".to_string(),
+            quality_rank: 4,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("roformer"));
+
+        let deserialized: BestModelInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.quality_rank, 4);
     }
 }

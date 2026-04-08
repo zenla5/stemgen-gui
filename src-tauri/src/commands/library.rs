@@ -434,6 +434,14 @@ pub async fn get_staleness_rules(state: State<'_, AppState>) -> Result<Staleness
             .unwrap_or(false),
         default_separation_params: get_setting("staleness_default_params")
             .and_then(|v| serde_json::from_str(&v).ok()),
+        prefer_model_family: get_setting("staleness_prefer_model_family"),
+        quality_rank_threshold: get_setting("staleness_quality_rank_threshold")
+            .and_then(|v| v.parse().ok()),
+        age_days_threshold: get_setting("staleness_age_days_threshold")
+            .and_then(|v| v.parse().ok()),
+        flag_unknown_provenance: get_setting("staleness_flag_unknown_provenance")
+            .map(|v| v == "true")
+            .unwrap_or(false),
     };
 
     Ok(rules)
@@ -476,6 +484,19 @@ pub async fn save_staleness_rules(
             .map_err(|e| format!("Failed to serialize params: {}", e))?;
         set_setting("staleness_default_params", &params_json)?;
     }
+    if let Some(ref family) = rules.prefer_model_family {
+        set_setting("staleness_prefer_model_family", family)?;
+    }
+    if let Some(threshold) = rules.quality_rank_threshold {
+        set_setting("staleness_quality_rank_threshold", &threshold.to_string())?;
+    }
+    if let Some(threshold) = rules.age_days_threshold {
+        set_setting("staleness_age_days_threshold", &threshold.to_string())?;
+    }
+    set_setting(
+        "staleness_flag_unknown_provenance",
+        &rules.flag_unknown_provenance.to_string(),
+    )?;
 
     info!("Staleness rules saved");
     Ok(())
