@@ -112,20 +112,15 @@ describe('Sidecar Deployment — repair and guard', () => {
     const state = readBinaryState();
     if (!state?.available) return;
 
-    // Trigger real validation — on CI the sidecar IS missing
+    // Trigger real validation
     await $('[data-testid="refresh-env-btn"]').click();
     await browser.pause(3000);
 
-    // On CI, the sidecar should be missing, so repair button should appear
-    // If sidecar happens to be installed, skip this assertion
-    const bodyText = await $('body').getText();
-    if (bodyText.includes('Not found') || bodyText.includes('missing')) {
+    // Check if the sidecar specifically is missing (not just any dependency)
+    const sidecarFailure = await isDisplayedSafe('[data-testid="dep-failure-reason-sidecar"]');
+    if (sidecarFailure) {
       const repairBtn = await isDisplayedSafe('[data-testid="repair-sidecar-btn"]');
-      // The repair button should be visible when sidecar is missing
-      // (it may not appear if sidecar is installed on this runner)
-      if (repairBtn) {
-        expect(repairBtn).toBe(true);
-      }
+      expect(repairBtn).toBe(true);
     }
     await takeScreenshot('linux-env-repair-btn');
   });

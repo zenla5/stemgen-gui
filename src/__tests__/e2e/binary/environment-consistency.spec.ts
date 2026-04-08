@@ -103,14 +103,13 @@ test.describe('Sidecar Deployment — repair and guard', () => {
   });
 
   test('(c) "Repair Installation" button appears when sidecar is missing', async ({ page }) => {
-    // Trigger real validation — on CI the sidecar IS missing
+    // Trigger real validation
     await page.locator('[data-testid="refresh-env-btn"]').click();
     await page.waitForTimeout(3000);
 
-    // On CI, the sidecar should be missing, so repair button should appear
-    // If sidecar happens to be installed, this test passes vacuously
-    const bodyText = await page.locator('body').innerText();
-    if (bodyText.includes('Not found') || bodyText.includes('missing')) {
+    // Check if the sidecar specifically is missing (not just any dependency)
+    const sidecarFailure = page.locator('[data-testid="dep-failure-reason-sidecar"]');
+    if (await sidecarFailure.isVisible({ timeout: 3000 }).catch(() => false)) {
       const repairBtn = page.locator('[data-testid="repair-sidecar-btn"]');
       await expect(repairBtn).toBeVisible({ timeout: 5000 });
     }
