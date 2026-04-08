@@ -4,7 +4,7 @@
   "version": "1.2.4",
   "identifier": "dev.stemgen.stemgen-gui",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run copy-sidecar && npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run copy-sidecar && npm run build",
     "frontendDist": "../dist"

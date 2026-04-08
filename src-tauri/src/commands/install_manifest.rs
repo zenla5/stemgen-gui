@@ -56,6 +56,10 @@ pub struct AvailableInstaller {
 static MANIFEST: OnceLock<InstallManifest> = OnceLock::new();
 
 /// Load the embedded install manifest (parsed once, cached forever)
+///
+/// NOTE: This file is embedded at compile time via `include_str!()` and does NOT
+/// need to be listed in `tauri.conf.json` bundle.resources. It is baked into the
+/// binary, not loaded from the runtime resource directory.
 pub fn get_manifest() -> &'static InstallManifest {
     MANIFEST.get_or_init(|| {
         let json = include_str!("../../resources/install_manifest.json");

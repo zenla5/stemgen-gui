@@ -224,10 +224,14 @@ npm run tauri:build
 # Development
 npm run dev              # Start frontend dev server
 npm run tauri:dev       # Start with Tauri (requires Rust)
+npm run copy-sidecar    # Copy Python sidecar into Tauri resources
 
 # Building
 npm run build           # Build frontend
 npm run tauri:build     # Build Tauri app
+```
+
+> **Note:** `npm run copy-sidecar` copies `python/stemgen_sidecar.py` into `src-tauri/resources/` so that Tauri v2 bundles it reliably. It runs automatically as part of both `npm run tauri:dev` and `npm run tauri:build`.
 
 # Quality checks
 npm run check           # TypeScript type check
