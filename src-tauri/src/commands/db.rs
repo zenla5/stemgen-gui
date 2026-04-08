@@ -272,6 +272,14 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Migration: create unique index for library_index upsert
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_library_index_root_source
+         ON library_index(root_id, source_path)",
+        [],
+    )
+    .ok();
+
     // Migration: create indexes for library_index
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_library_index_root_id ON library_index(root_id)",

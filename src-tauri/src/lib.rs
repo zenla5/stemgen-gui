@@ -305,6 +305,8 @@ pub fn run() {
             commands::library_roots::get_library_root,
             commands::library_roots::update_library_root,
             commands::library_roots::delete_library_root,
+            // Library scanner
+            commands::scanner::scan_library_root,
             // Environment validation
             commands::validate_environment,
             commands::get_sidecar_status,
