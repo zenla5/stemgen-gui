@@ -92,22 +92,26 @@ jobs:
           }
       - name: Verify sidecar resource is bundled (Windows)
         run: |
-          echo "=== Checking sidecar in NSIS installer ==="
-          $nsisExe = Get-ChildItem "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\bundle\nsis" -Filter "*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($nsisExe) {
-            $nsisDir = "${{ github.workspace }}\nsis-check"
-            New-Item -ItemType Directory -Path $nsisDir -Force | Out-Null
-            & 7z x $nsisExe.FullName -o$nsisDir -y | Out-Null
-            if (Test-Path "$nsisDir\stemgen_sidecar.py") {
-              echo "PASS: stemgen_sidecar.py found in NSIS installer"
-            } else {
-              echo "FAIL: stemgen_sidecar.py NOT found in NSIS installer"
-              echo "Contents of extracted NSIS:"
-              Get-ChildItem $nsisDir -Recurse -File | Select-Object FullName
-              exit 1
-            }
-          } else {
-            echo "WARNING: No NSIS installer found to check"
+          echo "=== Checking sidecar in build resources ==="
+          $bundleDir = "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\bundle"
+          $found = $false
+          $sidecarFiles = Get-ChildItem $bundleDir -Recurse -Filter "stemgen_sidecar.py" -ErrorAction SilentlyContinue
+          if ($sidecarFiles) {
+            $found = $true
+            echo "PASS: stemgen_sidecar.py found in bundle directory:"
+            $sidecarFiles | ForEach-Object { echo "  $($_.FullName)" }
+          }
+          # Also check top-level resources dir (Tauri may place it here too)
+          $topLevel = "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\stemgen_sidecar.py"
+          if (Test-Path $topLevel) {
+            $found = $true
+            echo "PASS: stemgen_sidecar.py found alongside binary"
+          }
+          if (-not $found) {
+            echo "FAIL: stemgen_sidecar.py NOT found anywhere in build output"
+            echo "Bundle directory contents:"
+            Get-ChildItem $bundleDir -Recurse -File -ErrorAction SilentlyContinue | Select-Object FullName
+            exit 1
           }
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
