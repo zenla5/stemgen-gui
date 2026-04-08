@@ -67,6 +67,38 @@ export interface StemProvenance {
 
   /** Stem type this file represents (if individual stem) */
   stem_type?: string;
+
+  // --- Separation section additions ---
+  /** Human-readable model name, e.g. "HTDemucs Fine-Tuned" */
+  model_name?: string;
+  /** Model family, e.g. "demucs", "roformer" */
+  model_family?: string;
+  /** SHA-256 of the model checkpoint file */
+  model_sha256?: string;
+  /** Wall-clock time the separation job took in seconds */
+  separation_duration_secs?: number;
+  /** Device used for separation: "cpu" | "cuda" | "mps" */
+  device?: string;
+
+  // --- Toolchain additions ---
+  /** FFmpeg version, e.g. "7.0" */
+  ffmpeg_version?: string;
+  /** OS info, e.g. "macOS 15.1" */
+  os_info?: string;
+
+  // --- Source file additions ---
+  /** File size of the source at separation time in bytes */
+  source_size_bytes?: number;
+  /** Source format, e.g. "flac", "mp3", "wav" */
+  source_format?: string;
+  /** Source bit depth, e.g. 16, 24 */
+  source_bitdepth?: number;
+
+  // --- Export additions ---
+  /** Export codec, e.g. "alac", "aac" */
+  export_codec?: string;
+  /** DJ preset used, e.g. "traktor", "rekordbox" */
+  export_dj_preset?: string;
 }
 
 // =============================================================================
@@ -336,4 +368,29 @@ export function formatTimestamp(timestamp: string): string {
   } catch {
     return timestamp;
   }
+}
+
+/**
+ * Format a duration in seconds to a human-readable string.
+ * e.g. 94.3 → "1m 34s", 3665 → "1h 1m"
+ */
+export function formatDuration(seconds: number): string {
+  if (seconds < 0) return '0s';
+  const totalSeconds = Math.floor(seconds);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+/**
+ * Format a bit depth value to a human-readable string.
+ * e.g. 16 → "16-bit", undefined → "—"
+ */
+export function formatBitdepth(bits: number | undefined): string {
+  if (bits === undefined || bits === null) return '\u2014';
+  return `${bits}-bit`;
 }

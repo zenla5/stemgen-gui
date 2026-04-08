@@ -6,6 +6,8 @@ import {
   getStalenessReasonDescription,
   formatFileSize,
   formatTimestamp,
+  formatDuration,
+  formatBitdepth,
   PROVENANCE_SCHEMA_VERSION,
 } from '@/lib/types/library';
 import type { StalenessStatus, StalenessReason } from '@/lib/types/library';
@@ -131,6 +133,39 @@ describe('library types', () => {
       const result = formatTimestamp('not-a-date');
       expect(typeof result).toBe('string');
       expect(result.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('formatDuration', () => {
+    it('formats seconds only', () => {
+      expect(formatDuration(45)).toBe('45s');
+      expect(formatDuration(0)).toBe('0s');
+    });
+
+    it('formats minutes and seconds', () => {
+      expect(formatDuration(94.3)).toBe('1m 34s');
+      expect(formatDuration(120)).toBe('2m 0s');
+    });
+
+    it('formats hours and minutes', () => {
+      expect(formatDuration(3665)).toBe('1h 1m');
+      expect(formatDuration(7200)).toBe('2h 0m');
+    });
+
+    it('handles negative values', () => {
+      expect(formatDuration(-1)).toBe('0s');
+    });
+  });
+
+  describe('formatBitdepth', () => {
+    it('formats a valid bit depth', () => {
+      expect(formatBitdepth(16)).toBe('16-bit');
+      expect(formatBitdepth(24)).toBe('24-bit');
+      expect(formatBitdepth(32)).toBe('32-bit');
+    });
+
+    it('returns em dash for undefined', () => {
+      expect(formatBitdepth(undefined)).toBe('\u2014');
     });
   });
 });
