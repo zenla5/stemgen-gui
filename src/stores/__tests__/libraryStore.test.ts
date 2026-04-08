@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useLibraryStore } from '@/stores/libraryStore';
+import {
+  useLibraryStore,
+  selectStaleReports,
+  selectCurrentReports,
+  selectUnknownReports,
+  selectTotalSelected,
+  selectSelectedReports,
+  selectStaleSelectedCount,
+} from '@/stores/libraryStore';
 import type { LibraryScanResult, StalenessRules, DuplicateEntry } from '@/lib/types/library';
 
 // Mock @tauri-apps/api/core
@@ -350,6 +358,150 @@ describe('libraryStore', () => {
       expect(state.currentProvenance).toBeNull();
       expect(state.isExporting).toBe(false);
       expect(state.exportError).toBeNull();
+    });
+  });
+
+  describe('setLibraryPath', () => {
+    it('sets library path directly', () => {
+      useLibraryStore.getState().setLibraryPath('/my/music');
+      expect(useLibraryStore.getState().libraryPath).toBe('/my/music');
+    });
+
+    it('clears library path with null', () => {
+      useLibraryStore.getState().setLibraryPath('/my/music');
+      useLibraryStore.getState().setLibraryPath(null);
+      expect(useLibraryStore.getState().libraryPath).toBeNull();
+    });
+  });
+
+  describe('loadStalenessRules error path', () => {
+    it('logs error and keeps default rules on failure', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockInvoke.mockRejectedValueOnce(new Error('DB error'));
+
+      await useLibraryStore.getState().loadStalenessRules();
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to load staleness rules:', expect.any(Error));
+      // Rules remain at defaults
+      expect(useLibraryStore.getState().stalenessRules).toEqual(fakeStalenessRules);
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('saveStalenessRules error path', () => {
+    it('throws error on save failure', async () => {
+      mockInvoke.mockRejectedValueOnce(new Error('Permission denied'));
+
+      const newRules: StalenessRules = {
+        check_source_modified: false,
+        check_model_outdated: false,
+        check_parameters_changed: false,
+      };
+
+      await expect(
+        useLibraryStore.getState().saveStalenessRules(newRules)
+      ).rejects.toThrow('Permission denied');
+    });
+  });
+
+  describe('selectAll with no scan result', () => {
+    it('selects nothing when scanResult is null', () => {
+      useLibraryStore.getState().selectAll();
+      expect(useLibraryStore.getState().selectedStems.size).toBe(0);
+    });
+  });
+
+  describe('loadProvenance with null result', () => {
+    it('sets provenance to null when invoke returns null', async () => {
+      mockInvoke.mockResolvedValueOnce(null);
+
+      await useLibraryStore.getState().loadProvenance('/no-prov.stem.mp4');
+
+      expect(useLibraryStore.getState().currentProvenance).toBeNull();
+      expect(mockInvoke).toHaveBeenCalledWith('read_stem_provenance', {
+        stemPath: '/no-prov.stem.mp4',
+      });
+    });
+  });
+
+  describe('saveNotes error path', () => {
+    it('throws on save failure', async () => {
+      mockInvoke.mockRejectedValueOnce(new Error('Disk full'));
+
+      await expect(
+        useLibraryStore.getState().saveNotes('/track.stem.mp4', 'notes')
+      ).rejects.toThrow('Disk full');
+    });
+  });
+
+  describe('selectors', () => {
+    it('selectStaleReports returns only stale reports', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+
+      const stale = selectStaleReports(useLibraryStore.getState());
+      expect(stale).toHaveLength(1);
+      expect(stale[0].stem_path).toBe('/music/track2.stem.mp4');
+    });
+
+    it('selectCurrentReports returns only current reports', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+
+      const current = selectCurrentReports(useLibraryStore.getState());
+      expect(current).toHaveLength(1);
+      expect(current[0].stem_path).toBe('/music/track1.stem.mp4');
+    });
+
+    it('selectUnknownReports returns only unknown reports', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+
+      const unknown = selectUnknownReports(useLibraryStore.getState());
+      expect(unknown).toHaveLength(1);
+      expect(unknown[0].stem_path).toBe('/music/track3.stem.mp4');
+    });
+
+    it('selectors return empty arrays when no scan result', () => {
+      expect(selectStaleReports(useLibraryStore.getState())).toEqual([]);
+      expect(selectCurrentReports(useLibraryStore.getState())).toEqual([]);
+      expect(selectUnknownReports(useLibraryStore.getState())).toEqual([]);
+    });
+
+    it('selectTotalSelected returns count of selected stems', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+      useLibraryStore.getState().selectStem('/music/track1.stem.mp4');
+      useLibraryStore.getState().selectStem('/music/track2.stem.mp4');
+
+      expect(selectTotalSelected(useLibraryStore.getState())).toBe(2);
+    });
+
+    it('selectSelectedReports returns reports matching selected paths', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+      useLibraryStore.getState().selectStem('/music/track2.stem.mp4');
+
+      const selected = selectSelectedReports(useLibraryStore.getState());
+      expect(selected).toHaveLength(1);
+      expect(selected[0].stem_path).toBe('/music/track2.stem.mp4');
+    });
+
+    it('selectStaleSelectedCount counts only stale selected reports', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+      useLibraryStore.getState().selectStem('/music/track1.stem.mp4'); // Current
+      useLibraryStore.getState().selectStem('/music/track2.stem.mp4'); // Stale
+      useLibraryStore.getState().selectStem('/music/track3.stem.mp4'); // Unknown
+
+      expect(selectStaleSelectedCount(useLibraryStore.getState())).toBe(1);
+    });
+
+    it('selectStaleSelectedCount returns 0 when no selection', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+
+      expect(selectStaleSelectedCount(useLibraryStore.getState())).toBe(0);
     });
   });
 });
