@@ -132,11 +132,15 @@ jobs:
             test-results/
           retention-days: 7
 
-  # Rust backend: clippy, fmt, build, and tests
+  # Rust backend: clippy, fmt, build, and tests (cross-platform)
   backend:
-    name: Backend (Rust)
-    runs-on: ubuntu-latest
+    name: Backend (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -157,9 +161,11 @@ jobs:
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
       - name: Enable universe repository
+        if: runner.os == 'Linux'
         run: sudo add-apt-repository universe -y
 
-      - name: Install system dependencies (Tauri + FFmpeg for tests)
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -183,33 +189,29 @@ jobs:
           workspaces: src-tauri
 
       - name: Check Rust formatting
-        run: |
-          cd src-tauri && cargo fmt --check
+        run: cd src-tauri && cargo fmt --check
         env:
           RUST_BACKTRACE: 1
 
       - name: Clippy linting (blocking)
-        run: |
-          cd src-tauri && cargo clippy --lib --bins -- -D warnings
+        run: cd src-tauri && cargo clippy --lib --bins -- -D warnings
         env:
           RUST_BACKTRACE: 1
 
       - name: Build release
-        run: |
-          cd src-tauri && cargo build --release --features devtools
-          echo "Build exit code: $?"
+        run: cd src-tauri && cargo build --release --features devtools
+        env:
+          RUST_BACKTRACE: 1
 
       - name: Run Rust tests
-        run: |
-          echo "=== Running cargo test --lib (library tests only) ==="
-          cd src-tauri && cargo test --lib 2>&1
-          echo "Test exit code: $?"
+        run: cd src-tauri && cargo test --lib 2>&1
+        env:
+          RUST_BACKTRACE: 1
 
       - name: Run Rust integration tests
-        run: |
-          echo "=== Running cargo test --tests (integration tests) ==="
-          cd src-tauri && cargo test --tests 2>&1
-          echo "Integration test exit code: $?"
+        run: cd src-tauri && cargo test --tests 2>&1
+        env:
+          RUST_BACKTRACE: 1
 
   # Security audit
   security:
