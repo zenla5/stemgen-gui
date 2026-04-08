@@ -30,6 +30,8 @@ pub struct AppState {
     pub output_dir: std::path::PathBuf,
     /// Sidecar script path
     pub sidecar_path: std::path::PathBuf,
+    /// Set of root IDs with active batch processors
+    pub batch_processors: TokioMutex<std::collections::HashSet<String>>,
 }
 
 pub fn run() {
@@ -246,6 +248,7 @@ pub fn run() {
                 sidecar: TokioMutex::new(None),
                 output_dir,
                 sidecar_path,
+                batch_processors: TokioMutex::new(std::collections::HashSet::new()),
             });
 
             // Initialize the sidecar manager with the app handle for event emission
@@ -320,6 +323,7 @@ pub fn run() {
             commands::batch::resume_batch_queue,
             commands::batch::cancel_batch_queue,
             commands::batch::clear_completed_queue,
+            commands::batch::start_batch_processor,
             // Environment validation
             commands::validate_environment,
             commands::get_sidecar_status,
