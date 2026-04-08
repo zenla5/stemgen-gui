@@ -669,6 +669,8 @@ mod tests {
             separation_quality_preset: Some("standard".to_string()),
             separation_params: Some(serde_json::json!({"shifts": 10})),
             batch_id: Some("batch_001".to_string()),
+            device: Some("cuda".to_string()),
+            dj_preset: Some("traktor".to_string()),
         };
         let json = serde_json::to_string(&fields).unwrap();
         let deserialized: ProvenanceFields = serde_json::from_str(&json).unwrap();
