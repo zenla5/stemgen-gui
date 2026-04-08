@@ -240,7 +240,10 @@ pub async fn deploy_sidecar(app: tauri::AppHandle) -> Result<String, String> {
     let mut resource_sidecar = resource_dir.join("stemgen_sidecar.py");
     if !resource_sidecar.exists() {
         // Dev mode fallback: Tauri preserves directory structure as _up_/python/
-        let fallback = resource_dir.join("_up_").join("python").join("stemgen_sidecar.py");
+        let fallback = resource_dir
+            .join("_up_")
+            .join("python")
+            .join("stemgen_sidecar.py");
         if fallback.exists() {
             resource_sidecar = fallback;
         }
