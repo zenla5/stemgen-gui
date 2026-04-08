@@ -90,6 +90,25 @@ jobs:
           } else {
             Write-Host "WARNING: No bundle directory found"
           }
+      - name: Verify sidecar resource is bundled (Windows)
+        run: |
+          echo "=== Checking sidecar in NSIS installer ==="
+          $nsisExe = Get-ChildItem "${{ github.workspace }}\target\x86_64-pc-windows-msvc\release\bundle\nsis" -Filter "*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($nsisExe) {
+            $nsisDir = "${{ github.workspace }}\nsis-check"
+            New-Item -ItemType Directory -Path $nsisDir -Force | Out-Null
+            & 7z x $nsisExe.FullName -o$nsisDir -y | Out-Null
+            if (Test-Path "$nsisDir\stemgen_sidecar.py") {
+              echo "PASS: stemgen_sidecar.py found in NSIS installer"
+            } else {
+              echo "FAIL: stemgen_sidecar.py NOT found in NSIS installer"
+              echo "Contents of extracted NSIS:"
+              Get-ChildItem $nsisDir -Recurse -File | Select-Object FullName
+              exit 1
+            }
+          } else {
+            echo "WARNING: No NSIS installer found to check"
+          }
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -168,6 +187,23 @@ jobs:
           cp "$ZIP_NAME" "$GITHUB_WORKSPACE/$DMG_NAME"
           echo "Copied to: $GITHUB_WORKSPACE/$DMG_NAME"
           echo "dmg_file=$DMG_NAME" >> "$GITHUB_OUTPUT"
+      - name: Verify sidecar resource is bundled (macOS)
+        run: |
+          echo "=== Checking sidecar in .app bundle ==="
+          APP_DIR=$(find "$GITHUB_WORKSPACE/target" -name "*.app" -type d 2>/dev/null | head -1)
+          if [ -z "$APP_DIR" ]; then
+            echo "ERROR: No .app bundle found"
+            exit 1
+          fi
+          SIDECAR_PATH="$APP_DIR/Contents/Resources/stemgen_sidecar.py"
+          if [ -f "$SIDECAR_PATH" ]; then
+            echo "PASS: stemgen_sidecar.py found in .app bundle at $SIDECAR_PATH"
+          else
+            echo "FAIL: stemgen_sidecar.py NOT found at $SIDECAR_PATH"
+            echo "Contents of Resources dir:"
+            ls -la "$APP_DIR/Contents/Resources/" 2>/dev/null || echo "Resources dir not found"
+            exit 1
+          fi
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
