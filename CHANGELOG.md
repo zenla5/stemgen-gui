@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.5] — 2026-04-08 — Sidecar Deployment Fix & Quality Improvements
+
+### Fixed
+- **[SIDECAR-BUNDLE]** `stemgen_sidecar.py` was not found on Windows after NSIS/MSI install. Root cause: Tauri v2 does not reliably bundle resources whose source paths traverse outside `src-tauri/` via `../`. Fixed by copying the sidecar into `src-tauri/resources/` at build time via a new `npm run copy-sidecar` script. (TASK-01, TASK-02)
+- **[SIDECAR-ERROR-SWALLOW]** Startup sidecar deployment failure was silently swallowed (logged at WARN only). Now emits a `sidecar-deploy-error` Tauri event and logs at ERROR level. Frontend displays a persistent error banner. (TASK-04)
+
+### Improved
+- **[SIDECAR-ERROR-MSG]** `deploy_sidecar` error messages now include the searched resource directory path, app version, and issue tracker URL for actionable diagnostics. (TASK-05)
+- **[SIDECAR-HASH]** Sidecar freshness detection is now hash-based (SHA-256) instead of mtime-based, which was unreliable on FAT32 volumes and with inconsistent installer tools. (TASK-15)
+- **[SIDECAR-INTEGRITY]** SHA-256 integrity verification after every sidecar copy operation. Corrupted files are automatically deleted and an error is surfaced. (TASK-11)
+- **[SIDECAR-PATH-SINGLE]** Eliminated dual sidecar path sources — `get_sidecar_script_path()` removed; all commands now read from `AppState::sidecar_path`. (TASK-06)
+
+### Internal
+- **[TEST-RUST]** Added 9 Rust integration tests for sidecar deployment, SHA-256 integrity, and stem collection edge cases (partial stems, zero stems, non-ASCII paths). (TASK-07, TASK-14)
+- **[TEST-E2E]** Added binary E2E tests for sidecar deployment on Windows (Playwright) and Linux (WebdriverIO). (TASK-09)
+- **[TEST-FRONTEND]** Added 3 frontend tests for `sidecar-deploy-error` event handling in App.tsx. (TASK-16)
+- **[CI-CROSSPLAT]** Rust CI backend job extended to run on ubuntu-latest, windows-latest, and macos-latest. Clippy and cargo fmt enforced on all platforms. (TASK-13, TASK-18)
+- **[CI-SIDECAR-VERIFY]** Release CI now verifies `stemgen_sidecar.py` is present in Windows NSIS and macOS .app bundles. (TASK-08)
+- **[COVERAGE]** Test coverage thresholds aligned with measured baseline to properly enforce regression prevention. (TASK-12)
+
 ## [1.2.3] — 2026-04-08 — CI Binary E2E Test Fixes
 
 ### Fixed
