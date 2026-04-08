@@ -112,7 +112,7 @@ test.describe('App Launch', () => {
           setTimeout(() => resolve({ error: 'timeout' }), 15_000)
         ),
       ]);
-    } catch (err) {
+    } catch (_err) {
       // Navigation may have destroyed the execution context
       test.skip(true, 'Execution context lost (navigation after invoke)');
       return;
