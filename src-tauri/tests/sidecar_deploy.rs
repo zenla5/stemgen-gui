@@ -16,10 +16,7 @@ fn sha256_hex(path: &Path) -> String {
 
 /// Replicate the stem collection logic from SidecarManager::collect_stems
 /// for isolated testing without pulling in Tauri runtime deps.
-fn collect_stems_standalone(
-    output_dir: &Path,
-    source_path: &Path,
-) -> Result<Vec<String>, String> {
+fn collect_stems_standalone(output_dir: &Path, source_path: &Path) -> Result<Vec<String>, String> {
     let stem_names = ["drums", "bass", "other", "vocals"];
     let source_stem = source_path
         .file_stem()
@@ -136,8 +133,8 @@ fn test_collect_stems_all_four_present() {
     let stem_dir = create_stem_dir(source_name, &["drums", "bass", "other", "vocals"]);
 
     let source_path = PathBuf::from(format!("/some/path/{}.mp3", source_name));
-    let stems = collect_stems_standalone(stem_dir.path(), &source_path)
-        .expect("should find all 4 stems");
+    let stems =
+        collect_stems_standalone(stem_dir.path(), &source_path).expect("should find all 4 stems");
 
     assert_eq!(stems.len(), 4, "should find exactly 4 stem files");
 }
@@ -172,5 +169,9 @@ fn test_collect_stems_non_ascii_source_path() {
     let stems = collect_stems_standalone(stem_dir.path(), &source_path)
         .expect("should handle non-ASCII source names");
 
-    assert_eq!(stems.len(), 4, "should find all 4 stems with non-ASCII name");
+    assert_eq!(
+        stems.len(),
+        4,
+        "should find all 4 stems with non-ASCII name"
+    );
 }

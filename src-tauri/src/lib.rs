@@ -155,9 +155,7 @@ pub fn run() {
                                         compute_file_sha256(&resource_sidecar),
                                         compute_file_sha256(&sidecar_path),
                                     ) {
-                                        (Ok(src_hash), Ok(dst_hash))
-                                            if src_hash == dst_hash =>
-                                        {
+                                        (Ok(src_hash), Ok(dst_hash)) if src_hash == dst_hash => {
                                             deploy_success = true;
                                         }
                                         (Ok(src_hash), Ok(dst_hash)) => {
