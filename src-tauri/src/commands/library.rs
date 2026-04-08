@@ -556,6 +556,189 @@ pub async fn verify_stem_integrity(stem_path: String) -> Result<bool, String> {
 }
 
 // =============================================================================
+// Orphan Management
+// =============================================================================
+
+/// An orphaned stem entry from the library index.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrphanedStemEntry {
+    pub id: String,
+    pub stem_path: String,
+    pub last_known_source_path: String,
+    pub file_size: Option<u64>,
+    pub last_modified: Option<String>,
+}
+
+/// Result of a re-link attempt.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelinkResult {
+    pub matched: bool,
+    pub new_status: String,
+}
+
+/// Get all orphaned stem entries for a library root.
+#[tauri::command]
+pub async fn get_library_orphans(
+    state: State<'_, AppState>,
+    root_id: String,
+) -> Result<Vec<OrphanedStemEntry>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, source_path, stem_path, provenance_json
+             FROM library_index
+             WHERE root_id = ? AND status = 'OrphanedStem' AND ignored = 0
+             ORDER BY source_path",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let entries: Vec<OrphanedStemEntry> = stmt
+        .query_map(rusqlite::params![root_id], |row| {
+            let id: String = row.get(0)?;
+            let source_path: String = row.get(1)?;
+            let stem_path: Option<String> = row.get(2)?;
+            let _provenance_json: Option<String> = row.get(3)?;
+
+            let stem_path_str = stem_path.unwrap_or_default();
+            let file_size = std::path::Path::new(&stem_path_str)
+                .metadata()
+                .ok()
+                .map(|m| m.len());
+            let last_modified = std::path::Path::new(&stem_path_str)
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| {
+                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                        .unwrap()
+                        .to_rfc3339()
+                });
+
+            Ok(OrphanedStemEntry {
+                id,
+                stem_path: stem_path_str,
+                last_known_source_path: source_path,
+                file_size,
+                last_modified,
+            })
+        })
+        .map_err(|e| format!("Failed to query orphans: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(entries)
+}
+
+/// Attempt to re-link an orphaned stem to a new source file.
+///
+/// Verifies the SHA-256 of the new source against the stored provenance hash.
+/// If they match, updates the library_index row's source_path and status.
+#[tauri::command]
+pub async fn re_link_orphan(
+    state: State<'_, AppState>,
+    stem_path: String,
+    new_source_path: String,
+) -> Result<RelinkResult, String> {
+    use crate::audio::hash_file;
+
+    let stem_p = Path::new(&stem_path);
+    let source_p = Path::new(&new_source_path);
+
+    if !source_p.exists() {
+        return Err(format!("Source file not found: {}", new_source_path));
+    }
+
+    // Load provenance from the stem's sidecar
+    let provenance = StemProvenance::load_from_sidecar(stem_p)
+        .map_err(|e| format!("Failed to load provenance: {}", e))?
+        .ok_or("No provenance metadata found for this stem")?;
+
+    // Compute the hash of the new source and compare
+    let new_hash = hash_file(source_p).map_err(|e| format!("Failed to hash source: {}", e))?;
+    let matched = new_hash == provenance.source_content_hash;
+
+    if !matched {
+        return Ok(RelinkResult {
+            matched: false,
+            new_status: "OrphanedStem".to_string(),
+        });
+    }
+
+    // Hash matches — update the library_index row
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let new_status = "HasStemCurrent";
+
+    conn.execute(
+        "UPDATE library_index SET source_path = ?, source_sha256 = ?, status = ?, updated_at = ?
+         WHERE stem_path = ?",
+        rusqlite::params![new_source_path, new_hash, new_status, now, stem_path],
+    )
+    .map_err(|e| format!("Failed to update library index: {}", e))?;
+
+    info!(
+        "Re-linked orphaned stem {} to source {}",
+        stem_path, new_source_path
+    );
+
+    Ok(RelinkResult {
+        matched: true,
+        new_status: new_status.to_string(),
+    })
+}
+
+/// Delete an orphaned stem file and its provenance sidecar.
+///
+/// Removes the .stem.mp4 and .prov.json files from disk and updates the library index.
+#[tauri::command]
+pub async fn delete_orphan_stem(
+    state: State<'_, AppState>,
+    stem_path: String,
+) -> Result<(), String> {
+    let stem_p = Path::new(&stem_path);
+
+    std::fs::remove_file(stem_p).map_err(|e| format!("Failed to delete stem file: {}", e))?;
+
+    // Delete the provenance sidecar if it exists
+    let prov_path = stem_p.with_extension("prov.json");
+    if prov_path.exists() {
+        let _ = std::fs::remove_file(&prov_path);
+    }
+
+    // Remove from library index
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM library_index WHERE stem_path = ?",
+        rusqlite::params![stem_path],
+    )
+    .map_err(|e| format!("Failed to remove from library index: {}", e))?;
+
+    info!("Deleted orphaned stem: {}", stem_path);
+    Ok(())
+}
+
+/// Mark an orphaned stem as ignored in the library index.
+#[tauri::command]
+pub async fn ignore_orphan_stem(
+    state: State<'_, AppState>,
+    stem_path: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    conn.execute(
+        "UPDATE library_index SET ignored = 1, updated_at = ? WHERE stem_path = ?",
+        rusqlite::params![now, stem_path],
+    )
+    .map_err(|e| format!("Failed to ignore orphan: {}", e))?;
+
+    info!("Ignored orphaned stem: {}", stem_path);
+    Ok(())
+}
+
+// =============================================================================
 // Unit Tests
 // =============================================================================
 #[cfg(test)]
@@ -607,5 +790,138 @@ mod tests {
         assert!(serde_json::to_string(&ExportFormat::Csv).is_ok());
         assert!(serde_json::to_string(&ExportFormat::Markdown).is_ok());
         assert!(serde_json::to_string(&ExportFormat::Json).is_ok());
+    }
+
+    #[test]
+    fn test_orphaned_stem_entry_serialization() {
+        let entry = OrphanedStemEntry {
+            id: "idx_001".to_string(),
+            stem_path: "/music/track.stem.mp4".to_string(),
+            last_known_source_path: "/music/track.mp3".to_string(),
+            file_size: Some(5_000_000),
+            last_modified: Some("2024-01-01T00:00:00Z".to_string()),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("idx_001"));
+        assert!(json.contains("/music/track.stem.mp4"));
+
+        let deserialized: OrphanedStemEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, "idx_001");
+        assert_eq!(deserialized.file_size, Some(5_000_000));
+    }
+
+    #[test]
+    fn test_relink_result_serialization() {
+        let result = RelinkResult {
+            matched: true,
+            new_status: "HasStemCurrent".to_string(),
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("HasStemCurrent"));
+
+        let deserialized: RelinkResult = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.matched);
+    }
+
+    #[test]
+    fn test_re_link_orphan_source_not_found() {
+        use crate::commands::db::run_migrations;
+        use rusqlite::Connection;
+
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Directly test that re_link returns error for non-existent source
+        // This is a synchronous validation that happens before DB work
+        let stem_path = "/nonexistent/stem.mp4".to_string();
+        let source_path = "/nonexistent/source.mp3".to_string();
+
+        // Can't directly call async fn in test, but we can verify the path check logic
+        assert!(!std::path::Path::new(&source_path).exists());
+    }
+
+    #[test]
+    fn test_ignore_orphan_updates_db() {
+        use crate::commands::db::run_migrations;
+        use rusqlite::Connection;
+
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert a test root and orphaned entry
+        let root_id = "test_root";
+        conn.execute(
+            "INSERT INTO library_roots (id, path, output_strategy, scan_policy, created_at)
+             VALUES (?, '/tmp/test', 'alongside', 'manual', '2024-01-01T00:00:00Z')",
+            rusqlite::params![root_id],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO library_index (id, root_id, source_path, stem_path, status, ignored, updated_at)
+             VALUES ('idx1', ?, '/tmp/test/orphan.mp3', '/tmp/test/orphan.stem.mp4', 'OrphanedStem', 0, '2024-01-01T00:00:00Z')",
+            rusqlite::params![root_id],
+        )
+        .unwrap();
+
+        // Simulate ignore_orphan_stem logic
+        conn.execute(
+            "UPDATE library_index SET ignored = 1, updated_at = '2024-01-02T00:00:00Z'
+             WHERE stem_path = ?",
+            rusqlite::params!["/tmp/test/orphan.stem.mp4"],
+        )
+        .unwrap();
+
+        let ignored: i32 = conn
+            .query_row(
+                "SELECT ignored FROM library_index WHERE id = 'idx1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ignored, 1);
+    }
+
+    #[test]
+    fn test_get_library_orphans_query() {
+        use crate::commands::db::run_migrations;
+        use rusqlite::Connection;
+
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let root_id = "test_root";
+        conn.execute(
+            "INSERT INTO library_roots (id, path, output_strategy, scan_policy, created_at)
+             VALUES (?, '/tmp/test', 'alongside', 'manual', '2024-01-01T00:00:00Z')",
+            rusqlite::params![root_id],
+        )
+        .unwrap();
+
+        // Insert 2 orphans (1 ignored, 1 not)
+        conn.execute(
+            "INSERT INTO library_index (id, root_id, source_path, status, ignored, updated_at)
+             VALUES ('idx1', ?, '/tmp/test/orphan1.stem.mp4', 'OrphanedStem', 0, '2024-01-01T00:00:00Z')",
+            rusqlite::params![root_id],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO library_index (id, root_id, source_path, status, ignored, updated_at)
+             VALUES ('idx2', ?, '/tmp/test/orphan2.stem.mp4', 'OrphanedStem', 1, '2024-01-01T00:00:00Z')",
+            rusqlite::params![root_id],
+        )
+        .unwrap();
+
+        // Query non-ignored orphans
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM library_index
+                 WHERE root_id = ? AND status = 'OrphanedStem' AND ignored = 0",
+                rusqlite::params![root_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 }

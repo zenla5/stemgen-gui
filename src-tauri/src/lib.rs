@@ -307,6 +307,11 @@ pub fn run() {
             commands::library_roots::delete_library_root,
             // Library scanner
             commands::scanner::scan_library_root,
+            // Orphan management
+            commands::library::get_library_orphans,
+            commands::library::re_link_orphan,
+            commands::library::delete_orphan_stem,
+            commands::library::ignore_orphan_stem,
             // Environment validation
             commands::validate_environment,
             commands::get_sidecar_status,
