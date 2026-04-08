@@ -641,13 +641,25 @@ mod tests {
             assert!(model.quality_rank <= 255);
         }
         // Verify specific quality ranks
-        let bs = get_available_models().into_iter().find(|m| m.id == "bs_roformer").unwrap();
+        let bs = get_available_models()
+            .into_iter()
+            .find(|m| m.id == "bs_roformer")
+            .unwrap();
         assert_eq!(bs.quality_rank, 4);
-        let demucs = get_available_models().into_iter().find(|m| m.id == "demucs").unwrap();
+        let demucs = get_available_models()
+            .into_iter()
+            .find(|m| m.id == "demucs")
+            .unwrap();
         assert_eq!(demucs.quality_rank, 1);
-        let htdemucs = get_available_models().into_iter().find(|m| m.id == "htdemucs").unwrap();
+        let htdemucs = get_available_models()
+            .into_iter()
+            .find(|m| m.id == "htdemucs")
+            .unwrap();
         assert_eq!(htdemucs.quality_rank, 2);
-        let htdemucs_ft = get_available_models().into_iter().find(|m| m.id == "htdemucs_ft").unwrap();
+        let htdemucs_ft = get_available_models()
+            .into_iter()
+            .find(|m| m.id == "htdemucs_ft")
+            .unwrap();
         assert_eq!(htdemucs_ft.quality_rank, 3);
     }
 
@@ -692,6 +704,9 @@ mod tests {
         assert_eq!(deserialized.id, "full-model");
         assert_eq!(deserialized.quality_rank, 5);
         assert_eq!(deserialized.released_at, Some("2025-06-15".to_string()));
-        assert_eq!(deserialized.changelog_url, Some("https://example.com/changelog".to_string()));
+        assert_eq!(
+            deserialized.changelog_url,
+            Some("https://example.com/changelog".to_string())
+        );
     }
 }

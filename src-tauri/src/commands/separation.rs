@@ -433,9 +433,7 @@ pub async fn pack_stems_with_provenance(
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
 
-    prov.source_size_bytes = std::fs::metadata(&master_path)
-        .ok()
-        .map(|m| m.len());
+    prov.source_size_bytes = std::fs::metadata(&master_path).ok().map(|m| m.len());
 
     // Pack stems and write provenance sidecar
     let prov_path = packer
