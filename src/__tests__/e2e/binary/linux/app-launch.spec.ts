@@ -83,4 +83,24 @@ describe('App Launch', () => {
 
     await takeScreenshot('linux-app-launch-no-errors');
   });
+
+  it('sidecar script is deployed to data dir on first launch', async () => {
+    const state = readBinaryState();
+    if (!state?.available) return;
+
+    await navigateSkippingWizard(appUrl);
+
+    // Wait for startup sidecar deployment to complete
+    await browser.pause(3000);
+
+    const result = await browser.executeAsync((done: (result: unknown) => void) => {
+      // @ts-ignore
+      (window as any).__TAURI_INTERNALS__?.invoke('get_sidecar_status')
+        .then((status: unknown) => done({ sidecarScriptFound: (status as Record<string, unknown>)?.sidecarScriptFound }))
+        .catch((err: unknown) => done({ error: String(err) }));
+    });
+
+    expect((result as { sidecarScriptFound?: boolean }).sidecarScriptFound).toBe(true);
+    await takeScreenshot('linux-sidecar-deployed');
+  });
 });

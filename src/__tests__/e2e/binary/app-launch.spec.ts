@@ -86,4 +86,38 @@ test.describe('App Launch', () => {
 
     expect(criticalErrors).toHaveLength(0);
   });
+
+  test('sidecar script is deployed to data dir on first launch', async ({ page }) => {
+    const state = readBinaryState();
+    test.skip(!state?.available, state?.reason || 'Binary not available');
+
+    await navigateSkippingWizard(page, appUrl);
+
+    // Wait a moment for startup sidecar deployment to complete
+    await page.waitForTimeout(3000);
+
+    let sidecarStatus: { sidecarScriptFound?: boolean; error?: string };
+    try {
+      sidecarStatus = await Promise.race([
+        page.evaluate(async () => {
+          try {
+            // @ts-ignore
+            const status = await (window as any).__TAURI_INTERNALS__?.invoke('get_sidecar_status');
+            return { sidecarScriptFound: status?.sidecarScriptFound };
+          } catch (err) {
+            return { error: String(err) };
+          }
+        }),
+        new Promise<{ error: string }>((resolve) =>
+          setTimeout(() => resolve({ error: 'timeout' }), 15_000)
+        ),
+      ]);
+    } catch (err) {
+      // Navigation may have destroyed the execution context
+      test.skip(true, 'Execution context lost (navigation after invoke)');
+      return;
+    }
+
+    expect(sidecarStatus.sidecarScriptFound).toBe(true);
+  });
 });
