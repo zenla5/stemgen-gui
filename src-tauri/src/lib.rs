@@ -312,6 +312,14 @@ pub fn run() {
             commands::library::re_link_orphan,
             commands::library::delete_orphan_stem,
             commands::library::ignore_orphan_stem,
+            // Batch queue
+            commands::batch::queue_batch_generate,
+            commands::batch::queue_batch_regenerate,
+            commands::batch::get_batch_queue_status,
+            commands::batch::pause_batch_queue,
+            commands::batch::resume_batch_queue,
+            commands::batch::cancel_batch_queue,
+            commands::batch::clear_completed_queue,
             // Environment validation
             commands::validate_environment,
             commands::get_sidecar_status,
