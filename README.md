@@ -133,7 +133,7 @@ Download the installer for your platform below. All builds are available from th
 | Platform | Download |
 |---|---|
 | **Windows** | [Stemgen-GUI_x64-setup.exe](https://github.com/zenla5/stemgen-gui/releases/latest) · [Stemgen-GUI_x64_en-US.msi](https://github.com/zenla5/stemgen-gui/releases/latest) |
-| **macOS (Apple Silicon)** | [Stemgen-GUI_1.1.5_aarch64.dmg](https://github.com/zenla5/stemgen-gui/releases/latest) |
+| **macOS (Apple Silicon)** | [Stemgen-GUI_1.2.3_aarch64.dmg](https://github.com/zenla5/stemgen-gui/releases/latest) |
 | **Linux** | [Stemgen.GUI_amd64.AppImage](https://github.com/zenla5/stemgen-gui/releases/latest) · [Stemgen.GUI_amd64.deb](https://github.com/zenla5/stemgen-gui/releases/latest) · [Stemgen.GUI_x86_64.rpm](https://github.com/zenla5/stemgen-gui/releases/latest) |
 
 > **Note:** Artifact filenames include the version number (e.g., `Stemgen-GUI_1.1.0_x64-setup.exe`). Click any link above to see the full filenames on the releases page.
