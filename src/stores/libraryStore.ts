@@ -18,6 +18,11 @@ import type {
   DuplicateEntry,
   StemProvenance,
   ExportFormat,
+  LibraryRoot,
+  LibraryRootUpdate,
+  LibraryIndexEntry,
+  StemFileState,
+  LibraryScanResultV2,
 } from '@/lib/types/library';
 
 // =============================================================================
@@ -29,11 +34,31 @@ interface LibraryState {
   libraryPath: string | null;
   setLibraryPath: (path: string | null) => void;
 
-  // Scan results
+  // Library roots
+  libraryRoots: LibraryRoot[];
+  loadLibraryRoots: () => Promise<void>;
+  addLibraryRoot: (path: string, outputStrategy: string, mirroredPath?: string, flatPath?: string) => Promise<string>;
+  updateLibraryRoot: (id: string, updates: LibraryRootUpdate) => Promise<void>;
+  deleteLibraryRoot: (id: string) => Promise<void>;
+
+  // Scan results (v1 — legacy)
   scanResult: LibraryScanResult | null;
   isScanning: boolean;
   scanError: string | null;
   scanLibrary: (path: string, filter?: LibraryScanFilter) => Promise<void>;
+
+  // Scan results (v2 — library root based)
+  scanResultV2: LibraryScanResultV2 | null;
+  scanLibraryRoot: (rootId: string, fullRescan?: boolean) => Promise<void>;
+
+  // Library index
+  libraryIndex: LibraryIndexEntry[];
+  statusFilter: StemFileState[];
+  searchQuery: string;
+  groupBy: 'folder' | 'model' | 'status' | 'none';
+  setStatusFilter: (states: StemFileState[]) => void;
+  setSearchQuery: (query: string) => void;
+  setGroupBy: (by: 'folder' | 'model' | 'status' | 'none') => void;
 
   // Staleness rules
   stalenessRules: StalenessRules;
@@ -95,7 +120,55 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   libraryPath: null,
   setLibraryPath: (path) => set({ libraryPath: path }),
 
-  // Scan results
+  // Library roots
+  libraryRoots: [],
+
+  loadLibraryRoots: async () => {
+    try {
+      const roots = await invoke<LibraryRoot[]>('list_library_roots');
+      set({ libraryRoots: roots });
+    } catch (error) {
+      console.error('Failed to load library roots:', error);
+    }
+  },
+
+  addLibraryRoot: async (path, outputStrategy, mirroredPath, flatPath) => {
+    try {
+      const id = await invoke<string>('add_library_root', {
+        path,
+        outputStrategy,
+        mirroredPath: mirroredPath ?? null,
+        flatPath: flatPath ?? null,
+      });
+      await get().loadLibraryRoots();
+      return id;
+    } catch (error) {
+      console.error('Failed to add library root:', error);
+      throw error;
+    }
+  },
+
+  updateLibraryRoot: async (id, updates) => {
+    try {
+      await invoke('update_library_root', { id, updates });
+      await get().loadLibraryRoots();
+    } catch (error) {
+      console.error('Failed to update library root:', error);
+      throw error;
+    }
+  },
+
+  deleteLibraryRoot: async (id) => {
+    try {
+      await invoke('delete_library_root', { id });
+      await get().loadLibraryRoots();
+    } catch (error) {
+      console.error('Failed to delete library root:', error);
+      throw error;
+    }
+  },
+
+  // Scan results (v1 — legacy)
   scanResult: null,
   isScanning: false,
   scanError: null,
@@ -115,6 +188,37 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ scanError: errorMessage, isScanning: false });
     }
   },
+
+  // Scan results (v2 — library root based)
+  scanResultV2: null,
+
+  scanLibraryRoot: async (rootId, fullRescan = true) => {
+    set({ isScanning: true, scanError: null });
+    try {
+      const result = await invoke<LibraryScanResultV2>('scan_library_root', {
+        rootId,
+        fullRescan,
+      });
+      set({
+        scanResultV2: result,
+        libraryIndex: result.entries,
+        isScanning: false,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      set({ scanError: errorMessage, isScanning: false });
+    }
+  },
+
+  // Library index
+  libraryIndex: [],
+  statusFilter: [],
+  searchQuery: '',
+  groupBy: 'none',
+
+  setStatusFilter: (states) => set({ statusFilter: states, selectedStems: new Set() }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
+  setGroupBy: (by) => set({ groupBy: by }),
 
   // Staleness rules
   stalenessRules: defaultStalenessRules,
@@ -246,6 +350,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   reset: () => {
     set({
       scanResult: null,
+      scanResultV2: null,
+      libraryIndex: [],
+      statusFilter: [],
+      searchQuery: '',
+      groupBy: 'none',
       isScanning: false,
       scanError: null,
       selectedStems: new Set(),
@@ -291,4 +400,97 @@ export const selectSelectedReports = (state: LibraryState): StalenessReport[] =>
 
 export const selectStaleSelectedCount = (state: LibraryState): number => {
   return selectSelectedReports(state).filter((r) => r.status.status === 'Stale').length;
+};
+
+// =============================================================================
+// New Selectors (v2)
+// =============================================================================
+
+/**
+ * Filter library index entries by status filter and search query.
+ */
+export const selectFilteredEntries = (state: LibraryState): LibraryIndexEntry[] => {
+  let entries = state.libraryIndex;
+
+  // Apply status filter
+  if (state.statusFilter.length > 0) {
+    entries = entries.filter((e) => state.statusFilter.includes(e.status));
+  }
+
+  // Apply search query
+  if (state.searchQuery.trim()) {
+    const q = state.searchQuery.toLowerCase();
+    entries = entries.filter(
+      (e) =>
+        e.source_path.toLowerCase().includes(q) ||
+        e.stem_path?.toLowerCase().includes(q)
+    );
+  }
+
+  return entries;
+};
+
+/**
+ * Group filtered entries by the current groupBy setting.
+ */
+export const selectGroupedEntries = (
+  state: LibraryState
+): Record<string, LibraryIndexEntry[]> => {
+  const entries = selectFilteredEntries(state);
+
+  if (state.groupBy === 'none') {
+    return { all: entries };
+  }
+
+  const groups: Record<string, LibraryIndexEntry[]> = {};
+  for (const entry of entries) {
+    let key: string;
+    switch (state.groupBy) {
+      case 'folder': {
+        const parts = entry.source_path.split(/[/\\]/);
+        key = parts.length > 1 ? parts.slice(0, -1).join('/') : '/';
+        break;
+      }
+      case 'model':
+        key = entry.provenance_json
+          ? JSON.parse(entry.provenance_json).separation_model ?? 'No Model'
+          : 'No Model';
+        break;
+      case 'status':
+        key = entry.status;
+        break;
+      default:
+        key = 'all';
+    }
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(entry);
+  }
+
+  return groups;
+};
+
+/**
+ * Summary statistics for the current library index.
+ */
+export const selectSummaryStats = (
+  state: LibraryState
+): {
+  total: number;
+  noStem: number;
+  current: number;
+  outdated: number;
+  unknown: number;
+  orphaned: number;
+  ignored: number;
+} => {
+  const entries = state.libraryIndex;
+  return {
+    total: entries.length,
+    noStem: entries.filter((e) => e.status === 'NoStem').length,
+    current: entries.filter((e) => e.status === 'HasStemCurrent').length,
+    outdated: entries.filter((e) => e.status === 'HasStemOutdated').length,
+    unknown: entries.filter((e) => e.status === 'HasStemUnknownProvenance').length,
+    orphaned: entries.filter((e) => e.status === 'OrphanedStem').length,
+    ignored: entries.filter((e) => e.status === 'Ignored').length,
+  };
 };

@@ -7,8 +7,11 @@ import {
   selectTotalSelected,
   selectSelectedReports,
   selectStaleSelectedCount,
+  selectFilteredEntries,
+  selectGroupedEntries,
+  selectSummaryStats,
 } from '@/stores/libraryStore';
-import type { LibraryScanResult, StalenessRules, DuplicateEntry } from '@/lib/types/library';
+import type { LibraryScanResult, StalenessRules, DuplicateEntry, LibraryScanResultV2, LibraryIndexEntry } from '@/lib/types/library';
 
 // Mock @tauri-apps/api/core
 vi.mock('@tauri-apps/api/core', () => ({
@@ -101,7 +104,13 @@ describe('libraryStore', () => {
     vi.clearAllMocks();
     useLibraryStore.setState({
       libraryPath: null,
+      libraryRoots: [],
       scanResult: null,
+      scanResultV2: null,
+      libraryIndex: [],
+      statusFilter: [],
+      searchQuery: '',
+      groupBy: 'none',
       isScanning: false,
       scanError: null,
       stalenessRules: fakeStalenessRules,
@@ -506,6 +515,195 @@ describe('libraryStore', () => {
       await useLibraryStore.getState().scanLibrary('/music');
 
       expect(selectStaleSelectedCount(useLibraryStore.getState())).toBe(0);
+    });
+  });
+
+  // ─── New v2 Tests ────────────────────────────────────────────────────────
+
+  const fakeLibraryIndex: LibraryIndexEntry[] = [
+    {
+      id: 'idx_1',
+      root_id: 'root_1',
+      source_path: '/music/track1.mp3',
+      status: 'HasStemCurrent',
+      ignored: false,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      id: 'idx_2',
+      root_id: 'root_1',
+      source_path: '/music/track2.mp3',
+      status: 'NoStem',
+      ignored: false,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      id: 'idx_3',
+      root_id: 'root_1',
+      source_path: '/music/subdir/track3.mp3',
+      status: 'HasStemOutdated',
+      ignored: false,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      id: 'idx_4',
+      root_id: 'root_1',
+      source_path: '/music/orphan.stem.mp4',
+      status: 'OrphanedStem',
+      ignored: false,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+  ];
+
+  const fakeScanResultV2: LibraryScanResultV2 = {
+    root_id: 'root_1',
+    total_sources: 4,
+    no_stem_count: 1,
+    has_stem_current_count: 1,
+    has_stem_outdated_count: 1,
+    has_stem_unknown_provenance_count: 0,
+    orphaned_stem_count: 1,
+    ignored_count: 0,
+    entries: fakeLibraryIndex,
+  };
+
+  describe('libraryRoots', () => {
+    it('loads library roots from backend', async () => {
+      const fakeRoots = [
+        { id: 'r1', path: '/music', output_strategy: 'alongside', scan_policy: 'manual', created_at: '2026-01-01' },
+      ];
+      mockInvoke.mockResolvedValueOnce(fakeRoots);
+
+      await useLibraryStore.getState().loadLibraryRoots();
+
+      expect(useLibraryStore.getState().libraryRoots).toHaveLength(1);
+      expect(useLibraryStore.getState().libraryRoots[0].path).toBe('/music');
+    });
+
+    it('adds a library root', async () => {
+      mockInvoke.mockResolvedValueOnce('new_root_id');
+      mockInvoke.mockResolvedValueOnce([{ id: 'new_root_id', path: '/new', output_strategy: 'alongside', scan_policy: 'manual', created_at: '2026-01-01' }]);
+
+      const id = await useLibraryStore.getState().addLibraryRoot('/new', 'alongside');
+
+      expect(id).toBe('new_root_id');
+      expect(useLibraryStore.getState().libraryRoots).toHaveLength(1);
+    });
+  });
+
+  describe('scanLibraryRoot', () => {
+    it('calls scan_library_root and updates state', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+
+      await useLibraryStore.getState().scanLibraryRoot('root_1', true);
+
+      expect(mockInvoke).toHaveBeenCalledWith('scan_library_root', { rootId: 'root_1', fullRescan: true });
+      expect(useLibraryStore.getState().scanResultV2).toEqual(fakeScanResultV2);
+      expect(useLibraryStore.getState().libraryIndex).toHaveLength(4);
+      expect(useLibraryStore.getState().isScanning).toBe(false);
+    });
+
+    it('handles scan error', async () => {
+      mockInvoke.mockRejectedValueOnce(new Error('Root not found'));
+
+      await useLibraryStore.getState().scanLibraryRoot('bad_root');
+
+      expect(useLibraryStore.getState().scanError).toBe('Root not found');
+      expect(useLibraryStore.getState().isScanning).toBe(false);
+    });
+  });
+
+  describe('selectFilteredEntries', () => {
+    beforeEach(async () => {
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+      await useLibraryStore.getState().scanLibraryRoot('root_1');
+    });
+
+    it('returns all entries when no filter is set', () => {
+      const entries = selectFilteredEntries(useLibraryStore.getState());
+      expect(entries).toHaveLength(4);
+    });
+
+    it('filters by status', () => {
+      useLibraryStore.getState().setStatusFilter(['NoStem']);
+      const entries = selectFilteredEntries(useLibraryStore.getState());
+      expect(entries).toHaveLength(1);
+      expect(entries[0].status).toBe('NoStem');
+    });
+
+    it('filters by search query', () => {
+      useLibraryStore.getState().setSearchQuery('subdir');
+      const entries = selectFilteredEntries(useLibraryStore.getState());
+      expect(entries).toHaveLength(1);
+      expect(entries[0].source_path).toContain('subdir');
+    });
+
+    it('combines status filter and search query', () => {
+      useLibraryStore.getState().setStatusFilter(['HasStemCurrent', 'HasStemOutdated']);
+      useLibraryStore.getState().setSearchQuery('track1');
+      const entries = selectFilteredEntries(useLibraryStore.getState());
+      expect(entries).toHaveLength(1);
+      expect(entries[0].id).toBe('idx_1');
+    });
+  });
+
+  describe('selectGroupedEntries', () => {
+    beforeEach(async () => {
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+      await useLibraryStore.getState().scanLibraryRoot('root_1');
+    });
+
+    it('groups by status', () => {
+      useLibraryStore.getState().setGroupBy('status');
+      const groups = selectGroupedEntries(useLibraryStore.getState());
+      expect(groups['HasStemCurrent']).toHaveLength(1);
+      expect(groups['NoStem']).toHaveLength(1);
+      expect(groups['HasStemOutdated']).toHaveLength(1);
+      expect(groups['OrphanedStem']).toHaveLength(1);
+    });
+
+    it('returns all entries under "all" when groupBy is none', () => {
+      useLibraryStore.getState().setGroupBy('none');
+      const groups = selectGroupedEntries(useLibraryStore.getState());
+      expect(groups['all']).toHaveLength(4);
+    });
+  });
+
+  describe('selectSummaryStats', () => {
+    beforeEach(async () => {
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+      await useLibraryStore.getState().scanLibraryRoot('root_1');
+    });
+
+    it('returns correct counts', () => {
+      const stats = selectSummaryStats(useLibraryStore.getState());
+      expect(stats.total).toBe(4);
+      expect(stats.noStem).toBe(1);
+      expect(stats.current).toBe(1);
+      expect(stats.outdated).toBe(1);
+      expect(stats.orphaned).toBe(1);
+      expect(stats.unknown).toBe(0);
+      expect(stats.ignored).toBe(0);
+    });
+  });
+
+  describe('reset clears v2 state', () => {
+    it('resets all v2 state', async () => {
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+      await useLibraryStore.getState().scanLibraryRoot('root_1');
+      useLibraryStore.getState().setStatusFilter(['NoStem']);
+      useLibraryStore.getState().setSearchQuery('test');
+
+      useLibraryStore.getState().reset();
+
+      expect(useLibraryStore.getState().scanResultV2).toBeNull();
+      expect(useLibraryStore.getState().libraryIndex).toHaveLength(0);
+      expect(useLibraryStore.getState().statusFilter).toHaveLength(0);
+      expect(useLibraryStore.getState().searchQuery).toBe('');
     });
   });
 });

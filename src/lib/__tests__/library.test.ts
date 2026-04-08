@@ -13,7 +13,7 @@ import {
   stemStateColor,
   getStalenessReasonDescriptionExtended,
 } from '@/lib/types/library';
-import type { StalenessStatus, StalenessReason, StemFileState } from '@/lib/types/library';
+import type { StalenessStatus, StalenessReason } from '@/lib/types/library';
 
 describe('library types', () => {
   describe('PROVENANCE_SCHEMA_VERSION', () => {
