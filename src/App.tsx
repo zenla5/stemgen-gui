@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { Toaster } from 'sonner';
 import { useAppStore } from './stores/appStore';
 import { useSettingsStore } from './stores/settingsStore';
@@ -11,6 +12,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 function App() {
   const { theme, hasSeenFirstRun, completeFirstRun } = useSettingsStore();
   const { checkDependencies } = useAppStore();
+  const [sidecarError, setSidecarError] = useState<string | null>(null);
 
   // Health check hook
   useHealthCheck();
@@ -22,6 +24,21 @@ function App() {
   useEffect(() => {
     checkDependencies();
   }, [checkDependencies]);
+
+  // Listen for sidecar deployment errors
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<{ error?: string }>('sidecar-deploy-error', (event) => {
+      if (event.payload?.error) {
+        setSidecarError(event.payload.error);
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   // Apply theme
   useEffect(() => {
@@ -49,6 +66,14 @@ function App() {
 
   return (
     <ErrorBoundary>
+      {sidecarError && (
+        <div
+          data-testid="sidecar-error-banner"
+          className="fixed top-0 left-0 right-0 z-50 bg-destructive px-4 py-3 text-center text-sm text-destructive-foreground"
+        >
+          {sidecarError}
+        </div>
+      )}
       <AppShell />
       <Toaster
         position="bottom-right"

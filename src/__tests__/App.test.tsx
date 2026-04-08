@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { ReactElement } from 'react';
 
+// Track event listeners registered via mock
+const mockListeners: Record<string, (event: { payload: unknown }) => void> = {};
+
+// Mock @tauri-apps/api/event BEFORE importing App
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn((event: string, handler: (event: { payload: unknown }) => void) => {
+    mockListeners[event] = handler;
+    return Promise.resolve(() => {
+      delete mockListeners[event];
+    });
+  }),
+}));
+
 // Mock all dependencies BEFORE importing App
 vi.mock('@/stores/settingsStore', () => ({
   useSettingsStore: vi.fn(() => ({
@@ -315,6 +328,64 @@ describe('App', () => {
 
       // ErrorBoundary should wrap the children
       expect(ErrorBoundary).toHaveBeenCalled();
+    });
+  });
+
+  describe('sidecar-deploy-error event handling', () => {
+    it('registers a listener for sidecar-deploy-error on mount', async () => {
+      const { useSettingsStore } = await import('@/stores/settingsStore');
+      vi.mocked(useSettingsStore).mockReturnValueOnce({
+        theme: 'system',
+        hasSeenFirstRun: true,
+        completeFirstRun: vi.fn(),
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(mockListeners['sidecar-deploy-error']).toBeDefined();
+      });
+    });
+
+    it('displays error banner when sidecar-deploy-error event is received', async () => {
+      const { useSettingsStore } = await import('@/stores/settingsStore');
+      vi.mocked(useSettingsStore).mockReturnValueOnce({
+        theme: 'system',
+        hasSeenFirstRun: true,
+        completeFirstRun: vi.fn(),
+      });
+
+      render(<App />);
+
+      // Wait for the listener to be registered
+      await waitFor(() => {
+        expect(mockListeners['sidecar-deploy-error']).toBeDefined();
+      });
+
+      // Simulate the event
+      mockListeners['sidecar-deploy-error']({
+        payload: { error: 'Sidecar script not found in /some/path. Please reinstall.' },
+      });
+
+      await waitFor(() => {
+        const banner = screen.getByTestId('sidecar-error-banner');
+        expect(banner).toBeInTheDocument();
+        expect(banner).toHaveTextContent('Sidecar script not found');
+      });
+    });
+
+    it('does not show error banner when no error has been received', async () => {
+      const { useSettingsStore } = await import('@/stores/settingsStore');
+      vi.mocked(useSettingsStore).mockReturnValueOnce({
+        theme: 'system',
+        hasSeenFirstRun: true,
+        completeFirstRun: vi.fn(),
+      });
+
+      render(<App />);
+
+      // Banner should not be in the DOM without an event
+      expect(screen.queryByTestId('sidecar-error-banner')).not.toBeInTheDocument();
     });
   });
 });
