@@ -184,7 +184,27 @@ describe('LibraryOverviewPanel', () => {
     expect(screen.getByText('Regenerate Outdated (15)')).toBeInTheDocument();
   });
 
-  it('Generate Missing calls queueGenerate and startProcessor', async () => {
+  it('Generate Missing opens confirmation dialog', async () => {
+    const user = userEvent.setup();
+
+    render(<LibraryOverviewPanel selectedRootId="root-1" onOpenSettings={vi.fn()} />);
+    await user.click(screen.getByTestId('generate-missing-btn'));
+
+    expect(screen.getByTestId('batch-confirm-dialog')).toBeInTheDocument();
+    expect(screen.getByText('Generate Missing Stems')).toBeInTheDocument();
+  });
+
+  it('Regenerate Outdated opens confirmation dialog', async () => {
+    const user = userEvent.setup();
+
+    render(<LibraryOverviewPanel selectedRootId="root-1" onOpenSettings={vi.fn()} />);
+    await user.click(screen.getByTestId('regenerate-outdated-btn'));
+
+    expect(screen.getByTestId('batch-confirm-dialog')).toBeInTheDocument();
+    expect(screen.getByText('Regenerate Outdated Stems')).toBeInTheDocument();
+  });
+
+  it('Generate Missing confirmation calls queueGenerate and startProcessor', async () => {
     const user = userEvent.setup();
     const queueGenerateSpy = vi.fn().mockResolvedValue({ queued_count: 40, total_duration_secs: 0 });
     const startProcessorSpy = vi.fn().mockResolvedValue(undefined);
@@ -195,6 +215,7 @@ describe('LibraryOverviewPanel', () => {
 
     render(<LibraryOverviewPanel selectedRootId="root-1" onOpenSettings={vi.fn()} />);
     await user.click(screen.getByTestId('generate-missing-btn'));
+    await user.click(screen.getByTestId('batch-start-btn'));
 
     await waitFor(() => {
       expect(queueGenerateSpy).toHaveBeenCalledWith('root-1', 'bs_roformer', 'traktor', 'alac');
@@ -202,7 +223,7 @@ describe('LibraryOverviewPanel', () => {
     });
   });
 
-  it('Regenerate Outdated calls queueRegenerate and startProcessor', async () => {
+  it('Regenerate Outdated confirmation calls queueRegenerate and startProcessor', async () => {
     const user = userEvent.setup();
     const queueRegenerateSpy = vi.fn().mockResolvedValue({ queued_count: 15, total_duration_secs: 0 });
     const startProcessorSpy = vi.fn().mockResolvedValue(undefined);
@@ -213,6 +234,7 @@ describe('LibraryOverviewPanel', () => {
 
     render(<LibraryOverviewPanel selectedRootId="root-1" onOpenSettings={vi.fn()} />);
     await user.click(screen.getByTestId('regenerate-outdated-btn'));
+    await user.click(screen.getByTestId('batch-start-btn'));
 
     await waitFor(() => {
       expect(queueRegenerateSpy).toHaveBeenCalledWith('root-1', 'bs_roformer', false, 'traktor', 'alac');

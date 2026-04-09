@@ -927,7 +927,7 @@ Update `src/components/library/__tests__/StemInfoPanel.test.tsx` (from TASK-002)
 
 ---
 
-#### [ ] TASK-029 — Implement batch confirmation dialog
+#### [x] TASK-029 — Implement batch confirmation dialog
 
 **Description:** Create `src/components/library/BatchConfirmDialog.tsx`. A Radix UI `AlertDialog` that shows before starting any batch operation:
 - Title: "Generate Missing Stems" or "Regenerate Outdated Stems".
@@ -955,7 +955,7 @@ Create `src/components/library/__tests__/BatchConfirmDialog.test.tsx`: renders w
 
 ---
 
-#### [ ] TASK-030 — Implement `BatchQueueView` progress UI
+#### [x] TASK-030 — Implement `BatchQueueView` progress UI
 
 **Description:** Create `src/components/library/BatchQueueView.tsx`. This view is shown as an overlay or modal when a batch job is active. It displays:
 - Total progress bar (completed / total items).
@@ -986,7 +986,7 @@ Create `src/components/library/__tests__/BatchQueueView.test.tsx`: renders with 
 
 ---
 
-#### [ ] TASK-031 — Implement `OrphanedStemsView` cleanup UI
+#### [x] TASK-031 — Implement `OrphanedStemsView` cleanup UI
 
 **Description:** Create `src/components/library/OrphanedStemsView.tsx`. A filterable list (derived from `libraryStore` entries with `status === 'OrphanedStem'`) showing:
 - Orphaned stem path, last known source path, file size, last-seen date.

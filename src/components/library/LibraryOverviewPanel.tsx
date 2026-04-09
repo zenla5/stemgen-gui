@@ -4,12 +4,14 @@
  * Shows scan stats, status breakdown bar, and batch action buttons.
  */
 
+import { useState } from 'react';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useBatchQueueStore } from '@/stores/batchQueueStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Button } from '@/components/ui/Button';
 import { formatTimestamp } from '@/lib/types/library';
 import type { LibraryScanResultV2 } from '@/lib/types/library';
+import { BatchConfirmDialog, type BatchMode } from './BatchConfirmDialog';
 import { RefreshCw, Settings, Play, RotateCw } from 'lucide-react';
 
 interface LibraryOverviewPanelProps {
@@ -28,21 +30,37 @@ export function LibraryOverviewPanel({
   const root = libraryRoots.find((r) => r.id === selectedRootId);
   const stats = scanResultV2;
 
+  const [batchDialog, setBatchDialog] = useState<{
+    mode: BatchMode;
+    fileCount: number;
+  } | null>(null);
+
   const handleScan = () => {
     scanLibraryRoot(selectedRootId, true);
   };
 
-  const handleGenerateMissing = async () => {
+  const handleGenerateMissing = () => {
     if (!stats || stats.no_stem_count === 0) return;
-    await queueGenerate(selectedRootId, defaultModel, defaultDjSoftware, defaultOutputFormat);
+    setBatchDialog({ mode: 'generate', fileCount: stats.no_stem_count });
+  };
+
+  const handleRegenerateOutdated = () => {
+    if (!stats || stats.has_stem_outdated_count === 0) return;
+    setBatchDialog({ mode: 'regenerate', fileCount: stats.has_stem_outdated_count });
+  };
+
+  const handleBatchConfirm = async (includeUnknown: boolean) => {
+    if (!batchDialog) return;
+    setBatchDialog(null);
+    if (batchDialog.mode === 'generate') {
+      await queueGenerate(selectedRootId, defaultModel, defaultDjSoftware, defaultOutputFormat);
+    } else {
+      await queueRegenerate(selectedRootId, defaultModel, includeUnknown, defaultDjSoftware, defaultOutputFormat);
+    }
     await useBatchQueueStore.getState().startProcessor(selectedRootId);
   };
 
-  const handleRegenerateOutdated = async () => {
-    if (!stats || stats.has_stem_outdated_count === 0) return;
-    await queueRegenerate(selectedRootId, defaultModel, false, defaultDjSoftware, defaultOutputFormat);
-    await useBatchQueueStore.getState().startProcessor(selectedRootId);
-  };
+  const handleBatchCancel = () => setBatchDialog(null);
 
   return (
     <div className="border-b space-y-4" data-testid="library-overview-panel">
@@ -132,6 +150,19 @@ export function LibraryOverviewPanel({
           </div>
         </>
       )}
+
+      {/* Batch confirmation dialog */}
+      <BatchConfirmDialog
+        open={batchDialog !== null}
+        mode={batchDialog?.mode ?? 'generate'}
+        fileCount={batchDialog?.fileCount ?? 0}
+        estimatedDurationSecs={0}
+        modelName={defaultModel}
+        djPreset={defaultDjSoftware}
+        outputFormat={defaultOutputFormat}
+        onConfirm={handleBatchConfirm}
+        onCancel={handleBatchCancel}
+      />
     </div>
   );
 }

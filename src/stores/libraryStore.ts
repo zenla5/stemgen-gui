@@ -23,6 +23,8 @@ import type {
   LibraryIndexEntry,
   StemFileState,
   LibraryScanResultV2,
+  OrphanedStemEntry,
+  RelinkResult,
 } from '@/lib/types/library';
 
 // =============================================================================
@@ -92,6 +94,13 @@ interface LibraryState {
 
   // Integrity check
   verifyIntegrity: (stemPath: string) => Promise<boolean>;
+
+  // Orphan management
+  orphans: OrphanedStemEntry[];
+  loadOrphans: (rootId: string) => Promise<void>;
+  deleteOrphan: (stemPath: string) => Promise<void>;
+  relinkOrphan: (stemPath: string, sourcePath: string) => Promise<RelinkResult>;
+  ignoreOrphan: (stemPath: string) => Promise<void>;
 
   // Reset
   reset: () => void;
@@ -346,6 +355,57 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
+  // Orphan management
+  orphans: [],
+
+  loadOrphans: async (rootId) => {
+    try {
+      const entries = await invoke<OrphanedStemEntry[]>('get_library_orphans', { rootId });
+      set({ orphans: entries });
+    } catch (error) {
+      console.error('Failed to load orphans:', error);
+    }
+  },
+
+  deleteOrphan: async (stemPath) => {
+    try {
+      await invoke('delete_orphan_stem', { stemPath });
+      set((state) => ({
+        orphans: state.orphans.filter((o) => o.stem_path !== stemPath),
+      }));
+    } catch (error) {
+      console.error('Failed to delete orphan:', error);
+      throw error;
+    }
+  },
+
+  relinkOrphan: async (stemPath, sourcePath) => {
+    try {
+      const result = await invoke<RelinkResult>('re_link_orphan', { stemPath, sourcePath });
+      if (result.matched) {
+        set((state) => ({
+          orphans: state.orphans.filter((o) => o.stem_path !== stemPath),
+        }));
+      }
+      return result;
+    } catch (error) {
+      console.error('Failed to relink orphan:', error);
+      throw error;
+    }
+  },
+
+  ignoreOrphan: async (stemPath) => {
+    try {
+      await invoke('ignore_orphan_stem', { stemPath });
+      set((state) => ({
+        orphans: state.orphans.filter((o) => o.stem_path !== stemPath),
+      }));
+    } catch (error) {
+      console.error('Failed to ignore orphan:', error);
+      throw error;
+    }
+  },
+
   // Reset
   reset: () => {
     set({
@@ -363,6 +423,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       currentProvenance: null,
       isExporting: false,
       exportError: null,
+      orphans: [],
     });
   },
 }));
