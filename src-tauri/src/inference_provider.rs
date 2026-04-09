@@ -215,6 +215,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "linux"))]
     #[test]
     fn keychain_store_load_delete_roundtrip() {
         let provider = "fal_test";
@@ -238,6 +239,7 @@ mod tests {
         assert_eq!(after_delete, None);
     }
 
+    #[cfg(not(target_os = "linux"))]
     #[test]
     fn keychain_load_returns_none_for_missing_entry() {
         let result = load_api_key("nonexistent_provider_xyz").unwrap();
