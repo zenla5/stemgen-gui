@@ -31,3 +31,8 @@ librosa==0.10.2.post1
 # CPU-only:
 #   pip install torch torchvision torchaudio
 # ──────────────────────────────────────────────────────────────────────────────
+
+# Cloud inference providers (imported lazily; not required for local inference)
+fal-client>=0.5.0
+replicate>=0.31.0
+requests>=2.31.0
