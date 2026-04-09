@@ -815,7 +815,7 @@ Create `src/components/library/__tests__/LibraryOverviewPanel.test.tsx`: test re
 
 ---
 
-#### [ ] TASK-026 — Implement `LibraryTable` filterable, sortable table
+#### [x] TASK-026 — Implement `LibraryTable` filterable, sortable table
 
 **Description:** Create `src/components/library/LibraryTable.tsx`. A virtualized (or paginated — whichever avoids performance issues with thousands of rows) table showing one row per source file from `libraryStore.selectFilteredEntries`. Columns:
 

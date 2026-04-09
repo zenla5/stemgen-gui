@@ -10,11 +10,12 @@ import { useLibraryStore } from '@/stores/libraryStore';
 import { Button } from '@/components/ui/Button';
 import { LibraryRootSettings } from './LibraryRootSettings';
 import { LibraryOverviewPanel } from './LibraryOverviewPanel';
+import { LibraryTable } from './LibraryTable';
 import { Plus } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 
 export function LibraryView() {
-  const { libraryRoots, loadLibraryRoots, scanLibraryRoot, isScanning, scanResultV2 } =
+  const { libraryRoots, loadLibraryRoots, scanLibraryRoot, isScanning } =
     useLibraryStore();
   const [showSettings, setShowSettings] = useState(false);
   const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
@@ -64,7 +65,6 @@ export function LibraryView() {
   }
 
   // Configured state
-  const stats = scanResultV2;
   return (
     <div className="flex h-full flex-col">
       {/* Overview panel */}
@@ -75,16 +75,14 @@ export function LibraryView() {
         />
       )}
 
-      {/* Library table placeholder */}
-      <div className="flex-1 overflow-auto p-4">
-        {stats && stats.entries.length > 0 ? (
-          <div className="text-sm text-muted-foreground">
-            {stats.entries.length} entries loaded. Full table view coming in TASK-026.
+      {/* Library table */}
+      <div className="flex-1 overflow-hidden">
+        {isScanning ? (
+          <div className="flex h-full items-center justify-center text-muted-foreground">
+            Scanning...
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            {isScanning ? 'Scanning...' : 'No entries found. Click "Scan Now" to scan your library.'}
-          </div>
+          <LibraryTable />
         )}
       </div>
 
