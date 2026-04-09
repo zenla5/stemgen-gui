@@ -357,6 +357,59 @@ pub fn scan_root(
         .map_err(|e| format!("Failed to upsert library index entry: {}", e))?;
     }
 
+    // Mark existing entries whose source files no longer exist on disk as OrphanedStem
+    let collected_source_paths: HashSet<String> =
+        entries.iter().map(|e| e.source_path.clone()).collect();
+
+    let mut existing_stmt = conn
+        .prepare(
+            "SELECT id, source_path, stem_path, provenance_json
+             FROM library_index WHERE root_id = ?",
+        )
+        .map_err(|e| format!("Failed to query existing entries: {}", e))?;
+
+    let existing_entries: Vec<(String, String, Option<String>, Option<String>)> = existing_stmt
+        .query_map(params![root_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .map_err(|e| format!("Failed to query existing entries: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for (existing_id, existing_source, existing_stem, existing_prov) in &existing_entries {
+        if !collected_source_paths.contains(existing_source)
+            && !entries.iter().any(|e| e.id == *existing_id)
+        {
+            let source_exists = std::path::Path::new(existing_source).exists();
+            if !source_exists {
+                conn.execute(
+                    "UPDATE library_index SET status = ?, updated_at = ? WHERE id = ?",
+                    params![StemFileState::OrphanedStem.as_str(), now, existing_id],
+                )
+                .map_err(|e| format!("Failed to mark orphan: {}", e))?;
+
+                entries.push(LibraryIndexEntry {
+                    id: existing_id.clone(),
+                    root_id: root_id.to_string(),
+                    source_path: existing_source.clone(),
+                    source_sha256: None,
+                    source_mtime: None,
+                    source_inode: None,
+                    stem_path: existing_stem.clone(),
+                    status: StemFileState::OrphanedStem,
+                    provenance_json: existing_prov.clone(),
+                    ignored: false,
+                    updated_at: now.clone(),
+                });
+            }
+        }
+    }
+
     // Detect orphaned stems (stems not matched to any source)
     for stem_path in &stem_files {
         let stem_str = stem_path.to_string_lossy().to_string();
@@ -687,5 +740,110 @@ mod tests {
             )
             .unwrap();
         assert!(after.is_some());
+    }
+
+    #[test]
+    fn test_incremental_scan_skips_unchanged_files() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("track1.mp3"), b"fake mp3").unwrap();
+        std::fs::write(dir.path().join("track2.flac"), b"fake flac").unwrap();
+
+        let root_id =
+            db_insert_library_root(&conn, dir.path().to_str().unwrap(), "alongside", None, None)
+                .unwrap();
+
+        // Full scan
+        let result1 = scan_root(&conn, &root_id, true).unwrap();
+        assert_eq!(result1.total_sources, 2);
+
+        // Incremental scan — files haven't changed, so nothing is processed
+        let result2 = scan_root(&conn, &root_id, false).unwrap();
+        assert_eq!(result2.total_sources, 0);
+    }
+
+    #[test]
+    fn test_incremental_scan_processes_modified_files() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("track.mp3"), b"original").unwrap();
+
+        let root_id =
+            db_insert_library_root(&conn, dir.path().to_str().unwrap(), "alongside", None, None)
+                .unwrap();
+
+        // Full scan
+        scan_root(&conn, &root_id, true).unwrap();
+
+        // Modify the file (sleep briefly to ensure mtime changes)
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(dir.path().join("track.mp3"), b"modified").unwrap();
+
+        // Incremental scan — should detect the change
+        let result = scan_root(&conn, &root_id, false).unwrap();
+        assert_eq!(result.total_sources, 1);
+    }
+
+    #[test]
+    fn test_glob_exclusion_filters_matching_files() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("track.mp3"), b"fake mp3").unwrap();
+
+        // Create Samples subdirectory with files that should be excluded
+        let samples = dir.path().join("Samples");
+        std::fs::create_dir(&samples).unwrap();
+        std::fs::write(samples.join("kick.wav"), b"fake kick").unwrap();
+        std::fs::write(samples.join("snare.aif"), b"fake snare").unwrap();
+
+        let root_id =
+            db_insert_library_root(&conn, dir.path().to_str().unwrap(), "alongside", None, None)
+                .unwrap();
+
+        // Set ignore globs
+        conn.execute(
+            "UPDATE library_roots SET ignored_globs = ? WHERE id = ?",
+            params!["[\"**/Samples/**\"]", root_id],
+        )
+        .unwrap();
+
+        let result = scan_root(&conn, &root_id, true).unwrap();
+        assert_eq!(result.total_sources, 1);
+    }
+
+    #[test]
+    fn test_glob_exclusion_with_multiple_patterns() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("track.mp3"), b"fake mp3").unwrap();
+
+        let archive = dir.path().join("_archive");
+        std::fs::create_dir(&archive).unwrap();
+        std::fs::write(archive.join("old.flac"), b"old file").unwrap();
+
+        let samples = dir.path().join("Samples");
+        std::fs::create_dir(&samples).unwrap();
+        std::fs::write(samples.join("loop.wav"), b"sample").unwrap();
+
+        let root_id =
+            db_insert_library_root(&conn, dir.path().to_str().unwrap(), "alongside", None, None)
+                .unwrap();
+
+        conn.execute(
+            "UPDATE library_roots SET ignored_globs = ? WHERE id = ?",
+            params!["[\"**/Samples/**\", \"**/_archive/**\"]", root_id],
+        )
+        .unwrap();
+
+        let result = scan_root(&conn, &root_id, true).unwrap();
+        assert_eq!(result.total_sources, 1);
     }
 }

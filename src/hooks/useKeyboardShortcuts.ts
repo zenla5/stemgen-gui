@@ -64,7 +64,7 @@ export function useKeyboardShortcuts() {
         }
       }
 
-      // Navigation shortcuts (1-4)
+      // Navigation shortcuts (1-5)
       if (e.key === '1') {
         e.preventDefault();
         setActiveView('files');
@@ -81,6 +81,11 @@ export function useKeyboardShortcuts() {
         return;
       }
       if (e.key === '4') {
+        e.preventDefault();
+        setActiveView('library');
+        return;
+      }
+      if (e.key === '5') {
         e.preventDefault();
         setActiveView('settings');
         return;

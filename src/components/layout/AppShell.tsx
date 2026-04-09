@@ -6,6 +6,7 @@ import { FileBrowser } from '../file-browser/FileBrowser';
 import { ProcessingQueue } from '../processing/ProcessingQueue';
 import { StemMixer } from '../mixer/StemMixer';
 import { SettingsPanel } from '../settings/SettingsPanel';
+import { LibraryView } from '../library/LibraryView';
 import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 
@@ -62,6 +63,7 @@ export function AppShell() {
           {activeView === 'files' && <FileBrowser />}
           {activeView === 'queue' && <ProcessingQueue />}
           {activeView === 'mixer' && <StemMixer />}
+          {activeView === 'library' && <LibraryView />}
           {activeView === 'settings' && <SettingsPanel />}
         </main>
       </div>
