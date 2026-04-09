@@ -80,10 +80,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Python dependencies
-        run: |
-          pip install -r python/requirements.txt
-          pip install -r python/requirements-dev.txt
+      - name: Install Python test dependencies
+        run: pip install -r python/requirements-dev.txt
 
       - name: Run Python tests
         run: cd python && pytest tests/ --tb=short -v
