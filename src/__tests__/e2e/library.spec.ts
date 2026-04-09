@@ -2,7 +2,17 @@ import { test, expect } from '@playwright/test';
 
 test.describe.serial('Library Tab', () => {
   test.beforeEach(async ({ page }) => {
+    // Inject hasSeenFirstRun so the app shell renders instead of the first-run wizard.
+    // Without this, the Zustand settingsStore defaults hasSeenFirstRun to false,
+    // causing FirstRunWizard to render (which has no sidebar nav items).
     await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.evaluate(() => {
+      localStorage.setItem('stemgen-settings-storage', JSON.stringify({
+        state: { hasSeenFirstRun: true, theme: 'system', language: 'en' },
+        version: 0,
+      }));
+    });
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForSelector('[data-testid="nav-library"]', { timeout: 15000 });
   });
 
@@ -31,9 +41,9 @@ test.describe.serial('Library Tab', () => {
     await page.click('[data-testid="nav-library"]');
     await page.waitForTimeout(500);
 
-    // The empty state should show a CTA (the text is i18n key since we mock it in dev)
-    // Check that either the empty state message or the overview panel is visible
-    const libraryContent = page.locator('[data-testid="library-overview-panel"], [data-testid="empty-add-root-btn"], text=library.setUpLibrary');
+    // The empty state should show either the overview panel or the add-root button
+    const libraryContent = page.locator('[data-testid="library-overview-panel"]')
+      .or(page.locator('[data-testid="empty-add-root-btn"]'));
     await expect(libraryContent.first()).toBeVisible({ timeout: 5000 });
   });
 });

@@ -72,8 +72,8 @@ test.describe('Navigation', () => {
     await expect(page.locator('[data-testid="no-stems-msg"]')).toBeVisible();
   });
 
-  test('keyboard shortcut 4 navigates to Settings', async ({ page }) => {
-    await page.keyboard.press('4');
+  test('keyboard shortcut 5 navigates to Settings', async ({ page }) => {
+    await page.keyboard.press('5');
     await page.waitForTimeout(200);
 
     await expect(page.locator('[data-testid="theme-btn-light"]')).toBeVisible();
