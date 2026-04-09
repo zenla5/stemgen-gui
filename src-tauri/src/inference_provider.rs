@@ -47,6 +47,7 @@ impl Default for InferenceProviderConfig {
 }
 
 const SETTINGS_KEY: &str = "inference_provider_config";
+const KEYRING_SERVICE: &str = "stemgen-gui";
 
 // ---------------------------------------------------------------------------
 // DB helpers
@@ -79,6 +80,46 @@ pub fn save_config(conn: &Connection, config: &InferenceProviderConfig) -> Resul
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Keychain helpers (API keys stored in OS keychain, NEVER in SQLite/logs)
+// ---------------------------------------------------------------------------
+
+/// Store an API key in the OS keychain.
+///
+/// **Security invariant:** The key is stored ONLY in the keychain. It must
+/// never be written to SQLite, log output, or Tauri event payloads.
+pub fn store_api_key(provider: &str, key: &str) -> Result<(), String> {
+    let entry =
+        keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
+    entry.set_password(key).map_err(|e| e.to_string())
+}
+
+/// Load an API key from the OS keychain.
+///
+/// Returns `Ok(None)` if no key is stored (not an error).
+///
+/// **Security invariant:** Callers must never log or emit the returned key.
+pub fn load_api_key(provider: &str) -> Result<Option<String>, String> {
+    let entry =
+        keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
+    match entry.get_password() {
+        Ok(key) => Ok(Some(key)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Delete a stored API key from the OS keychain.
+pub fn delete_api_key(provider: &str) -> Result<(), String> {
+    let entry =
+        keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
+    match entry.delete_password() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()), // already absent
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -167,5 +208,34 @@ mod tests {
             serde_json::to_string(&InferenceProvider::Replicate).unwrap(),
             "\"replicate\""
         );
+    }
+
+    #[test]
+    fn keychain_store_load_delete_roundtrip() {
+        let provider = "fal_test";
+        let key = "test-key-12345";
+
+        // Clean up any leftover from previous failed runs
+        let _ = delete_api_key(provider);
+
+        // Store
+        store_api_key(provider, key).unwrap();
+
+        // Load
+        let loaded = load_api_key(provider).unwrap();
+        assert_eq!(loaded, Some(key.to_string()));
+
+        // Delete
+        delete_api_key(provider).unwrap();
+
+        // Load after delete → None
+        let after_delete = load_api_key(provider).unwrap();
+        assert_eq!(after_delete, None);
+    }
+
+    #[test]
+    fn keychain_load_returns_none_for_missing_entry() {
+        let result = load_api_key("nonexistent_provider_xyz").unwrap();
+        assert_eq!(result, None);
     }
 }
