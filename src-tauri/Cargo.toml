@@ -1,6 +1,6 @@
 [package]
 name = "stemgen-gui"
-version = "1.2.5"
+version = "1.3.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -46,6 +46,7 @@ sha2.workspace = true
 hex.workspace = true
 chrono.workspace = true
 walkdir.workspace = true
+glob.workspace = true
 
 # Audio processing
 symphonia.workspace = true

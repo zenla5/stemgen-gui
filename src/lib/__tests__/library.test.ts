@@ -6,7 +6,12 @@ import {
   getStalenessReasonDescription,
   formatFileSize,
   formatTimestamp,
+  formatDuration,
+  formatBitdepth,
   PROVENANCE_SCHEMA_VERSION,
+  stemStateLabel,
+  stemStateColor,
+  getStalenessReasonDescriptionExtended,
 } from '@/lib/types/library';
 import type { StalenessStatus, StalenessReason } from '@/lib/types/library';
 
@@ -131,6 +136,100 @@ describe('library types', () => {
       const result = formatTimestamp('not-a-date');
       expect(typeof result).toBe('string');
       expect(result.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('formatDuration', () => {
+    it('formats seconds only', () => {
+      expect(formatDuration(45)).toBe('45s');
+      expect(formatDuration(0)).toBe('0s');
+    });
+
+    it('formats minutes and seconds', () => {
+      expect(formatDuration(94.3)).toBe('1m 34s');
+      expect(formatDuration(120)).toBe('2m 0s');
+    });
+
+    it('formats hours and minutes', () => {
+      expect(formatDuration(3665)).toBe('1h 1m');
+      expect(formatDuration(7200)).toBe('2h 0m');
+    });
+
+    it('handles negative values', () => {
+      expect(formatDuration(-1)).toBe('0s');
+    });
+  });
+
+  describe('formatBitdepth', () => {
+    it('formats a valid bit depth', () => {
+      expect(formatBitdepth(16)).toBe('16-bit');
+      expect(formatBitdepth(24)).toBe('24-bit');
+      expect(formatBitdepth(32)).toBe('32-bit');
+    });
+
+    it('returns em dash for undefined', () => {
+      expect(formatBitdepth(undefined)).toBe('\u2014');
+    });
+  });
+
+  describe('stemStateLabel', () => {
+    it('returns correct labels for all states', () => {
+      expect(stemStateLabel('NoStem')).toBe('No Stem');
+      expect(stemStateLabel('HasStemCurrent')).toBe('Current');
+      expect(stemStateLabel('HasStemOutdated')).toBe('Outdated');
+      expect(stemStateLabel('HasStemUnknownProvenance')).toBe('Unknown');
+      expect(stemStateLabel('OrphanedStem')).toBe('Orphaned');
+      expect(stemStateLabel('Ignored')).toBe('Ignored');
+    });
+  });
+
+  describe('stemStateColor', () => {
+    it('returns correct Tailwind classes for all states', () => {
+      expect(stemStateColor('NoStem')).toBe('text-gray-500');
+      expect(stemStateColor('HasStemCurrent')).toBe('text-green-500');
+      expect(stemStateColor('HasStemOutdated')).toBe('text-yellow-500');
+      expect(stemStateColor('HasStemUnknownProvenance')).toBe('text-blue-500');
+      expect(stemStateColor('OrphanedStem')).toBe('text-red-500');
+      expect(stemStateColor('Ignored')).toBe('text-gray-400');
+    });
+  });
+
+  describe('getStalenessReasonDescriptionExtended', () => {
+    it('describes PreferredModelFamily reason', () => {
+      const reason: StalenessReason = {
+        type: 'PreferredModelFamily',
+        current_family: 'demucs',
+        preferred: 'roformer',
+      };
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('demucs');
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('roformer');
+    });
+
+    it('describes QualityRankBelowThreshold reason', () => {
+      const reason: StalenessReason = {
+        type: 'QualityRankBelowThreshold',
+        current_rank: 1,
+        best_rank: 4,
+      };
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('1');
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('4');
+    });
+
+    it('describes StemTooOld reason', () => {
+      const reason: StalenessReason = {
+        type: 'StemTooOld',
+        age_days: 365,
+        threshold: 180,
+      };
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('365');
+      expect(getStalenessReasonDescriptionExtended(reason)).toContain('180');
+    });
+
+    it('describes SourceModified reason', () => {
+      const reason: StalenessReason = { type: 'SourceModified' };
+      expect(getStalenessReasonDescriptionExtended(reason)).toBe(
+        'Source file has been modified'
+      );
     });
   });
 });

@@ -5,7 +5,7 @@ use stemgen_gui_lib::audio::waveform::WaveformData;
 
 fn make_test_samples(num_frames: usize, channels: u8, sample_rate: u32) -> SampleData {
     let interleaved: Vec<f32> = (0..num_frames * channels as usize)
-        .map(|i| ((i as f32 * 0.01).sin() * 0.8).max(-1.0).min(1.0))
+        .map(|i| ((i as f32 * 0.01).sin() * 0.8).clamp(-1.0, 1.0))
         .collect();
 
     SampleData {

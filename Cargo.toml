@@ -72,6 +72,7 @@ chrono = "0.4"
 
 # File system utilities
 walkdir = "2"
+glob = "0.3"
 
 # Testing utilities
 tempfile = "3"

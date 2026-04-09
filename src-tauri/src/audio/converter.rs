@@ -337,7 +337,7 @@ mod tests {
     #[test]
     fn test_audio_format_clone() {
         let format1 = AudioFormat::Aac;
-        let format2 = format1.clone();
+        let format2 = format1;
         assert_eq!(format1, format2);
     }
 

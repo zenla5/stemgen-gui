@@ -237,6 +237,100 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     )
     .ok();
 
+    // Migration: create library_roots table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS library_roots (
+            id              TEXT PRIMARY KEY,
+            path            TEXT NOT NULL UNIQUE,
+            output_strategy TEXT NOT NULL DEFAULT 'alongside',
+            mirrored_path   TEXT,
+            flat_path       TEXT,
+            scan_policy     TEXT NOT NULL DEFAULT 'manual',
+            ignored_globs   TEXT,
+            staleness_policy TEXT,
+            created_at      TEXT NOT NULL,
+            last_scanned_at TEXT
+        )",
+        [],
+    )?;
+
+    // Migration: create library_index table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS library_index (
+            id              TEXT PRIMARY KEY,
+            root_id         TEXT NOT NULL REFERENCES library_roots(id) ON DELETE CASCADE,
+            source_path     TEXT NOT NULL,
+            source_sha256   TEXT,
+            source_mtime    INTEGER,
+            source_inode    INTEGER,
+            stem_path       TEXT,
+            status          TEXT NOT NULL,
+            provenance_json TEXT,
+            ignored         INTEGER NOT NULL DEFAULT 0,
+            updated_at      TEXT NOT NULL
+        )",
+        [],
+    )?;
+
+    // Migration: create unique index for library_index upsert
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_library_index_root_source
+         ON library_index(root_id, source_path)",
+        [],
+    )
+    .ok();
+
+    // Migration: create indexes for library_index
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_library_index_root_id ON library_index(root_id)",
+        [],
+    )
+    .ok();
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_library_index_status ON library_index(status)",
+        [],
+    )
+    .ok();
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_library_index_source_sha256 ON library_index(source_sha256)",
+        [],
+    )
+    .ok();
+
+    // Migration: create batch_queue table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS batch_queue (
+            id            TEXT PRIMARY KEY,
+            root_id       TEXT NOT NULL REFERENCES library_roots(id) ON DELETE CASCADE,
+            source_path   TEXT NOT NULL,
+            status        TEXT NOT NULL DEFAULT 'pending',
+            model_id      TEXT NOT NULL,
+            dj_preset     TEXT,
+            output_format TEXT,
+            created_at    TEXT NOT NULL,
+            started_at    TEXT,
+            finished_at   TEXT,
+            error_message TEXT,
+            priority      INTEGER NOT NULL DEFAULT 0
+        )",
+        [],
+    )?;
+
+    // Migration: create indexes for batch_queue
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_batch_queue_root_id ON batch_queue(root_id)",
+        [],
+    )
+    .ok();
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_batch_queue_status ON batch_queue(status)",
+        [],
+    )
+    .ok();
+
     info!("Database migrations complete");
     Ok(())
 }
@@ -631,6 +725,57 @@ mod tests {
     }
 
     #[test]
+    fn test_library_roots_table_has_expected_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info('library_roots')")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(columns.contains(&"id".to_string()));
+        assert!(columns.contains(&"path".to_string()));
+        assert!(columns.contains(&"output_strategy".to_string()));
+        assert!(columns.contains(&"mirrored_path".to_string()));
+        assert!(columns.contains(&"flat_path".to_string()));
+        assert!(columns.contains(&"scan_policy".to_string()));
+        assert!(columns.contains(&"ignored_globs".to_string()));
+        assert!(columns.contains(&"staleness_policy".to_string()));
+        assert!(columns.contains(&"created_at".to_string()));
+        assert!(columns.contains(&"last_scanned_at".to_string()));
+    }
+
+    #[test]
+    fn test_library_index_table_has_expected_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info('library_index')")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(columns.contains(&"id".to_string()));
+        assert!(columns.contains(&"root_id".to_string()));
+        assert!(columns.contains(&"source_path".to_string()));
+        assert!(columns.contains(&"source_sha256".to_string()));
+        assert!(columns.contains(&"source_mtime".to_string()));
+        assert!(columns.contains(&"source_inode".to_string()));
+        assert!(columns.contains(&"stem_path".to_string()));
+        assert!(columns.contains(&"status".to_string()));
+        assert!(columns.contains(&"provenance_json".to_string()));
+        assert!(columns.contains(&"ignored".to_string()));
+        assert!(columns.contains(&"updated_at".to_string()));
+    }
+
+    #[test]
     fn test_processing_history_entry_serialization() {
         let entry = ProcessingHistoryEntry {
             id: "test-id".to_string(),
@@ -813,7 +958,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
 
-        let presets = vec![
+        let presets = [
             "traktor",
             "rekordbox",
             "serato",
@@ -880,7 +1025,7 @@ mod tests {
         let deserialized: SeparationJobLog = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.job_id, "job_123");
         assert_eq!(deserialized.separation_model, "bs_roformer");
-        assert_eq!(deserialized.success, true);
+        assert!(deserialized.success);
     }
 
     #[test]
@@ -964,7 +1109,7 @@ mod tests {
         assert_eq!(retrieved.job_id, "job_test_001");
         assert_eq!(retrieved.separation_model, "htdemucs");
         assert_eq!(retrieved.source_hash, "deadbeef123456");
-        assert_eq!(retrieved.success, true);
+        assert!(retrieved.success);
         assert_eq!(retrieved.dj_preset, "rekordbox");
     }
 

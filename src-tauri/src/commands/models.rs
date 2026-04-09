@@ -40,6 +40,14 @@ pub struct ModelInfo {
     pub speed: String,
     pub gpu_required: bool,
     pub size_mb: Option<u64>,
+    /// Numeric quality rank (higher = better, 0 if unknown)
+    pub quality_rank: u8,
+    /// ISO 8601 release date, e.g. "2024-11-01"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub released_at: Option<String>,
+    /// URL to release notes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changelog_url: Option<String>,
 }
 
 /// Event payload sent to the frontend during download progress
@@ -113,6 +121,9 @@ pub fn get_available_models() -> Vec<ModelInfo> {
             speed: "medium".to_string(),
             gpu_required: true,
             size_mb: Some(350),
+            quality_rank: 4,
+            released_at: None,
+            changelog_url: None,
         },
         ModelInfo {
             id: "htdemucs".to_string(),
@@ -122,6 +133,9 @@ pub fn get_available_models() -> Vec<ModelInfo> {
             speed: "slow".to_string(),
             gpu_required: true,
             size_mb: Some(1040),
+            quality_rank: 2,
+            released_at: None,
+            changelog_url: None,
         },
         ModelInfo {
             id: "htdemucs_ft".to_string(),
@@ -131,6 +145,9 @@ pub fn get_available_models() -> Vec<ModelInfo> {
             speed: "very_slow".to_string(),
             gpu_required: true,
             size_mb: Some(1040),
+            quality_rank: 3,
+            released_at: None,
+            changelog_url: None,
         },
         ModelInfo {
             id: "demucs".to_string(),
@@ -140,6 +157,9 @@ pub fn get_available_models() -> Vec<ModelInfo> {
             speed: "fast".to_string(),
             gpu_required: false,
             size_mb: Some(830),
+            quality_rank: 1,
+            released_at: None,
+            changelog_url: None,
         },
     ]
 }
@@ -432,12 +452,18 @@ mod tests {
             speed: "fast".to_string(),
             gpu_required: true,
             size_mb: Some(100),
+            quality_rank: 4,
+            released_at: Some("2024-11-01".to_string()),
+            changelog_url: Some("https://example.com/changelog".to_string()),
         };
 
         let json = serde_json::to_string(&model).unwrap();
         assert!(json.contains("test-model"));
         assert!(json.contains("high"));
         assert!(json.contains("true")); // gpu_required
+        assert!(json.contains("\"quality_rank\":4"));
+        assert!(json.contains("\"released_at\":\"2024-11-01\""));
+        assert!(json.contains("\"changelog_url\":\"https://example.com/changelog\""));
     }
 
     #[test]
@@ -449,7 +475,8 @@ mod tests {
             "quality": "high",
             "speed": "medium",
             "gpu_required": true,
-            "size_mb": 350
+            "size_mb": 350,
+            "quality_rank": 4
         }"#;
 
         let model: ModelInfo = serde_json::from_str(json).unwrap();
@@ -457,6 +484,7 @@ mod tests {
         assert_eq!(model.quality, "high");
         assert!(model.gpu_required);
         assert_eq!(model.size_mb, Some(350));
+        assert_eq!(model.quality_rank, 4);
     }
 
     #[test]
@@ -603,5 +631,82 @@ mod tests {
         assert!(model_download_url("htdemucs_ft").is_none());
         assert!(model_download_url("bs_roformer").is_none());
         assert!(model_download_url("demucs").is_none());
+    }
+
+    #[test]
+    fn test_model_info_quality_rank_is_u8() {
+        let models = get_available_models();
+        for model in models {
+            // quality_rank is u8 — always 0..=255, just verify it's set
+            let _ = model.quality_rank;
+        }
+        // Verify specific quality ranks
+        let bs = get_available_models()
+            .into_iter()
+            .find(|m| m.id == "bs_roformer")
+            .unwrap();
+        assert_eq!(bs.quality_rank, 4);
+        let demucs = get_available_models()
+            .into_iter()
+            .find(|m| m.id == "demucs")
+            .unwrap();
+        assert_eq!(demucs.quality_rank, 1);
+        let htdemucs = get_available_models()
+            .into_iter()
+            .find(|m| m.id == "htdemucs")
+            .unwrap();
+        assert_eq!(htdemucs.quality_rank, 2);
+        let htdemucs_ft = get_available_models()
+            .into_iter()
+            .find(|m| m.id == "htdemucs_ft")
+            .unwrap();
+        assert_eq!(htdemucs_ft.quality_rank, 3);
+    }
+
+    #[test]
+    fn test_model_info_serialization_omits_none_optional_fields() {
+        let model = ModelInfo {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            description: "desc".to_string(),
+            quality: "high".to_string(),
+            speed: "fast".to_string(),
+            gpu_required: false,
+            size_mb: Some(100),
+            quality_rank: 2,
+            released_at: None,
+            changelog_url: None,
+        };
+
+        let json = serde_json::to_string(&model).unwrap();
+        assert!(json.contains("\"quality_rank\":2"));
+        assert!(!json.contains("released_at"));
+        assert!(!json.contains("changelog_url"));
+    }
+
+    #[test]
+    fn test_model_info_round_trip_with_all_fields() {
+        let model = ModelInfo {
+            id: "full-model".to_string(),
+            name: "Full Model".to_string(),
+            description: "All fields populated".to_string(),
+            quality: "highest".to_string(),
+            speed: "slow".to_string(),
+            gpu_required: true,
+            size_mb: Some(500),
+            quality_rank: 5,
+            released_at: Some("2025-06-15".to_string()),
+            changelog_url: Some("https://example.com/changelog".to_string()),
+        };
+
+        let json = serde_json::to_string(&model).unwrap();
+        let deserialized: ModelInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, "full-model");
+        assert_eq!(deserialized.quality_rank, 5);
+        assert_eq!(deserialized.released_at, Some("2025-06-15".to_string()));
+        assert_eq!(
+            deserialized.changelog_url,
+            Some("https://example.com/changelog".to_string())
+        );
     }
 }

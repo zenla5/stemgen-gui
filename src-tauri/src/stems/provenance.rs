@@ -103,6 +103,58 @@ pub struct StemProvenance {
     /// Stem type this file represents (if individual stem, otherwise None for .stem.mp4)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stem_type: Option<String>,
+
+    // --- Separation section additions ---
+    /// Human-readable model name, e.g. "HTDemucs Fine-Tuned"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_name: Option<String>,
+
+    /// Model family, e.g. "demucs", "roformer"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_family: Option<String>,
+
+    /// SHA-256 of the model checkpoint file
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_sha256: Option<String>,
+
+    /// Wall-clock time the separation job took in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub separation_duration_secs: Option<f64>,
+
+    /// Device used for separation: "cpu" | "cuda" | "mps"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+
+    // --- Toolchain additions ---
+    /// FFmpeg version, e.g. "7.0"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ffmpeg_version: Option<String>,
+
+    /// OS info, e.g. "macOS 15.1"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub os_info: Option<String>,
+
+    // --- Source file additions ---
+    /// File size of the source at separation time in bytes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_size_bytes: Option<u64>,
+
+    /// Source format, e.g. "flac", "mp3", "wav"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_format: Option<String>,
+
+    /// Source bit depth, e.g. 16, 24
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_bitdepth: Option<u16>,
+
+    // --- Export additions ---
+    /// Export codec, e.g. "alac", "aac"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export_codec: Option<String>,
+
+    /// DJ preset used, e.g. "traktor", "rekordbox"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export_dj_preset: Option<String>,
 }
 
 impl StemProvenance {
@@ -151,6 +203,18 @@ impl StemProvenance {
             batch_id: None,
             user_notes: None,
             stem_type: None,
+            model_name: None,
+            model_family: None,
+            model_sha256: None,
+            separation_duration_secs: None,
+            device: None,
+            ffmpeg_version: None,
+            os_info: None,
+            source_size_bytes: None,
+            source_format: None,
+            source_bitdepth: None,
+            export_codec: None,
+            export_dj_preset: None,
         }
     }
 
@@ -344,6 +408,18 @@ impl Default for StemProvenance {
             batch_id: None,
             user_notes: None,
             stem_type: None,
+            model_name: None,
+            model_family: None,
+            model_sha256: None,
+            separation_duration_secs: None,
+            device: None,
+            ffmpeg_version: None,
+            os_info: None,
+            source_size_bytes: None,
+            source_format: None,
+            source_bitdepth: None,
+            export_codec: None,
+            export_dj_preset: None,
         }
     }
 }
@@ -402,6 +478,18 @@ mod tests {
         assert!(prov.batch_id.is_none());
         assert!(prov.user_notes.is_none());
         assert!(prov.stem_type.is_none());
+        assert!(prov.model_name.is_none());
+        assert!(prov.model_family.is_none());
+        assert!(prov.model_sha256.is_none());
+        assert!(prov.separation_duration_secs.is_none());
+        assert!(prov.device.is_none());
+        assert!(prov.ffmpeg_version.is_none());
+        assert!(prov.os_info.is_none());
+        assert!(prov.source_size_bytes.is_none());
+        assert!(prov.source_format.is_none());
+        assert!(prov.source_bitdepth.is_none());
+        assert!(prov.export_codec.is_none());
+        assert!(prov.export_dj_preset.is_none());
     }
 
     #[test]
@@ -648,5 +736,104 @@ mod tests {
 
         assert_eq!(prov.source_hash(), "test_hash_value");
         assert_eq!(prov.source_hash(), prov.source_content_hash);
+    }
+
+    #[test]
+    fn test_provenance_roundtrip_with_all_new_fields() {
+        let mut prov = StemProvenance::new(
+            "bs_roformer".to_string(),
+            "1.2.0".to_string(),
+            "2026-04-01T10:00:00Z".to_string(),
+            "/music/track.flac".to_string(),
+            "hash_full".to_string(),
+            200.0,
+            48000,
+            "job_full".to_string(),
+        );
+        prov.model_name = Some("BS-RoFormer v2".to_string());
+        prov.model_family = Some("roformer".to_string());
+        prov.model_sha256 = Some("abcdef123456".to_string());
+        prov.separation_duration_secs = Some(94.3);
+        prov.device = Some("cuda".to_string());
+        prov.ffmpeg_version = Some("7.0".to_string());
+        prov.os_info = Some("macOS 15.1".to_string());
+        prov.source_size_bytes = Some(12_345_678);
+        prov.source_format = Some("flac".to_string());
+        prov.source_bitdepth = Some(24);
+        prov.export_codec = Some("alac".to_string());
+        prov.export_dj_preset = Some("traktor".to_string());
+
+        let json = prov.to_json_bytes().unwrap();
+        let deserialized = StemProvenance::from_json_bytes(&json).unwrap();
+
+        assert_eq!(deserialized.model_name, Some("BS-RoFormer v2".to_string()));
+        assert_eq!(deserialized.model_family, Some("roformer".to_string()));
+        assert_eq!(deserialized.model_sha256, Some("abcdef123456".to_string()));
+        assert_eq!(deserialized.separation_duration_secs, Some(94.3));
+        assert_eq!(deserialized.device, Some("cuda".to_string()));
+        assert_eq!(deserialized.ffmpeg_version, Some("7.0".to_string()));
+        assert_eq!(deserialized.os_info, Some("macOS 15.1".to_string()));
+        assert_eq!(deserialized.source_size_bytes, Some(12_345_678));
+        assert_eq!(deserialized.source_format, Some("flac".to_string()));
+        assert_eq!(deserialized.source_bitdepth, Some(24));
+        assert_eq!(deserialized.export_codec, Some("alac".to_string()));
+        assert_eq!(deserialized.export_dj_preset, Some("traktor".to_string()));
+    }
+
+    #[test]
+    fn test_provenance_roundtrip_without_new_fields() {
+        // New fields absent → should not appear in serialized JSON
+        let prov = StemProvenance::new(
+            "htdemucs".to_string(),
+            "1.0.0".to_string(),
+            "2026-04-01T10:00:00Z".to_string(),
+            "/path.mp3".to_string(),
+            "hash".to_string(),
+            100.0,
+            44100,
+            "job_min".to_string(),
+        );
+
+        let json = prov.to_json_string().unwrap();
+        assert!(!json.contains("model_name"));
+        assert!(!json.contains("model_family"));
+        assert!(!json.contains("model_sha256"));
+        assert!(!json.contains("separation_duration_secs"));
+        assert!(!json.contains("device"));
+        assert!(!json.contains("ffmpeg_version"));
+        assert!(!json.contains("os_info"));
+        assert!(!json.contains("source_size_bytes"));
+        assert!(!json.contains("source_format"));
+        assert!(!json.contains("source_bitdepth"));
+        assert!(!json.contains("export_codec"));
+        assert!(!json.contains("export_dj_preset"));
+
+        // Round-trip should still work
+        let deserialized = StemProvenance::from_json_str(&json).unwrap();
+        assert!(deserialized.model_family.is_none());
+        assert!(deserialized.device.is_none());
+    }
+
+    #[test]
+    fn test_provenance_backward_compat_old_json_without_new_fields() {
+        // Old minimal JSON (no new fields) must deserialize without error
+        let old_json = r#"{
+            "schema_version": 1,
+            "separation_model": "bs_roformer",
+            "stemgen_gui_version": "1.0.0",
+            "separation_timestamp": "2025-12-01T00:00:00Z",
+            "source_path": "/old/track.mp3",
+            "source_content_hash": "old_hash",
+            "source_duration_secs": 180.0,
+            "source_sample_rate": 44100,
+            "job_id": "old_job"
+        }"#;
+
+        let prov = StemProvenance::from_json_str(old_json).unwrap();
+        assert_eq!(prov.separation_model, "bs_roformer");
+        assert!(prov.model_family.is_none());
+        assert!(prov.device.is_none());
+        assert!(prov.export_codec.is_none());
+        assert!(prov.source_format.is_none());
     }
 }

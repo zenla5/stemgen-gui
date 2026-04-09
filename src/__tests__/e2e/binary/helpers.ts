@@ -245,7 +245,7 @@ export async function resetAppState(page: Page, _appUrl: string): Promise<void> 
  */
 export async function navigateToView(
   page: Page,
-  view: 'files' | 'queue' | 'mixer' | 'settings'
+  view: 'files' | 'queue' | 'mixer' | 'library' | 'settings'
 ): Promise<void> {
   await page.click(`[data-testid="nav-${view}"]`);
   // Wait a tick for React state update

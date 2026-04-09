@@ -1,11 +1,14 @@
 pub mod audio;
+pub mod batch;
 pub mod db;
 pub mod install_executor;
 pub mod install_manifest;
 pub mod library;
+pub mod library_roots;
 pub mod metadata;
 pub mod models;
 pub mod probe;
+pub mod scanner;
 pub mod separation;
 pub mod sidecar;
 

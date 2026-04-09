@@ -47,10 +47,18 @@ describe('useKeyboardShortcuts', () => {
     expect(useAppStore.getState().activeView).toBe('mixer');
   });
 
-  it('sets activeView to settings when 4 is pressed', () => {
+  it('sets activeView to library when 4 is pressed', () => {
     renderHook(() => useKeyboardShortcuts());
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: '4' }));
+
+    expect(useAppStore.getState().activeView).toBe('library');
+  });
+
+  it('sets activeView to settings when 5 is pressed', () => {
+    renderHook(() => useKeyboardShortcuts());
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '5' }));
 
     expect(useAppStore.getState().activeView).toBe('settings');
   });

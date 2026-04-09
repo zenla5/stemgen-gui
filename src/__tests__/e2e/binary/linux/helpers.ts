@@ -86,7 +86,7 @@ export async function resetAppState(appUrl: string): Promise<void> {
  * Navigate to a specific view by clicking the sidebar nav button.
  */
 export async function navigateToView(
-  view: 'files' | 'queue' | 'mixer' | 'settings'
+  view: 'files' | 'queue' | 'mixer' | 'library' | 'settings'
 ): Promise<void> {
   await $(`[data-testid="nav-${view}"]`).click();
   await browser.pause(100);

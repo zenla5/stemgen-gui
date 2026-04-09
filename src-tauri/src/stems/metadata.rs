@@ -4,6 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::provenance::StemProvenance;
+
 /// Stem types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StemType {
@@ -60,6 +62,9 @@ pub struct NIStemMetadata {
     pub stems: Vec<StemData>,
     pub master: MasterData,
     pub track: Option<TrackInfo>,
+    /// Separation provenance metadata (None for legacy stem files)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<StemProvenance>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,6 +113,7 @@ impl NIStemMetadata {
             stems,
             master,
             track: None,
+            provenance: None,
         }
     }
 
@@ -158,6 +164,7 @@ impl Default for NIStemMetadata {
                 file_path: "master.m4a".to_string(),
             },
             track: None,
+            provenance: None,
         }
     }
 }
@@ -255,5 +262,68 @@ mod tests {
         let json = serde_json::to_string(&track).unwrap();
         assert!(json.contains("Test Song"));
         assert!(json.contains("128"));
+    }
+
+    #[test]
+    fn test_metadata_with_provenance_roundtrip() {
+        let prov = StemProvenance::new(
+            "bs_roformer".to_string(),
+            "1.2.0".to_string(),
+            "2026-04-01T10:00:00Z".to_string(),
+            "/music/track.mp3".to_string(),
+            "hash123".to_string(),
+            180.0,
+            44100,
+            "job_1".to_string(),
+        );
+
+        let stems = vec![StemData {
+            name: "Vocals".to_string(),
+            color: "#95E1D3".to_string(),
+            file_path: "vocals.m4a".to_string(),
+        }];
+        let master = MasterData {
+            name: "Master".to_string(),
+            file_path: "master.m4a".to_string(),
+        };
+
+        let mut metadata = NIStemMetadata::new(stems, master);
+        metadata.provenance = Some(prov);
+
+        let json = metadata.to_json_bytes().unwrap();
+        let deserialized = NIStemMetadata::from_json_bytes(&json).unwrap();
+
+        assert!(deserialized.provenance.is_some());
+        let prov_out = deserialized.provenance.unwrap();
+        assert_eq!(prov_out.separation_model, "bs_roformer");
+        assert_eq!(prov_out.job_id, "job_1");
+    }
+
+    #[test]
+    fn test_metadata_without_provenance_roundtrip() {
+        let metadata = NIStemMetadata::default();
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        // provenance is None, should not appear in JSON
+        assert!(!json.contains("provenance"));
+
+        // Round-trip without provenance key (backward compat)
+        let deserialized: NIStemMetadata = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.provenance.is_none());
+    }
+
+    #[test]
+    fn test_metadata_backward_compat_old_json_without_provenance() {
+        let old_json = r#"{
+            "version": "1.0",
+            "application": { "name": "Stemgen-GUI", "version": "1.0.0", "build": "Rust" },
+            "stems": [],
+            "master": { "name": "Master", "file_path": "master.m4a" }
+        }"#;
+
+        let metadata: NIStemMetadata = serde_json::from_str(old_json).unwrap();
+        assert_eq!(metadata.version, "1.0");
+        assert!(metadata.provenance.is_none());
+        assert!(metadata.track.is_none());
     }
 }

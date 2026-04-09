@@ -97,7 +97,7 @@ interface AppState {
   
   // UI state
   sidebarCollapsed: boolean;
-  activeView: 'files' | 'queue' | 'mixer' | 'settings';
+  activeView: 'files' | 'queue' | 'mixer' | 'library' | 'settings';
   
   // Actions
   addFiles: (files: AudioFileMetadata[]) => void;
@@ -165,7 +165,7 @@ async function processJob(
   settings: ProcessingSettings,
   updateJob: (id: string, updates: Partial<ProcessingJob>) => void,
   setCurrentStems: (stems: Stem[]) => void,
-  setActiveView: (view: 'files' | 'queue' | 'mixer' | 'settings') => void,
+  setActiveView: (view: AppState['activeView']) => void,
 ): Promise<boolean> {
   updateJob(job.id, { status: 'processing' });
 

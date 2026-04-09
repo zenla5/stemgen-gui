@@ -17,56 +17,67 @@ describe('Sidebar', () => {
 
   it('renders Files navigation button', () => {
     render(<Sidebar collapsed={false} />);
-    expect(screen.getByText('Files')).toBeInTheDocument();
+    expect(screen.getByText('nav.files')).toBeInTheDocument();
   });
 
   it('renders Queue navigation button', () => {
     render(<Sidebar collapsed={false} />);
-    expect(screen.getByText('Queue')).toBeInTheDocument();
+    expect(screen.getByText('nav.queue')).toBeInTheDocument();
   });
 
   it('renders Mixer navigation button', () => {
     render(<Sidebar collapsed={false} />);
-    expect(screen.getByText('Mixer')).toBeInTheDocument();
+    expect(screen.getByText('nav.mixer')).toBeInTheDocument();
   });
 
   it('renders Settings navigation button', () => {
     render(<Sidebar collapsed={false} />);
-    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(screen.getByText('nav.settings')).toBeInTheDocument();
+  });
+
+  it('renders Library navigation button', () => {
+    render(<Sidebar collapsed={false} />);
+    expect(screen.getByText('nav.library')).toBeInTheDocument();
   });
 
   it('hides navigation labels when collapsed', () => {
     render(<Sidebar collapsed={true} />);
-    expect(screen.queryByText('Files')).not.toBeInTheDocument();
-    expect(screen.queryByText('Queue')).not.toBeInTheDocument();
+    expect(screen.queryByText('nav.files')).not.toBeInTheDocument();
+    expect(screen.queryByText('nav.queue')).not.toBeInTheDocument();
   });
 
   it('shows keyboard hint when not collapsed', () => {
     render(<Sidebar collapsed={false} />);
-    expect(screen.getByText(/press 1-4 to navigate/i)).toBeInTheDocument();
+    expect(screen.getByText('nav.shortcutHint')).toBeInTheDocument();
   });
 
   it('calls setActiveView when Files button is clicked', () => {
     render(<Sidebar collapsed={false} />);
-    screen.getByText('Files').click();
+    screen.getByText('nav.files').click();
     expect(useAppStore.getState().activeView).toBe('files');
   });
 
   it('calls setActiveView when Queue button is clicked', () => {
     render(<Sidebar collapsed={false} />);
-    screen.getByText('Queue').click();
+    screen.getByText('nav.queue').click();
     expect(useAppStore.getState().activeView).toBe('queue');
   });
 
   it('calls setActiveView when Mixer button is clicked', () => {
     render(<Sidebar collapsed={false} />);
-    screen.getByText('Mixer').click();
+    screen.getByText('nav.mixer').click();
     expect(useAppStore.getState().activeView).toBe('mixer');
   });
 
   it('calls setActiveView when Settings button is clicked', () => {
     render(<Sidebar collapsed={false} />);
-    screen.getByText('Settings').click();
+    screen.getByText('nav.settings').click();
     expect(useAppStore.getState().activeView).toBe('settings');
+  });
+
+  it('calls setActiveView when Library button is clicked', () => {
+    render(<Sidebar collapsed={false} />);
+    screen.getByText('nav.library').click();
+    expect(useAppStore.getState().activeView).toBe('library');
   });
 });

@@ -1,6 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useLibraryStore } from '@/stores/libraryStore';
-import type { LibraryScanResult, StalenessRules, DuplicateEntry } from '@/lib/types/library';
+import {
+  useLibraryStore,
+  selectStaleReports,
+  selectCurrentReports,
+  selectUnknownReports,
+  selectTotalSelected,
+  selectSelectedReports,
+  selectStaleSelectedCount,
+  selectFilteredEntries,
+  selectGroupedEntries,
+  selectSummaryStats,
+} from '@/stores/libraryStore';
+import type { LibraryScanResult, StalenessRules, DuplicateEntry, LibraryScanResultV2, LibraryIndexEntry } from '@/lib/types/library';
 
 // Mock @tauri-apps/api/core
 vi.mock('@tauri-apps/api/core', () => ({
@@ -60,6 +71,7 @@ const fakeStalenessRules: StalenessRules = {
   check_model_outdated: true,
   minimum_stemgen_gui_version: '1.0.0',
   check_parameters_changed: false,
+  flag_unknown_provenance: false,
 };
 
 const fakeDuplicates: DuplicateEntry[] = [
@@ -92,7 +104,13 @@ describe('libraryStore', () => {
     vi.clearAllMocks();
     useLibraryStore.setState({
       libraryPath: null,
+      libraryRoots: [],
       scanResult: null,
+      scanResultV2: null,
+      libraryIndex: [],
+      statusFilter: [],
+      searchQuery: '',
+      groupBy: 'none',
       isScanning: false,
       scanError: null,
       stalenessRules: fakeStalenessRules,
@@ -155,6 +173,7 @@ describe('libraryStore', () => {
         check_model_outdated: true,
         minimum_stemgen_gui_version: '1.1.0',
         check_parameters_changed: true,
+        flag_unknown_provenance: false,
       };
       mockInvoke.mockResolvedValueOnce(rules);
 
@@ -171,6 +190,7 @@ describe('libraryStore', () => {
         check_source_modified: false,
         check_model_outdated: false,
         check_parameters_changed: true,
+        flag_unknown_provenance: false,
       };
       await useLibraryStore.getState().saveStalenessRules(newRules);
 
@@ -350,6 +370,340 @@ describe('libraryStore', () => {
       expect(state.currentProvenance).toBeNull();
       expect(state.isExporting).toBe(false);
       expect(state.exportError).toBeNull();
+    });
+  });
+
+  describe('setLibraryPath', () => {
+    it('sets library path directly', () => {
+      useLibraryStore.getState().setLibraryPath('/my/music');
+      expect(useLibraryStore.getState().libraryPath).toBe('/my/music');
+    });
+
+    it('clears library path with null', () => {
+      useLibraryStore.getState().setLibraryPath('/my/music');
+      useLibraryStore.getState().setLibraryPath(null);
+      expect(useLibraryStore.getState().libraryPath).toBeNull();
+    });
+  });
+
+  describe('loadStalenessRules error path', () => {
+    it('logs error and keeps default rules on failure', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockInvoke.mockRejectedValueOnce(new Error('DB error'));
+
+      await useLibraryStore.getState().loadStalenessRules();
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to load staleness rules:', expect.any(Error));
+      // Rules remain at defaults
+      expect(useLibraryStore.getState().stalenessRules).toEqual(fakeStalenessRules);
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('saveStalenessRules error path', () => {
+    it('throws error on save failure', async () => {
+      mockInvoke.mockRejectedValueOnce(new Error('Permission denied'));
+
+      const newRules: StalenessRules = {
+        check_source_modified: false,
+        check_model_outdated: false,
+        check_parameters_changed: false,
+        flag_unknown_provenance: false,
+      };
+
+      await expect(
+        useLibraryStore.getState().saveStalenessRules(newRules)
+      ).rejects.toThrow('Permission denied');
+    });
+  });
+
+  describe('selectAll with no scan result', () => {
+    it('selects nothing when scanResult is null', () => {
+      useLibraryStore.getState().selectAll();
+      expect(useLibraryStore.getState().selectedStems.size).toBe(0);
+    });
+  });
+
+  describe('loadProvenance with null result', () => {
+    it('sets provenance to null when invoke returns null', async () => {
+      mockInvoke.mockResolvedValueOnce(null);
+
+      await useLibraryStore.getState().loadProvenance('/no-prov.stem.mp4');
+
+      expect(useLibraryStore.getState().currentProvenance).toBeNull();
+      expect(mockInvoke).toHaveBeenCalledWith('read_stem_provenance', {
+        stemPath: '/no-prov.stem.mp4',
+      });
+    });
+  });
+
+  describe('saveNotes error path', () => {
+    it('throws on save failure', async () => {
+      mockInvoke.mockRejectedValueOnce(new Error('Disk full'));
+
+      await expect(
+        useLibraryStore.getState().saveNotes('/track.stem.mp4', 'notes')
+      ).rejects.toThrow('Disk full');
+    });
+  });
+
+  describe('selectors', () => {
+    it('selectStaleReports returns only stale reports', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+
+      const stale = selectStaleReports(useLibraryStore.getState());
+      expect(stale).toHaveLength(1);
+      expect(stale[0].stem_path).toBe('/music/track2.stem.mp4');
+    });
+
+    it('selectCurrentReports returns only current reports', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+
+      const current = selectCurrentReports(useLibraryStore.getState());
+      expect(current).toHaveLength(1);
+      expect(current[0].stem_path).toBe('/music/track1.stem.mp4');
+    });
+
+    it('selectUnknownReports returns only unknown reports', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+
+      const unknown = selectUnknownReports(useLibraryStore.getState());
+      expect(unknown).toHaveLength(1);
+      expect(unknown[0].stem_path).toBe('/music/track3.stem.mp4');
+    });
+
+    it('selectors return empty arrays when no scan result', () => {
+      expect(selectStaleReports(useLibraryStore.getState())).toEqual([]);
+      expect(selectCurrentReports(useLibraryStore.getState())).toEqual([]);
+      expect(selectUnknownReports(useLibraryStore.getState())).toEqual([]);
+    });
+
+    it('selectTotalSelected returns count of selected stems', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+      useLibraryStore.getState().selectStem('/music/track1.stem.mp4');
+      useLibraryStore.getState().selectStem('/music/track2.stem.mp4');
+
+      expect(selectTotalSelected(useLibraryStore.getState())).toBe(2);
+    });
+
+    it('selectSelectedReports returns reports matching selected paths', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+      useLibraryStore.getState().selectStem('/music/track2.stem.mp4');
+
+      const selected = selectSelectedReports(useLibraryStore.getState());
+      expect(selected).toHaveLength(1);
+      expect(selected[0].stem_path).toBe('/music/track2.stem.mp4');
+    });
+
+    it('selectStaleSelectedCount counts only stale selected reports', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+      useLibraryStore.getState().selectStem('/music/track1.stem.mp4'); // Current
+      useLibraryStore.getState().selectStem('/music/track2.stem.mp4'); // Stale
+      useLibraryStore.getState().selectStem('/music/track3.stem.mp4'); // Unknown
+
+      expect(selectStaleSelectedCount(useLibraryStore.getState())).toBe(1);
+    });
+
+    it('selectStaleSelectedCount returns 0 when no selection', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResult);
+      await useLibraryStore.getState().scanLibrary('/music');
+
+      expect(selectStaleSelectedCount(useLibraryStore.getState())).toBe(0);
+    });
+  });
+
+  // ─── New v2 Tests ────────────────────────────────────────────────────────
+
+  const fakeLibraryIndex: LibraryIndexEntry[] = [
+    {
+      id: 'idx_1',
+      root_id: 'root_1',
+      source_path: '/music/track1.mp3',
+      status: 'HasStemCurrent',
+      ignored: false,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      id: 'idx_2',
+      root_id: 'root_1',
+      source_path: '/music/track2.mp3',
+      status: 'NoStem',
+      ignored: false,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      id: 'idx_3',
+      root_id: 'root_1',
+      source_path: '/music/subdir/track3.mp3',
+      status: 'HasStemOutdated',
+      ignored: false,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      id: 'idx_4',
+      root_id: 'root_1',
+      source_path: '/music/orphan.stem.mp4',
+      status: 'OrphanedStem',
+      ignored: false,
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+  ];
+
+  const fakeScanResultV2: LibraryScanResultV2 = {
+    root_id: 'root_1',
+    total_sources: 4,
+    no_stem_count: 1,
+    has_stem_current_count: 1,
+    has_stem_outdated_count: 1,
+    has_stem_unknown_provenance_count: 0,
+    orphaned_stem_count: 1,
+    ignored_count: 0,
+    entries: fakeLibraryIndex,
+  };
+
+  describe('libraryRoots', () => {
+    it('loads library roots from backend', async () => {
+      const fakeRoots = [
+        { id: 'r1', path: '/music', output_strategy: 'alongside', scan_policy: 'manual', created_at: '2026-01-01' },
+      ];
+      mockInvoke.mockResolvedValueOnce(fakeRoots);
+
+      await useLibraryStore.getState().loadLibraryRoots();
+
+      expect(useLibraryStore.getState().libraryRoots).toHaveLength(1);
+      expect(useLibraryStore.getState().libraryRoots[0].path).toBe('/music');
+    });
+
+    it('adds a library root', async () => {
+      mockInvoke.mockResolvedValueOnce('new_root_id');
+      mockInvoke.mockResolvedValueOnce([{ id: 'new_root_id', path: '/new', output_strategy: 'alongside', scan_policy: 'manual', created_at: '2026-01-01' }]);
+
+      const id = await useLibraryStore.getState().addLibraryRoot('/new', 'alongside');
+
+      expect(id).toBe('new_root_id');
+      expect(useLibraryStore.getState().libraryRoots).toHaveLength(1);
+    });
+  });
+
+  describe('scanLibraryRoot', () => {
+    it('calls scan_library_root and updates state', async () => {
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+
+      await useLibraryStore.getState().scanLibraryRoot('root_1', true);
+
+      expect(mockInvoke).toHaveBeenCalledWith('scan_library_root', { rootId: 'root_1', fullRescan: true });
+      expect(useLibraryStore.getState().scanResultV2).toEqual(fakeScanResultV2);
+      expect(useLibraryStore.getState().libraryIndex).toHaveLength(4);
+      expect(useLibraryStore.getState().isScanning).toBe(false);
+    });
+
+    it('handles scan error', async () => {
+      mockInvoke.mockRejectedValueOnce(new Error('Root not found'));
+
+      await useLibraryStore.getState().scanLibraryRoot('bad_root');
+
+      expect(useLibraryStore.getState().scanError).toBe('Root not found');
+      expect(useLibraryStore.getState().isScanning).toBe(false);
+    });
+  });
+
+  describe('selectFilteredEntries', () => {
+    beforeEach(async () => {
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+      await useLibraryStore.getState().scanLibraryRoot('root_1');
+    });
+
+    it('returns all entries when no filter is set', () => {
+      const entries = selectFilteredEntries(useLibraryStore.getState());
+      expect(entries).toHaveLength(4);
+    });
+
+    it('filters by status', () => {
+      useLibraryStore.getState().setStatusFilter(['NoStem']);
+      const entries = selectFilteredEntries(useLibraryStore.getState());
+      expect(entries).toHaveLength(1);
+      expect(entries[0].status).toBe('NoStem');
+    });
+
+    it('filters by search query', () => {
+      useLibraryStore.getState().setSearchQuery('subdir');
+      const entries = selectFilteredEntries(useLibraryStore.getState());
+      expect(entries).toHaveLength(1);
+      expect(entries[0].source_path).toContain('subdir');
+    });
+
+    it('combines status filter and search query', () => {
+      useLibraryStore.getState().setStatusFilter(['HasStemCurrent', 'HasStemOutdated']);
+      useLibraryStore.getState().setSearchQuery('track1');
+      const entries = selectFilteredEntries(useLibraryStore.getState());
+      expect(entries).toHaveLength(1);
+      expect(entries[0].id).toBe('idx_1');
+    });
+  });
+
+  describe('selectGroupedEntries', () => {
+    beforeEach(async () => {
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+      await useLibraryStore.getState().scanLibraryRoot('root_1');
+    });
+
+    it('groups by status', () => {
+      useLibraryStore.getState().setGroupBy('status');
+      const groups = selectGroupedEntries(useLibraryStore.getState());
+      expect(groups['HasStemCurrent']).toHaveLength(1);
+      expect(groups['NoStem']).toHaveLength(1);
+      expect(groups['HasStemOutdated']).toHaveLength(1);
+      expect(groups['OrphanedStem']).toHaveLength(1);
+    });
+
+    it('returns all entries under "all" when groupBy is none', () => {
+      useLibraryStore.getState().setGroupBy('none');
+      const groups = selectGroupedEntries(useLibraryStore.getState());
+      expect(groups['all']).toHaveLength(4);
+    });
+  });
+
+  describe('selectSummaryStats', () => {
+    beforeEach(async () => {
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+      await useLibraryStore.getState().scanLibraryRoot('root_1');
+    });
+
+    it('returns correct counts', () => {
+      const stats = selectSummaryStats(useLibraryStore.getState());
+      expect(stats.total).toBe(4);
+      expect(stats.noStem).toBe(1);
+      expect(stats.current).toBe(1);
+      expect(stats.outdated).toBe(1);
+      expect(stats.orphaned).toBe(1);
+      expect(stats.unknown).toBe(0);
+      expect(stats.ignored).toBe(0);
+    });
+  });
+
+  describe('reset clears v2 state', () => {
+    it('resets all v2 state', async () => {
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValueOnce(fakeScanResultV2);
+      await useLibraryStore.getState().scanLibraryRoot('root_1');
+      useLibraryStore.getState().setStatusFilter(['NoStem']);
+      useLibraryStore.getState().setSearchQuery('test');
+
+      useLibraryStore.getState().reset();
+
+      expect(useLibraryStore.getState().scanResultV2).toBeNull();
+      expect(useLibraryStore.getState().libraryIndex).toHaveLength(0);
+      expect(useLibraryStore.getState().statusFilter).toHaveLength(0);
+      expect(useLibraryStore.getState().searchQuery).toBe('');
     });
   });
 });

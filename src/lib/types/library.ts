@@ -67,6 +67,38 @@ export interface StemProvenance {
 
   /** Stem type this file represents (if individual stem) */
   stem_type?: string;
+
+  // --- Separation section additions ---
+  /** Human-readable model name, e.g. "HTDemucs Fine-Tuned" */
+  model_name?: string;
+  /** Model family, e.g. "demucs", "roformer" */
+  model_family?: string;
+  /** SHA-256 of the model checkpoint file */
+  model_sha256?: string;
+  /** Wall-clock time the separation job took in seconds */
+  separation_duration_secs?: number;
+  /** Device used for separation: "cpu" | "cuda" | "mps" */
+  device?: string;
+
+  // --- Toolchain additions ---
+  /** FFmpeg version, e.g. "7.0" */
+  ffmpeg_version?: string;
+  /** OS info, e.g. "macOS 15.1" */
+  os_info?: string;
+
+  // --- Source file additions ---
+  /** File size of the source at separation time in bytes */
+  source_size_bytes?: number;
+  /** Source format, e.g. "flac", "mp3", "wav" */
+  source_format?: string;
+  /** Source bit depth, e.g. 16, 24 */
+  source_bitdepth?: number;
+
+  // --- Export additions ---
+  /** Export codec, e.g. "alac", "aac" */
+  export_codec?: string;
+  /** DJ preset used, e.g. "traktor", "rekordbox" */
+  export_dj_preset?: string;
 }
 
 // =============================================================================
@@ -80,7 +112,10 @@ export type StalenessReason =
   | { type: 'SourceModified' }
   | { type: 'NewerModelVersion'; current: string; available: string }
   | { type: 'StemgenGuiOutdated'; current: string; minimum: string }
-  | { type: 'ParametersChanged' };
+  | { type: 'ParametersChanged' }
+  | { type: 'PreferredModelFamily'; current_family: string; preferred: string }
+  | { type: 'QualityRankBelowThreshold'; current_rank: number; best_rank: number }
+  | { type: 'StemTooOld'; age_days: number; threshold: number };
 
 /**
  * Overall staleness status.
@@ -166,6 +201,18 @@ export interface StalenessRules {
 
   /** Custom separation params considered "default" */
   default_separation_params?: Record<string, unknown>;
+
+  /** Preferred model family — flag if the stem was not separated with this family */
+  prefer_model_family?: string;
+
+  /** Flag if the stem's quality rank is below (best_available - threshold) */
+  quality_rank_threshold?: number;
+
+  /** Flag if the stem is older than N days AND a better model exists */
+  age_days_threshold?: number;
+
+  /** If true, treat stems with no provenance as staleness candidates */
+  flag_unknown_provenance: boolean;
 }
 
 // =============================================================================
@@ -335,5 +382,248 @@ export function formatTimestamp(timestamp: string): string {
     return date.toLocaleString();
   } catch {
     return timestamp;
+  }
+}
+
+/**
+ * Format a duration in seconds to a human-readable string.
+ * e.g. 94.3 → "1m 34s", 3665 → "1h 1m"
+ */
+export function formatDuration(seconds: number): string {
+  if (seconds < 0) return '0s';
+  const totalSeconds = Math.floor(seconds);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+/**
+ * Format a bit depth value to a human-readable string.
+ * e.g. 16 → "16-bit", undefined → "—"
+ */
+export function formatBitdepth(bits: number | undefined): string {
+  if (bits === undefined || bits === null) return '\u2014';
+  return `${bits}-bit`;
+}
+
+// =============================================================================
+// Scanner & Library Index Types
+// =============================================================================
+
+/**
+ * State of a source file relative to its stem.
+ */
+export type StemFileState =
+  | 'NoStem'
+  | 'HasStemCurrent'
+  | 'HasStemOutdated'
+  | 'HasStemUnknownProvenance'
+  | 'OrphanedStem'
+  | 'Ignored';
+
+/**
+ * A single entry in the library index.
+ */
+export interface LibraryIndexEntry {
+  id: string;
+  root_id: string;
+  source_path: string;
+  source_sha256?: string;
+  source_mtime?: number;
+  source_inode?: number;
+  stem_path?: string;
+  status: StemFileState;
+  provenance_json?: string;
+  ignored: boolean;
+  updated_at: string;
+}
+
+/**
+ * A configured library root.
+ */
+export interface LibraryRoot {
+  id: string;
+  path: string;
+  output_strategy: 'alongside' | 'mirrored' | 'flat';
+  mirrored_path?: string;
+  flat_path?: string;
+  scan_policy: 'manual' | 'on_open';
+  ignored_globs?: string;
+  staleness_policy?: string;
+  created_at: string;
+  last_scanned_at?: string;
+}
+
+/**
+ * Partial update for a library root.
+ */
+export interface LibraryRootUpdate {
+  output_strategy?: 'alongside' | 'mirrored' | 'flat';
+  mirrored_path?: string;
+  flat_path?: string;
+  scan_policy?: 'manual' | 'on_open';
+  ignored_globs?: string;
+  staleness_policy?: string;
+}
+
+/**
+ * Result of a library scan (v2 — per-state counts + entries).
+ */
+export interface LibraryScanResultV2 {
+  root_id: string;
+  total_sources: number;
+  no_stem_count: number;
+  has_stem_current_count: number;
+  has_stem_outdated_count: number;
+  has_stem_unknown_provenance_count: number;
+  orphaned_stem_count: number;
+  ignored_count: number;
+  entries: LibraryIndexEntry[];
+}
+
+// =============================================================================
+// Batch Queue Types
+// =============================================================================
+
+/**
+ * Status of a batch queue item.
+ */
+export type BatchQueueStatus = 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
+
+/**
+ * A single item in the batch processing queue.
+ */
+export interface BatchQueueItem {
+  id: string;
+  root_id: string;
+  source_path: string;
+  status: BatchQueueStatus;
+  model_id: string;
+  dj_preset?: string;
+  output_format?: string;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  error_message?: string;
+  priority: number;
+}
+
+/**
+ * Summary of batch queue status for a root.
+ */
+export interface BatchQueueStatusSummary {
+  pending_count: number;
+  processing_count: number;
+  done_count: number;
+  error_count: number;
+  cancelled_count: number;
+  total_count: number;
+  next_items: BatchQueueItem[];
+}
+
+/**
+ * Result of a batch queue operation.
+ */
+export interface BatchQueueResult {
+  queued_count: number;
+  total_duration_secs: number;
+}
+
+// =============================================================================
+// Orphan Management Types
+// =============================================================================
+
+/**
+ * An orphaned stem entry from the library index.
+ */
+export interface OrphanedStemEntry {
+  id: string;
+  stem_path: string;
+  last_known_source_path: string;
+  file_size?: number;
+  last_modified?: string;
+}
+
+/**
+ * Result of a re-link attempt.
+ */
+export interface RelinkResult {
+  matched: boolean;
+  new_status: string;
+}
+
+// =============================================================================
+// Extended Utility Functions
+// =============================================================================
+
+/**
+ * Get a human-readable label for a stem file state.
+ */
+export function stemStateLabel(state: StemFileState): string {
+  switch (state) {
+    case 'NoStem':
+      return 'No Stem';
+    case 'HasStemCurrent':
+      return 'Current';
+    case 'HasStemOutdated':
+      return 'Outdated';
+    case 'HasStemUnknownProvenance':
+      return 'Unknown';
+    case 'OrphanedStem':
+      return 'Orphaned';
+    case 'Ignored':
+      return 'Ignored';
+    default:
+      return state;
+  }
+}
+
+/**
+ * Get a Tailwind color class for a stem file state.
+ */
+export function stemStateColor(state: StemFileState): string {
+  switch (state) {
+    case 'NoStem':
+      return 'text-gray-500';
+    case 'HasStemCurrent':
+      return 'text-green-500';
+    case 'HasStemOutdated':
+      return 'text-yellow-500';
+    case 'HasStemUnknownProvenance':
+      return 'text-blue-500';
+    case 'OrphanedStem':
+      return 'text-red-500';
+    case 'Ignored':
+      return 'text-gray-400';
+    default:
+      return 'text-gray-500';
+  }
+}
+
+/**
+ * Get a description of the new staleness reason types.
+ */
+export function getStalenessReasonDescriptionExtended(reason: StalenessReason): string {
+  switch (reason.type) {
+    case 'SourceModified':
+      return 'Source file has been modified';
+    case 'NewerModelVersion':
+      return `Newer model version available (${reason.current} → ${reason.available})`;
+    case 'StemgenGuiOutdated':
+      return `stemgen-gui version outdated (${reason.current} < ${reason.minimum})`;
+    case 'ParametersChanged':
+      return 'Separation parameters differ from current defaults';
+    case 'PreferredModelFamily':
+      return `Model family "${reason.current_family}" does not match preferred "${reason.preferred}"`;
+    case 'QualityRankBelowThreshold':
+      return `Quality rank ${reason.current_rank} is below best available ${reason.best_rank}`;
+    case 'StemTooOld':
+      return `Stem is ${reason.age_days} days old (threshold: ${reason.threshold} days)`;
+    default:
+      return 'Unknown reason';
   }
 }
