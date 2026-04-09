@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LibraryView } from '@/components/library/LibraryView';
 import { useLibraryStore } from '@/stores/libraryStore';
@@ -38,6 +38,7 @@ const root1: LibraryRoot = {
 };
 
 const scanResult: LibraryScanResultV2 = {
+  root_id: 'root-1',
   total_sources: 5,
   no_stem_count: 2,
   has_stem_current_count: 2,
@@ -45,6 +46,7 @@ const scanResult: LibraryScanResultV2 = {
   has_stem_unknown_provenance_count: 0,
   orphaned_stem_count: 0,
   ignored_count: 0,
+  entries: [],
 };
 
 const entries: LibraryIndexEntry[] = [
@@ -266,7 +268,7 @@ describe('LibraryView integration', () => {
   it('Generate Missing button is disabled when no_stem_count is 0', async () => {
     useLibraryStore.setState({
       libraryRoots: [root1],
-      scanResultV2: { ...scanResult, no_stem_count: 0 },
+      scanResultV2: { ...scanResult, no_stem_count: 0, entries: [] },
       libraryIndex: entries.filter((e) => e.status !== 'NoStem'),
     });
 
