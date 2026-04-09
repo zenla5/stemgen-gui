@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { Button } from '@/components/ui/Button';
@@ -53,6 +54,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
     deleteLibraryRoot,
     scanLibraryRoot,
   } = useLibraryStore();
+  const { t } = useTranslation();
 
   const [editingRootId, setEditingRootId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Select Library Root Folder',
+      title: t('library.selectRootFolder'),
     });
     if (selected && typeof selected === 'string') {
       await addLibraryRoot(selected, 'alongside');
@@ -120,7 +122,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Select target folder',
+      title: t('library.selectTargetFolder'),
     });
     if (selected && typeof selected === 'string') {
       setEditForm((prev) => ({ ...prev, [field]: selected }));
@@ -155,14 +157,14 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium flex items-center gap-2">
           <FolderOpen className="h-4 w-4" />
-          Library Roots
+          {t('library.libraryRoots')}
         </h3>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleAddRoot} data-testid="add-root-btn">
             <Plus className="h-3 w-3 mr-1" />
-            Add Root
+            {t('library.addRoot')}
           </Button>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close settings">
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label={t('library.closeSettings')}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -171,7 +173,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
       {/* Empty state */}
       {libraryRoots.length === 0 && (
         <div className="text-center py-8 text-muted-foreground">
-          <p className="text-sm">No library roots configured.</p>
+          <p className="text-sm">{t('library.noRoots')}</p>
           <Button
             variant="outline"
             size="sm"
@@ -180,7 +182,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
             data-testid="empty-add-root-btn"
           >
             <Plus className="h-3 w-3 mr-1" />
-            Add your first library folder
+            {t('library.addFirstFolder')}
           </Button>
         </div>
       )}
@@ -200,7 +202,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
               </span>
               {root.last_scanned_at && (
                 <span className="text-xs text-muted-foreground">
-                  Scanned {formatTimestamp(root.last_scanned_at)}
+                  {t('library.scanned', { timestamp: formatTimestamp(root.last_scanned_at) })}
                 </span>
               )}
             </div>
@@ -210,7 +212,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                 size="sm"
                 onClick={() => handleScan(root.id)}
                 disabled={isScanning}
-                aria-label="Scan now"
+                aria-label={t('library.scanNow')}
                 data-testid={`scan-${root.id}`}
               >
                 <RefreshCw
@@ -221,7 +223,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                 variant="ghost"
                 size="sm"
                 onClick={() => startEditing(root)}
-                aria-label="Edit root"
+                aria-label={t('library.settings')}
                 data-testid={`edit-${root.id}`}
               >
                 <Edit className="h-3 w-3" />
@@ -234,7 +236,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                     onClick={() => handleConfirmDelete(root.id)}
                     data-testid={`confirm-delete-${root.id}`}
                   >
-                    Confirm
+                    {t('library.confirm')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -242,7 +244,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                     onClick={() => setDeleteConfirmId(null)}
                     data-testid={`cancel-delete-${root.id}`}
                   >
-                    Cancel
+                    {t('library.cancel')}
                   </Button>
                 </div>
               ) : (
@@ -250,7 +252,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                   variant="ghost"
                   size="sm"
                   onClick={() => setDeleteConfirmId(root.id)}
-                  aria-label="Delete root"
+                  aria-label={t('library.delete')}
                   data-testid={`delete-${root.id}`}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -271,7 +273,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
               {/* Output strategy */}
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">
-                  Output Strategy
+                  {t('library.outputStrategy')}
                 </label>
                 <select
                   value={editForm.output_strategy}
@@ -284,9 +286,9 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   data-testid="output-strategy-select"
                 >
-                  <option value="alongside">Alongside (next to source)</option>
-                  <option value="mirrored">Mirrored (mirror structure)</option>
-                  <option value="flat">Flat (all in one folder)</option>
+                  <option value="alongside">{t('library.alongside')}</option>
+                  <option value="mirrored">{t('library.mirrored')}</option>
+                  <option value="flat">{t('library.flat')}</option>
                 </select>
               </div>
 
@@ -294,7 +296,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
               {editForm.output_strategy === 'mirrored' && (
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Mirrored Path
+                    {t('library.mirroredPath')}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -304,7 +306,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                         setEditForm((prev) => ({ ...prev, mirrored_path: e.target.value }))
                       }
                       className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      placeholder="Select target folder..."
+                      placeholder={t('library.selectTargetFolder')}
                       data-testid="mirrored-path-input"
                     />
                     <Button
@@ -321,7 +323,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
               {/* Flat path */}
               {editForm.output_strategy === 'flat' && (
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Flat Path</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('library.flatPath')}</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -330,7 +332,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                         setEditForm((prev) => ({ ...prev, flat_path: e.target.value }))
                       }
                       className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      placeholder="Select target folder..."
+                      placeholder={t('library.selectTargetFolder')}
                       data-testid="flat-path-input"
                     />
                     <Button
@@ -346,11 +348,11 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
 
               {/* Staleness Policy */}
               <div className="space-y-2">
-                <h4 className="text-xs font-medium text-muted-foreground">Staleness Policy</h4>
+                <h4 className="text-xs font-medium text-muted-foreground">{t('library.stalenessPolicy')}</h4>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">
-                      Preferred Model Family
+                      {t('library.preferredModelFamily')}
                     </label>
                     <input
                       type="text"
@@ -362,13 +364,13 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                         }))
                       }
                       className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      placeholder="e.g. roformer"
+                      placeholder={t('library.preferredModelFamilyPlaceholder')}
                       data-testid="prefer-model-family-input"
                     />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">
-                      Quality Rank Threshold
+                      {t('library.qualityRankThreshold')}
                     </label>
                     <input
                       type="number"
@@ -389,7 +391,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Age Days Threshold</label>
+                    <label className="text-xs text-muted-foreground">{t('library.ageDaysThreshold')}</label>
                     <input
                       type="number"
                       min={0}
@@ -403,7 +405,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                         }))
                       }
                       className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      placeholder="e.g. 90"
+                      placeholder={t('library.ageDaysPlaceholder')}
                       data-testid="age-days-input"
                     />
                   </div>
@@ -422,7 +424,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                       data-testid="flag-unknown-checkbox"
                     />
                     <label htmlFor="flag-unknown" className="text-xs text-muted-foreground">
-                      Flag unknown provenance
+                      {t('library.flagUnknownProvenance')}
                     </label>
                   </div>
                 </div>
@@ -430,7 +432,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
 
               {/* Ignore Patterns */}
               <div className="space-y-1">
-                <h4 className="text-xs font-medium text-muted-foreground">Ignore Patterns</h4>
+                <h4 className="text-xs font-medium text-muted-foreground">{t('library.ignorePatterns')}</h4>
                 <textarea
                   value={globsText}
                   onChange={(e) => setGlobsText(e.target.value)}
@@ -440,17 +442,17 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                   data-testid="ignore-patterns-textarea"
                 />
                 <p className="text-xs text-muted-foreground">
-                  One glob pattern per line. Matching files will be excluded from scans.
+                  {t('library.ignorePatternsHelp')}
                 </p>
               </div>
 
               {/* Save / Cancel */}
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" size="sm" onClick={cancelEditing}>
-                  Cancel
+                  {t('library.cancel')}
                 </Button>
                 <Button size="sm" onClick={handleSave} data-testid="save-btn">
-                  Save Changes
+                  {t('library.saveChanges')}
                 </Button>
               </div>
             </div>

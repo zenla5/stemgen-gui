@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/Button';
 import {
@@ -47,6 +48,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [integrityStatus, setIntegrityStatus] = useState<'checking' | 'ok' | 'modified' | 'missing'>('checking');
   const [error, setError] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   // Load provenance and staleness data
   useEffect(() => {
@@ -111,13 +113,13 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
     if (!stalenessReport) return null;
 
     if (isStemCurrent(stalenessReport.status)) {
-      return <span className="inline-flex items-center rounded-full bg-green-500 px-2 py-1 text-xs font-medium text-white">Current</span>;
+      return <span className="inline-flex items-center rounded-full bg-green-500 px-2 py-1 text-xs font-medium text-white">{t('library.current')}</span>;
     }
     if (isStemStale(stalenessReport.status)) {
-      return <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-1 text-xs font-medium text-white">Stale</span>;
+      return <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-1 text-xs font-medium text-white">{t('library.outdated')}</span>;
     }
     if (isStemUnknown(stalenessReport.status)) {
-      return <span className="inline-flex items-center rounded-full bg-gray-500 px-2 py-1 text-xs font-medium text-white">Unknown</span>;
+      return <span className="inline-flex items-center rounded-full bg-gray-500 px-2 py-1 text-xs font-medium text-white">{t('library.unknown')}</span>;
     }
     return null;
   };
@@ -155,7 +157,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
         <div className="flex flex-col space-y-1.5 p-6">
           <h3 className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight text-destructive">
             <AlertCircle className="h-5 w-5" />
-            Error Loading Stem Info
+            {t('library.errorLoadingStemInfo')}
           </h3>
         </div>
         <div className="p-6 pt-0">
@@ -171,17 +173,17 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
         <div className="flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight">
             <Info className="h-5 w-5" />
-            Stem Information
+            {t('library.stemInformation')}
           </h3>
           <div className="flex items-center gap-2">
             <StalenessBadge />
             <div className="flex items-center gap-1">
               <IntegrityIcon />
               <span className="text-sm text-muted-foreground">
-                {integrityStatus === 'ok' && 'Source Verified'}
-                {integrityStatus === 'modified' && 'Source Modified'}
-                {integrityStatus === 'missing' && 'Source Missing'}
-                {integrityStatus === 'checking' && 'Checking...'}
+                {integrityStatus === 'ok' && t('library.sourceVerified')}
+                {integrityStatus === 'modified' && t('library.sourceModified')}
+                {integrityStatus === 'missing' && t('library.sourceMissing')}
+                {integrityStatus === 'checking' && t('library.checking')}
               </span>
             </div>
           </div>
@@ -209,15 +211,15 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
             <section>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <Database className="h-4 w-4" />
-                Separation
+                {t('library.separation')}
               </h3>
               <div className="rounded-md border">
                 <table className="w-full">
                   <tbody>
-                    <InfoRow label="Model" value={provenance.separation_model} />
+                    <InfoRow label={t('library.model')} value={provenance.separation_model} />
                     {provenance.model_version && (
                       <InfoRow
-                        label="Version"
+                        label={t('library.version')}
                         value={
                           <div className="flex items-center gap-2">
                             <code className="text-xs bg-muted px-1 py-0.5 rounded">
@@ -229,20 +231,20 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
                       />
                     )}
                     {provenance.model_family && (
-                      <InfoRow label="Model Family" value={provenance.model_family} />
+                      <InfoRow label={t('library.modelFamily')} value={provenance.model_family} />
                     )}
                     {provenance.device && (
-                      <InfoRow label="Device" value={provenance.device.toUpperCase()} />
+                      <InfoRow label={t('library.device')} value={provenance.device.toUpperCase()} />
                     )}
                     {provenance.separation_duration_secs != null && (
                       <InfoRow
-                        label="Duration"
+                        label={t('library.duration')}
                         value={formatDuration(provenance.separation_duration_secs)}
                       />
                     )}
                     {provenance.separation_quality_preset && (
                       <InfoRow
-                        label="Quality Preset"
+                        label={t('library.qualityPreset')}
                         value={
                           <span className="inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium">
                             {provenance.separation_quality_preset}
@@ -250,7 +252,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
                         }
                       />
                     )}
-                    <InfoRow label="Created At" value={formatTimestamp(provenance.separation_timestamp)} />
+                    <InfoRow label={t('library.createdAt')} value={formatTimestamp(provenance.separation_timestamp)} />
                   </tbody>
                 </table>
               </div>
@@ -262,19 +264,19 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
             <section>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <Settings className="h-4 w-4" />
-                Toolchain
+                {t('library.toolchain')}
               </h3>
               <div className="rounded-md border">
                 <table className="w-full">
                   <tbody>
-                    <InfoRow label="stemgen-gui" value={provenance.stemgen_gui_version} />
+                    <InfoRow label={t('library.stemgenGui')} value={provenance.stemgen_gui_version} />
                     {provenance.stemgen_version && (
-                      <InfoRow label="stemgen" value={provenance.stemgen_version} />
+                      <InfoRow label={t('library.stemgen')} value={provenance.stemgen_version} />
                     )}
                     {provenance.ffmpeg_version && (
-                      <InfoRow label="FFmpeg" value={provenance.ffmpeg_version} />
+                      <InfoRow label={t('library.ffmpeg')} value={provenance.ffmpeg_version} />
                     )}
-                    {provenance.os_info && <InfoRow label="OS" value={provenance.os_info} />}
+                    {provenance.os_info && <InfoRow label={t('library.os')} value={provenance.os_info} />}
                   </tbody>
                 </table>
               </div>
@@ -286,13 +288,13 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
             <section>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <FileAudio className="h-4 w-4" />
-                Source
+                {t('library.source')}
               </h3>
               <div className="rounded-md border">
                 <table className="w-full">
                   <tbody>
                     <InfoRow
-                      label="Path"
+                      label={t('library.path')}
                       value={
                         <div className="flex items-center gap-2 max-w-[300px]">
                           <span className="truncate" title={provenance.source_path}>
@@ -303,7 +305,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
                       }
                     />
                     <InfoRow
-                      label="SHA-256"
+                      label={t('library.sha256')}
                       value={
                         <div className="flex items-center gap-2">
                           <code className="text-xs bg-muted px-1 py-0.5 rounded truncate max-w-[200px]">
@@ -314,20 +316,20 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
                       }
                     />
                     {provenance.source_format && (
-                      <InfoRow label="Format" value={provenance.source_format.toUpperCase()} />
+                      <InfoRow label={t('library.format')} value={provenance.source_format.toUpperCase()} />
                     )}
                     <InfoRow
-                      label="Sample Rate"
+                      label={t('library.sampleRate')}
                       value={`${provenance.source_sample_rate.toLocaleString()} Hz`}
                     />
                     {provenance.source_bitdepth != null && (
-                      <InfoRow label="Bit Depth" value={formatBitdepth(provenance.source_bitdepth)} />
+                      <InfoRow label={t('library.bitDepth')} value={formatBitdepth(provenance.source_bitdepth)} />
                     )}
                     {provenance.source_size_bytes != null && (
-                      <InfoRow label="Size" value={formatFileSize(provenance.source_size_bytes)} />
+                      <InfoRow label={t('library.size')} value={formatFileSize(provenance.source_size_bytes)} />
                     )}
                     <InfoRow
-                      label="Duration"
+                      label={t('library.duration')}
                       value={formatDuration(provenance.source_duration_secs)}
                     />
                   </tbody>
@@ -341,20 +343,20 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
             <section>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <Package className="h-4 w-4" />
-                Export
+                {t('library.export')}
               </h3>
               <div className="rounded-md border">
                 <table className="w-full">
                   <tbody>
                     {provenance.export_codec && (
                       <InfoRow
-                        label="Codec"
+                        label={t('library.codec')}
                         value={provenance.export_codec.toUpperCase()}
                       />
                     )}
                     {provenance.export_dj_preset && (
                       <InfoRow
-                        label="DJ Preset"
+                        label={t('library.djPreset')}
                         value={
                           <span className="inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium">
                             {provenance.export_dj_preset}
@@ -365,7 +367,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
                     {!provenance.export_codec && !provenance.export_dj_preset && (
                       <tr>
                         <td className="p-3 text-muted-foreground" colSpan={2}>
-                          No export metadata available.
+                          {t('library.noExportMetadata')}
                         </td>
                       </tr>
                     )}
@@ -380,13 +382,13 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
             <section>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <History className="h-4 w-4" />
-                Job
+                {t('library.job')}
               </h3>
               <div className="rounded-md border">
                 <table className="w-full">
                   <tbody>
                     <InfoRow
-                      label="Job ID"
+                      label={t('library.jobId')}
                       value={
                         <div className="flex items-center gap-2">
                           <code className="text-xs bg-muted px-1 py-0.5 rounded">
@@ -398,7 +400,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
                     />
                     {provenance.batch_id && (
                       <InfoRow
-                        label="Batch ID"
+                        label={t('library.batchId')}
                         value={
                           <code className="text-xs bg-muted px-1 py-0.5 rounded">
                             {provenance.batch_id}
@@ -406,7 +408,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
                         }
                       />
                     )}
-                    <InfoRow label="Schema" value={String(provenance.schema_version)} />
+                    <InfoRow label={t('library.schema')} value={String(provenance.schema_version)} />
                   </tbody>
                 </table>
               </div>
@@ -418,13 +420,13 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
             <section>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <Tag className="h-4 w-4" />
-                User Notes
+                {t('library.userNotes')}
               </h3>
               <div className="space-y-2">
                 <textarea
                   value={userNotes}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setUserNotes(e.target.value)}
-                  placeholder="Add personal notes about this stem..."
+                  placeholder={t('library.notesPlaceholder')}
                   className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <div className="flex justify-end">
@@ -438,7 +440,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
                     ) : (
                       <Save className="h-4 w-4 mr-2" />
                     )}
-                    Save Notes
+                    {t('library.saveNotes')}
                   </Button>
                 </div>
               </div>
@@ -447,9 +449,9 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
         ) : (
           <div className="text-center py-8">
             <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-            <p className="text-muted-foreground">No provenance metadata found</p>
+            <p className="text-muted-foreground">{t('library.noProvenance')}</p>
             <p className="text-sm text-muted-foreground">
-              This stem file may have been created with an older version of stemgen-gui.
+              {t('library.noProvenanceDescription')}
             </p>
           </div>
         )}

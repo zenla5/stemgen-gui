@@ -84,8 +84,8 @@ describe('LibraryView', () => {
   it('renders empty state CTA when no library roots configured', () => {
     render(<LibraryView />);
 
-    expect(screen.getByText('Set up your Library')).toBeInTheDocument();
-    expect(screen.getByText('Add Library Folder')).toBeInTheDocument();
+    expect(screen.getByText('library.setUpLibrary')).toBeInTheDocument();
+    expect(screen.getByText('library.addLibraryFolder')).toBeInTheDocument();
   });
 
   it('calls loadLibraryRoots on mount', () => {
@@ -122,7 +122,7 @@ describe('LibraryView', () => {
     render(<LibraryView />);
 
     // "Scanning..." appears in both overview panel button and the scanning indicator
-    expect(screen.getAllByText('Scanning...').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('library.scanning').length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows settings panel when settings button is clicked', async () => {
@@ -130,8 +130,8 @@ describe('LibraryView', () => {
     const user = userEvent.setup();
 
     render(<LibraryView />);
-    await user.click(screen.getByLabelText('Settings'));
+    await user.click(screen.getByLabelText('library.settings'));
 
-    expect(screen.getByText('Library Roots')).toBeInTheDocument();
+    expect(screen.getByText('library.libraryRoots')).toBeInTheDocument();
   });
 });

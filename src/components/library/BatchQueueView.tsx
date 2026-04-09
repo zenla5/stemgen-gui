@@ -5,6 +5,8 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useBatchQueueStore } from '@/stores/batchQueueStore';
 import { Button } from '@/components/ui/Button';
 import { Progress } from '@/components/ui/Progress';
@@ -18,6 +20,7 @@ interface BatchQueueViewProps {
 }
 
 export function BatchQueueView({ rootId, onClose }: BatchQueueViewProps) {
+  const { t } = useTranslation();
   const {
     queueStatus,
     isPaused,
@@ -55,11 +58,11 @@ export function BatchQueueView({ rootId, onClose }: BatchQueueViewProps) {
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">
-            {isDone ? 'Batch Complete' : 'Processing Stems'}
+            {isDone ? t('library.batchComplete') : t('library.processingStems')}
           </h2>
           {isDone && (
             <Button variant="ghost" size="sm" onClick={onClose} data-testid="batch-close-btn">
-              Close
+              {t('library.close')}
             </Button>
           )}
         </div>
@@ -70,11 +73,11 @@ export function BatchQueueView({ rootId, onClose }: BatchQueueViewProps) {
         </div>
         <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            {completed} / {total} files
+            {t('library.filesProgress', { completed, total })}
           </span>
           {!isDone && total > 0 && (
             <span data-testid="batch-remaining">
-              {formatEstimatedRemaining(queueStatus)}
+              {formatEstimatedRemaining(queueStatus, t)}
             </span>
           )}
         </div>
@@ -84,18 +87,18 @@ export function BatchQueueView({ rootId, onClose }: BatchQueueViewProps) {
           <div className="mb-4 flex gap-4 text-sm" data-testid="batch-done-summary">
             <span className="flex items-center gap-1 text-green-500">
               <CheckCircle2 className="h-4 w-4" />
-              {queueStatus?.done_count ?? 0} done
+              {t('library.doneCount', { count: queueStatus?.done_count ?? 0 })}
             </span>
             {(queueStatus?.error_count ?? 0) > 0 && (
               <span className="flex items-center gap-1 text-red-500">
                 <AlertCircle className="h-4 w-4" />
-                {queueStatus?.error_count} errors
+                {t('library.errorsCount', { count: queueStatus?.error_count })}
               </span>
             )}
             {(queueStatus?.cancelled_count ?? 0) > 0 && (
               <span className="flex items-center gap-1 text-gray-500">
                 <XCircle className="h-4 w-4" />
-                {queueStatus?.cancelled_count} cancelled
+                {t('library.cancelledCount', { count: queueStatus?.cancelled_count })}
               </span>
             )}
           </div>
@@ -104,7 +107,7 @@ export function BatchQueueView({ rootId, onClose }: BatchQueueViewProps) {
         {/* Item list */}
         <div className="mb-4 max-h-64 overflow-y-auto rounded border" data-testid="batch-item-list">
           {(queueStatus?.next_items ?? []).length === 0 ? (
-            <p className="p-4 text-center text-sm text-muted-foreground">No items</p>
+            <p className="p-4 text-center text-sm text-muted-foreground">{t('library.noItems')}</p>
           ) : (
             (queueStatus?.next_items ?? []).map((item) => (
               <BatchItemRow key={item.id} item={item} />
@@ -123,25 +126,25 @@ export function BatchQueueView({ rootId, onClose }: BatchQueueViewProps) {
             >
               {isPaused ? (
                 <>
-                  <Play className="mr-2 h-3 w-3" /> Resume
+                  <Play className="mr-2 h-3 w-3" /> {t('library.resume')}
                 </>
               ) : (
                 <>
-                  <Pause className="mr-2 h-3 w-3" /> Pause
+                  <Pause className="mr-2 h-3 w-3" /> {t('library.pause')}
                 </>
               )}
             </Button>
 
             {showCancelConfirm ? (
               <div className="flex items-center gap-2 text-sm">
-                <span>Cancel all?</span>
+                <span>{t('library.cancelAllQuestion')}</span>
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={handleCancelAll}
                   data-testid="batch-cancel-confirm-btn"
                 >
-                  Yes, cancel
+                  {t('library.yesCancel')}
                 </Button>
                 <Button
                   variant="outline"
@@ -149,7 +152,7 @@ export function BatchQueueView({ rootId, onClose }: BatchQueueViewProps) {
                   onClick={() => setShowCancelConfirm(false)}
                   data-testid="batch-cancel-dismiss-btn"
                 >
-                  No
+                  {t('library.no')}
                 </Button>
               </div>
             ) : (
@@ -160,7 +163,7 @@ export function BatchQueueView({ rootId, onClose }: BatchQueueViewProps) {
                 data-testid="batch-cancel-all-btn"
               >
                 <X className="mr-2 h-3 w-3" />
-                Cancel All
+                {t('library.cancelAll')}
               </Button>
             )}
           </div>
@@ -212,6 +215,7 @@ function StatusIcon({ status }: { status: BatchQueueStatus }) {
 }
 
 function StatusBadge({ status }: { status: BatchQueueStatus }) {
+  const { t } = useTranslation();
   const styles: Record<BatchQueueStatus, string> = {
     pending: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
     processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
@@ -225,7 +229,7 @@ function StatusBadge({ status }: { status: BatchQueueStatus }) {
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${styles[status]}`}
       data-testid="status-badge"
     >
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {t(`library.${status}`)}
     </span>
   );
 }
@@ -240,11 +244,12 @@ function formatElapsed(startedAt: string): string {
 }
 
 function formatEstimatedRemaining(
-  status: { done_count: number; processing_count: number; pending_count: number } | null
+  status: { done_count: number; processing_count: number; pending_count: number } | null,
+  t: TFunction
 ): string {
   if (!status || status.done_count === 0) return '';
   const remaining = status.pending_count + status.processing_count;
   if (remaining === 0) return '';
   // Rough estimate: assume similar time per item
-  return `~${remaining} remaining`;
+  return t('library.remaining', { count: remaining });
 }

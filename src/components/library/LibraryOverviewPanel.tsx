@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useBatchQueueStore } from '@/stores/batchQueueStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -26,6 +27,7 @@ export function LibraryOverviewPanel({
   const { libraryRoots, isScanning, scanLibraryRoot, scanResultV2 } = useLibraryStore();
   const { queueGenerate, queueRegenerate } = useBatchQueueStore();
   const { defaultModel, defaultDjSoftware, defaultOutputFormat } = useSettingsStore();
+  const { t } = useTranslation();
 
   const root = libraryRoots.find((r) => r.id === selectedRootId);
   const stats = scanResultV2;
@@ -68,11 +70,11 @@ export function LibraryOverviewPanel({
       <div className="flex items-center justify-between px-4 pt-4">
         <div className="min-w-0">
           <p className="text-sm font-medium truncate" title={root?.path}>
-            {root?.path ?? 'Unknown root'}
+            {root?.path ?? t('library.unknownRoot')}
           </p>
           {root?.last_scanned_at && (
             <p className="text-xs text-muted-foreground">
-              Last scanned {formatTimestamp(root.last_scanned_at)}
+              {t('library.lastScanned', { timestamp: formatTimestamp(root.last_scanned_at) })}
             </p>
           )}
         </div>
@@ -85,9 +87,9 @@ export function LibraryOverviewPanel({
             data-testid="scan-now-btn"
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${isScanning ? 'animate-spin' : ''}`} />
-            {isScanning ? 'Scanning...' : 'Scan Now'}
+            {isScanning ? t('library.scanning') : t('library.scanNow')}
           </Button>
-          <Button variant="ghost" size="sm" onClick={onOpenSettings} aria-label="Settings">
+          <Button variant="ghost" size="sm" onClick={onOpenSettings} aria-label={t('library.settings')}>
             <Settings className="h-4 w-4" />
           </Button>
         </div>
@@ -97,7 +99,7 @@ export function LibraryOverviewPanel({
       {isScanning && (
         <div className="flex items-center gap-2 px-4 text-sm text-muted-foreground">
           <RefreshCw className="h-4 w-4 animate-spin" />
-          Scanning library...
+          {t('library.scanningLibrary')}
         </div>
       )}
 
@@ -105,21 +107,21 @@ export function LibraryOverviewPanel({
       {stats && (
         <>
           <div className="grid grid-cols-2 gap-4 px-4 sm:grid-cols-4 lg:grid-cols-7">
-            <StatCard label="Total" value={stats.total_sources} />
-            <StatCard label="No Stem" value={stats.no_stem_count} color="text-gray-500" />
-            <StatCard label="Current" value={stats.has_stem_current_count} color="text-green-500" />
+            <StatCard label={t('library.total')} value={stats.total_sources} />
+            <StatCard label={t('library.noStem')} value={stats.no_stem_count} color="text-gray-500" />
+            <StatCard label={t('library.current')} value={stats.has_stem_current_count} color="text-green-500" />
             <StatCard
-              label="Outdated"
+              label={t('library.outdated')}
               value={stats.has_stem_outdated_count}
               color="text-yellow-500"
             />
             <StatCard
-              label="Unknown"
+              label={t('library.unknown')}
               value={stats.has_stem_unknown_provenance_count}
               color="text-blue-500"
             />
-            <StatCard label="Orphaned" value={stats.orphaned_stem_count} color="text-red-500" />
-            <StatCard label="Ignored" value={stats.ignored_count} color="text-gray-400" />
+            <StatCard label={t('library.orphaned')} value={stats.orphaned_stem_count} color="text-red-500" />
+            <StatCard label={t('library.ignored')} value={stats.ignored_count} color="text-gray-400" />
           </div>
 
           {/* Status breakdown bar */}
@@ -135,7 +137,7 @@ export function LibraryOverviewPanel({
               data-testid="generate-missing-btn"
             >
               <Play className="mr-2 h-3 w-3" />
-              Generate Missing ({stats.no_stem_count})
+              {t('library.generateMissing', { count: stats.no_stem_count })}
             </Button>
             <Button
               variant="outline"
@@ -145,7 +147,7 @@ export function LibraryOverviewPanel({
               data-testid="regenerate-outdated-btn"
             >
               <RotateCw className="mr-2 h-3 w-3" />
-              Regenerate Outdated ({stats.has_stem_outdated_count})
+              {t('library.regenerateOutdated', { count: stats.has_stem_outdated_count })}
             </Button>
           </div>
         </>
@@ -187,16 +189,17 @@ function StatCard({
 }
 
 function StatusBar({ stats }: { stats: LibraryScanResultV2 }) {
+  const { t } = useTranslation();
   const total = stats.total_sources;
   if (total === 0) return null;
 
   const segments = [
-    { count: stats.has_stem_current_count, color: 'bg-green-500', label: 'Current' },
-    { count: stats.has_stem_outdated_count, color: 'bg-yellow-500', label: 'Outdated' },
-    { count: stats.has_stem_unknown_provenance_count, color: 'bg-blue-500', label: 'Unknown' },
-    { count: stats.orphaned_stem_count, color: 'bg-red-500', label: 'Orphaned' },
-    { count: stats.no_stem_count, color: 'bg-gray-400', label: 'No Stem' },
-    { count: stats.ignored_count, color: 'bg-gray-300', label: 'Ignored' },
+    { count: stats.has_stem_current_count, color: 'bg-green-500', label: t('library.current') },
+    { count: stats.has_stem_outdated_count, color: 'bg-yellow-500', label: t('library.outdated') },
+    { count: stats.has_stem_unknown_provenance_count, color: 'bg-blue-500', label: t('library.unknown') },
+    { count: stats.orphaned_stem_count, color: 'bg-red-500', label: t('library.orphaned') },
+    { count: stats.no_stem_count, color: 'bg-gray-400', label: t('library.noStem') },
+    { count: stats.ignored_count, color: 'bg-gray-300', label: t('library.ignored') },
   ].filter((s) => s.count > 0);
 
   return (

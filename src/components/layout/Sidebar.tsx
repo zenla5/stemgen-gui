@@ -1,5 +1,6 @@
-import { Music, ListMusic, Sliders, Settings } from 'lucide-react';
+import { Music, ListMusic, Sliders, Settings, Library } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 interface SidebarProps {
@@ -8,12 +9,14 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed }: SidebarProps) {
   const { activeView, setActiveView } = useAppStore();
+  const { t } = useTranslation();
 
   const navItems = [
-    { id: 'files' as const, icon: Music, label: 'Files' },
-    { id: 'queue' as const, icon: ListMusic, label: 'Queue' },
-    { id: 'mixer' as const, icon: Sliders, label: 'Mixer' },
-    { id: 'settings' as const, icon: Settings, label: 'Settings' },
+    { id: 'files' as const, icon: Music, label: t('nav.files') },
+    { id: 'queue' as const, icon: ListMusic, label: t('nav.queue') },
+    { id: 'mixer' as const, icon: Sliders, label: t('nav.mixer') },
+    { id: 'library' as const, icon: Library, label: t('nav.library') },
+    { id: 'settings' as const, icon: Settings, label: t('nav.settings') },
   ];
 
   return (
@@ -52,7 +55,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
       {!collapsed && (
         <div className="border-t p-4">
           <p className="text-xs text-muted-foreground">
-            Press 1-4 to navigate
+            {t('nav.shortcutHint')}
           </p>
         </div>
       )}

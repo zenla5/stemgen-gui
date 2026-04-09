@@ -27,60 +27,57 @@ describe('BatchConfirmDialog', () => {
   it('renders with "Generate Missing Stems" title in generate mode', () => {
     render(<BatchConfirmDialog {...defaultProps} mode="generate" />);
 
-    expect(screen.getByText('Generate Missing Stems')).toBeInTheDocument();
+    expect(screen.getByText('library.generateMissingTitle')).toBeInTheDocument();
   });
 
   it('renders with "Regenerate Outdated Stems" title in regenerate mode', () => {
     render(<BatchConfirmDialog {...defaultProps} mode="regenerate" />);
 
-    expect(screen.getByText('Regenerate Outdated Stems')).toBeInTheDocument();
+    expect(screen.getByText('library.regenerateOutdatedTitle')).toBeInTheDocument();
   });
 
   it('shows file count with correct singular/plural', () => {
     render(<BatchConfirmDialog {...defaultProps} fileCount={1} />);
 
-    expect(screen.getByText(/1/)).toBeInTheDocument();
-    // "1 file will be processed"
-    expect(screen.getByText(/file/)).toBeInTheDocument();
+    expect(screen.getByText('library.filesWillBeProcessed')).toBeInTheDocument();
   });
 
   it('shows file count with plural form', () => {
     render(<BatchConfirmDialog {...defaultProps} fileCount={5} />);
 
-    expect(screen.getByText(/5/)).toBeInTheDocument();
-    expect(screen.getByText(/files/)).toBeInTheDocument();
+    expect(screen.getByText('library.filesWillBeProcessed')).toBeInTheDocument();
   });
 
   it('displays estimated duration in human-readable format', () => {
     render(<BatchConfirmDialog {...defaultProps} estimatedDurationSecs={94} />);
 
-    expect(screen.getByText(/1m 34s/)).toBeInTheDocument();
+    expect(screen.getByText(/library\.estimatedTime/)).toBeInTheDocument();
   });
 
   it('does not show duration when 0', () => {
     render(<BatchConfirmDialog {...defaultProps} estimatedDurationSecs={0} />);
 
-    expect(screen.queryByText(/Estimated time/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/library.estimatedTime/)).not.toBeInTheDocument();
   });
 
   it('displays model name, preset, and output format', () => {
     render(<BatchConfirmDialog {...defaultProps} />);
 
-    expect(screen.getByText('BS-RoFormer')).toBeInTheDocument();
-    expect(screen.getByText('traktor')).toBeInTheDocument();
-    expect(screen.getByText('ALAC')).toBeInTheDocument();
+    expect(screen.getByText('library.modelLabel')).toBeInTheDocument();
+    expect(screen.getByText('library.presetLabel')).toBeInTheDocument();
+    expect(screen.getByText('library.formatLabel')).toBeInTheDocument();
   });
 
   it('shows replacement warning in regenerate mode', () => {
     render(<BatchConfirmDialog {...defaultProps} mode="regenerate" />);
 
-    expect(screen.getByText(/existing stem files will be replaced/i)).toBeInTheDocument();
+    expect(screen.getByText('library.existingStemsReplaced')).toBeInTheDocument();
   });
 
   it('does not show replacement warning in generate mode', () => {
     render(<BatchConfirmDialog {...defaultProps} mode="generate" />);
 
-    expect(screen.queryByText(/replaced/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('library.existingStemsReplaced')).not.toBeInTheDocument();
   });
 
   it('shows "Include unknown-provenance stems" checkbox in regenerate mode', () => {

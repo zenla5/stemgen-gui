@@ -93,7 +93,7 @@ describe('LibraryOverviewPanel', () => {
     render(<LibraryOverviewPanel selectedRootId="root-1" onOpenSettings={vi.fn()} />);
 
     expect(screen.getByText('/music')).toBeInTheDocument();
-    expect(screen.getByText(/last scanned/i)).toBeInTheDocument();
+    expect(screen.getByText(/library\.lastScanned/)).toBeInTheDocument();
   });
 
   it('renders stat grid with correct values', () => {
@@ -136,7 +136,7 @@ describe('LibraryOverviewPanel', () => {
 
     render(<LibraryOverviewPanel selectedRootId="root-1" onOpenSettings={vi.fn()} />);
 
-    expect(screen.getByText('Scanning...')).toBeInTheDocument();
+    expect(screen.getByText('library.scanning')).toBeInTheDocument();
     expect(screen.getByTestId('scan-now-btn')).toBeDisabled();
   });
 
@@ -147,7 +147,7 @@ describe('LibraryOverviewPanel', () => {
     render(
       <LibraryOverviewPanel selectedRootId="root-1" onOpenSettings={onOpenSettings} />
     );
-    await user.click(screen.getByLabelText('Settings'));
+    await user.click(screen.getByLabelText('library.settings'));
 
     expect(onOpenSettings).toHaveBeenCalledOnce();
   });
@@ -168,7 +168,7 @@ describe('LibraryOverviewPanel', () => {
   it('Generate Missing button shows count', () => {
     render(<LibraryOverviewPanel selectedRootId="root-1" onOpenSettings={vi.fn()} />);
 
-    expect(screen.getByText('Generate Missing (40)')).toBeInTheDocument();
+    expect(screen.getByText('library.generateMissing')).toBeInTheDocument();
   });
 
   it('Regenerate Outdated button is disabled when outdated count is 0', () => {
@@ -181,7 +181,7 @@ describe('LibraryOverviewPanel', () => {
   it('Regenerate Outdated button shows count', () => {
     render(<LibraryOverviewPanel selectedRootId="root-1" onOpenSettings={vi.fn()} />);
 
-    expect(screen.getByText('Regenerate Outdated (15)')).toBeInTheDocument();
+    expect(screen.getByText('library.regenerateOutdated')).toBeInTheDocument();
   });
 
   it('Generate Missing opens confirmation dialog', async () => {
@@ -191,7 +191,7 @@ describe('LibraryOverviewPanel', () => {
     await user.click(screen.getByTestId('generate-missing-btn'));
 
     expect(screen.getByTestId('batch-confirm-dialog')).toBeInTheDocument();
-    expect(screen.getByText('Generate Missing Stems')).toBeInTheDocument();
+    expect(screen.getByText('library.generateMissingTitle')).toBeInTheDocument();
   });
 
   it('Regenerate Outdated opens confirmation dialog', async () => {
@@ -201,7 +201,7 @@ describe('LibraryOverviewPanel', () => {
     await user.click(screen.getByTestId('regenerate-outdated-btn'));
 
     expect(screen.getByTestId('batch-confirm-dialog')).toBeInTheDocument();
-    expect(screen.getByText('Regenerate Outdated Stems')).toBeInTheDocument();
+    expect(screen.getByText('library.regenerateOutdatedTitle')).toBeInTheDocument();
   });
 
   it('Generate Missing confirmation calls queueGenerate and startProcessor', async () => {

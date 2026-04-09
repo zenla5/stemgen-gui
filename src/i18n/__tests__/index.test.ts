@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { supportedLanguages, changeLanguage, type SupportedLanguage } from '../index';
+import en from '../en.json';
+import de from '../de.json';
 
 // Mock i18next
 vi.mock('i18next', () => ({
@@ -70,6 +72,25 @@ describe('i18n module', () => {
     it('should accept SupportedLanguage parameter', async () => {
       await expect(changeLanguage('en')).resolves.not.toThrow();
       await expect(changeLanguage('de')).resolves.not.toThrow();
+    });
+  });
+
+  describe('en/de library namespace parity', () => {
+    it('should have the same keys in en.json.library and de.json.library', () => {
+      const enKeys = Object.keys(en.library ?? {}).sort();
+      const deKeys = Object.keys(de.library ?? {}).sort();
+      expect(enKeys).toEqual(deKeys);
+    });
+
+    it('should have the same nav keys in both language files', () => {
+      const enNavKeys = Object.keys(en.nav ?? {}).sort();
+      const deNavKeys = Object.keys(de.nav ?? {}).sort();
+      expect(enNavKeys).toEqual(deNavKeys);
+    });
+
+    it('should have a non-empty library namespace in both languages', () => {
+      expect(Object.keys(en.library ?? {}).length).toBeGreaterThan(0);
+      expect(Object.keys(de.library ?? {}).length).toBeGreaterThan(0);
     });
   });
 });

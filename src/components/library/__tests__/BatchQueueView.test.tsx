@@ -85,7 +85,7 @@ describe('BatchQueueView', () => {
   it('renders overlay with title "Processing Stems"', () => {
     render(<BatchQueueView rootId="root-1" onClose={vi.fn()} />);
 
-    expect(screen.getByText('Processing Stems')).toBeInTheDocument();
+    expect(screen.getByText('library.processingStems')).toBeInTheDocument();
     expect(screen.getByTestId('batch-queue-overlay')).toBeInTheDocument();
   });
 
@@ -93,7 +93,7 @@ describe('BatchQueueView', () => {
     resetStore({ queueStatus: doneStatus, isProcessing: false });
     render(<BatchQueueView rootId="root-1" onClose={vi.fn()} />);
 
-    expect(screen.getByText('Batch Complete')).toBeInTheDocument();
+    expect(screen.getByText('library.batchComplete')).toBeInTheDocument();
   });
 
   it('renders progress bar', () => {
@@ -105,7 +105,7 @@ describe('BatchQueueView', () => {
   it('shows correct completed / total count', () => {
     render(<BatchQueueView rootId="root-1" onClose={vi.fn()} />);
 
-    expect(screen.getByText('0 / 3 files')).toBeInTheDocument();
+    expect(screen.getByText(/library\.filesProgress/)).toBeInTheDocument();
   });
 
   it('renders scrollable item list with 3 items', () => {
@@ -139,7 +139,7 @@ describe('BatchQueueView', () => {
     resetStore({ isPaused: true });
     render(<BatchQueueView rootId="root-1" onClose={vi.fn()} />);
 
-    expect(screen.getByText('Resume')).toBeInTheDocument();
+    expect(screen.getByText('library.resume')).toBeInTheDocument();
   });
 
   it('Resume button calls resumeQueue', async () => {
@@ -158,7 +158,7 @@ describe('BatchQueueView', () => {
     render(<BatchQueueView rootId="root-1" onClose={vi.fn()} />);
     await user.click(screen.getByTestId('batch-cancel-all-btn'));
 
-    expect(screen.getByText('Cancel all?')).toBeInTheDocument();
+    expect(screen.getByText('library.cancelAllQuestion')).toBeInTheDocument();
     expect(screen.getByTestId('batch-cancel-confirm-btn')).toBeInTheDocument();
   });
 
@@ -182,7 +182,7 @@ describe('BatchQueueView', () => {
     await user.click(screen.getByTestId('batch-cancel-all-btn'));
     await user.click(screen.getByTestId('batch-cancel-dismiss-btn'));
 
-    expect(screen.queryByText('Cancel all?')).not.toBeInTheDocument();
+    expect(screen.queryByText('library.cancelAllQuestion')).not.toBeInTheDocument();
   });
 
   it('Close button calls onClose when done', async () => {
@@ -202,8 +202,8 @@ describe('BatchQueueView', () => {
 
     const summary = screen.getByTestId('batch-done-summary');
     expect(summary).toBeInTheDocument();
-    expect(screen.getByText(/2 done/)).toBeInTheDocument();
-    expect(screen.getByText(/1 errors/)).toBeInTheDocument();
+    expect(screen.getByText(/library.doneCount/)).toBeInTheDocument();
+    expect(screen.getByText(/library.errorsCount/)).toBeInTheDocument();
   });
 
   it('inits batch queue listener on mount', () => {

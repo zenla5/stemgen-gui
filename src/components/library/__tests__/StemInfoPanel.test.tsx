@@ -54,7 +54,7 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/bad.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Error Loading Stem Info')).toBeInTheDocument();
+      expect(screen.getByText('library.errorLoadingStemInfo')).toBeInTheDocument();
     });
     expect(screen.getByText('File not found')).toBeInTheDocument();
   });
@@ -80,7 +80,7 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/music/track1.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Stem Information')).toBeInTheDocument();
+      expect(screen.getByText('library.stemInformation')).toBeInTheDocument();
     });
 
     // Separation Model section
@@ -113,10 +113,10 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/music/unknown.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('No provenance metadata found')).toBeInTheDocument();
+      expect(screen.getByText('library.noProvenance')).toBeInTheDocument();
     });
     expect(
-      screen.getByText('This stem file may have been created with an older version of stemgen-gui.')
+      screen.getByText('library.noProvenanceDescription')
     ).toBeInTheDocument();
   });
 
@@ -131,7 +131,7 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/music/track1.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Source Verified')).toBeInTheDocument();
+      expect(screen.getByText('library.sourceVerified')).toBeInTheDocument();
     });
   });
 
@@ -146,7 +146,7 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/music/track1.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Source Modified')).toBeInTheDocument();
+      expect(screen.getByText('library.sourceModified')).toBeInTheDocument();
     });
   });
 
@@ -160,7 +160,7 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/music/track1.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Source Missing')).toBeInTheDocument();
+      expect(screen.getByText('library.sourceMissing')).toBeInTheDocument();
     });
   });
 
@@ -194,7 +194,7 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/music/track1.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Stem Information')).toBeInTheDocument();
+      expect(screen.getByText('library.stemInformation')).toBeInTheDocument();
     });
 
     // Find copy buttons by their ghost variant class pattern (h-6 w-6 p-0)
@@ -219,10 +219,10 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/music/track1.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Stem Information')).toBeInTheDocument();
+      expect(screen.getByText('library.stemInformation')).toBeInTheDocument();
     });
 
-    const saveButton = screen.getByText('Save Notes');
+    const saveButton = screen.getByText('library.saveNotes');
     await user.click(saveButton);
 
     await waitFor(() => {
@@ -246,14 +246,14 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/music/track1.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Stem Information')).toBeInTheDocument();
+      expect(screen.getByText('library.stemInformation')).toBeInTheDocument();
     });
 
-    const saveButton = screen.getByText('Save Notes');
+    const saveButton = screen.getByText('library.saveNotes');
     await user.click(saveButton);
 
     await waitFor(() => {
-      expect(screen.getByText('Error Loading Stem Info')).toBeInTheDocument();
+      expect(screen.getByText('library.errorLoadingStemInfo')).toBeInTheDocument();
     });
     expect(screen.getByText('Write failed')).toBeInTheDocument();
   });
@@ -296,7 +296,7 @@ describe('StemInfoPanel', () => {
     render(<StemInfoPanel stemPath="/music/minimal.stem.mp4" />);
 
     await waitFor(() => {
-      expect(screen.getByText('Stem Information')).toBeInTheDocument();
+      expect(screen.getByText('library.stemInformation')).toBeInTheDocument();
     });
 
     // Required fields visible
@@ -304,9 +304,9 @@ describe('StemInfoPanel', () => {
     expect(screen.getByText('job-min')).toBeInTheDocument();
 
     // Optional fields should not be present
-    expect(screen.queryByText('Version')).not.toBeInTheDocument();
-    expect(screen.queryByText('stemgen Version')).not.toBeInTheDocument();
-    expect(screen.queryByText('Quality Preset')).not.toBeInTheDocument();
-    expect(screen.queryByText('Batch ID')).not.toBeInTheDocument();
+    expect(screen.queryByText('library.version')).not.toBeInTheDocument();
+    expect(screen.queryByText('library.stemgen')).not.toBeInTheDocument();
+    expect(screen.queryByText('library.qualityPreset')).not.toBeInTheDocument();
+    expect(screen.queryByText('library.batchId')).not.toBeInTheDocument();
   });
 });

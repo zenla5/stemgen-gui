@@ -243,7 +243,7 @@ describe('LibraryTable', () => {
 
     await user.click(screen.getByTestId('row-e2'));
 
-    expect(screen.getByText('No stem file for this entry.')).toBeInTheDocument();
+    expect(screen.getByText('library.noStemForEntry')).toBeInTheDocument();
   });
 
   it('closes detail panel when close button is clicked', async () => {
@@ -267,9 +267,9 @@ describe('LibraryTable', () => {
     await user.pointer({ keys: '[MouseRight>]', target: row });
 
     expect(screen.getByTestId('context-menu')).toBeInTheDocument();
-    expect(screen.getByText('Regenerate')).toBeInTheDocument();
-    expect(screen.getByText('Mark as Ignored')).toBeInTheDocument();
-    expect(screen.getByText('Delete Stem')).toBeInTheDocument();
+    expect(screen.getByText('library.regenerate')).toBeInTheDocument();
+    expect(screen.getByText('library.markAsIgnored')).toBeInTheDocument();
+    expect(screen.getByText('library.deleteStem')).toBeInTheDocument();
   });
 
   it('renders pagination when more than 50 entries', () => {
@@ -281,7 +281,7 @@ describe('LibraryTable', () => {
 
     expect(screen.getByTestId('prev-page')).toBeInTheDocument();
     expect(screen.getByTestId('next-page')).toBeInTheDocument();
-    expect(screen.getByText(/page 1 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/library\.entriesPageInfo/)).toBeInTheDocument();
   });
 
   it('does not render pagination when 50 or fewer entries', () => {

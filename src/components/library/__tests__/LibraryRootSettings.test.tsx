@@ -71,7 +71,7 @@ describe('LibraryRootSettings', () => {
   it('renders empty state CTA when no roots configured', () => {
     render(<LibraryRootSettings onClose={vi.fn()} />);
 
-    expect(screen.getByText('No library roots configured.')).toBeInTheDocument();
+    expect(screen.getByText('library.noRoots')).toBeInTheDocument();
     expect(screen.getByTestId('empty-add-root-btn')).toBeInTheDocument();
   });
 
@@ -102,7 +102,7 @@ describe('LibraryRootSettings', () => {
     expect(mockOpen).toHaveBeenCalledWith({
       directory: true,
       multiple: false,
-      title: 'Select Library Root Folder',
+      title: 'library.selectRootFolder',
     });
   });
 
@@ -258,7 +258,7 @@ describe('LibraryRootSettings', () => {
     const onClose = vi.fn();
 
     render(<LibraryRootSettings onClose={onClose} />);
-    await user.click(screen.getByLabelText('Close settings'));
+    await user.click(screen.getByLabelText('library.closeSettings'));
 
     expect(onClose).toHaveBeenCalledOnce();
   });

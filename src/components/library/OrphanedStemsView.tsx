@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { Button } from '@/components/ui/Button';
 import { formatTimestamp } from '@/lib/types/library';
@@ -18,6 +19,7 @@ interface OrphanedStemsViewProps {
 }
 
 export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
+  const { t } = useTranslation();
   const { orphans, loadOrphans, deleteOrphan, relinkOrphan, ignoreOrphan } = useLibraryStore();
   const [search, setSearch] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
     const selected = await open({
       directory: false,
       multiple: false,
-      title: 'Select replacement source file',
+      title: t('library.selectReplacementSource'),
     });
     if (selected && typeof selected === 'string') {
       const result = await relinkOrphan(stemPath, selected);
@@ -72,7 +74,7 @@ export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
   if (orphans.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-muted-foreground" data-testid="orphans-empty">
-        No orphaned stems found.
+        {t('library.noOrphans')}
       </div>
     );
   }
@@ -82,15 +84,15 @@ export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div>
-          <h3 className="text-sm font-medium">Orphaned Stems</h3>
+          <h3 className="text-sm font-medium">{t('library.orphanedStems')}</h3>
           <p className="text-xs text-muted-foreground">
-            {orphans.length} orphaned stem{orphans.length !== 1 ? 's' : ''} found
+            {t('library.orphanedStemsCount', { count: orphans.length })}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <input
             type="text"
-            placeholder="Filter..."
+            placeholder={t('library.filter')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-8 rounded-md border border-input bg-background px-3 text-sm"
@@ -99,14 +101,14 @@ export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
           {bulkDeleteConfirm ? (
             <div className="flex items-center gap-2 text-sm">
               <AlertTriangle className="h-4 w-4 text-yellow-500" />
-              <span>Delete all {orphans.length}?</span>
+              <span>{t('library.deleteAllQuestion', { count: orphans.length })}</span>
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={handleBulkDelete}
                 data-testid="bulk-delete-confirm-btn"
               >
-                Yes
+                {t('library.yes')}
               </Button>
               <Button
                 variant="outline"
@@ -114,7 +116,7 @@ export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
                 onClick={() => setBulkDeleteConfirm(false)}
                 data-testid="bulk-delete-cancel-btn"
               >
-                No
+                {t('library.no')}
               </Button>
             </div>
           ) : (
@@ -125,7 +127,7 @@ export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
               data-testid="bulk-delete-btn"
             >
               <Trash2 className="mr-2 h-3 w-3" />
-              Delete All
+              {t('library.deleteAll')}
             </Button>
           )}
         </div>
@@ -142,8 +144,8 @@ export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
           data-testid="relink-result-toast"
         >
           {relinkResult.matched
-            ? 'Source matched! Stem has been re-linked.'
-            : 'Source hash does not match. Re-link failed.'}
+            ? t('library.relinkSuccess')
+            : t('library.relinkFailed')}
         </div>
       )}
 
@@ -151,7 +153,7 @@ export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
       <div className="flex-1 overflow-auto">
         {filtered.length === 0 ? (
           <div className="p-4 text-center text-sm text-muted-foreground">
-            No orphans match your filter.
+            {t('library.noOrphansMatchFilter')}
           </div>
         ) : (
           filtered.map((orphan) => (
@@ -191,6 +193,7 @@ function OrphanRow({
   onRelink: () => void;
   onIgnore: () => void;
 }) {
+  const { t } = useTranslation();
   const stemFilename = orphan.stem_path.split(/[/\\]/).pop() ?? orphan.stem_path;
   const sourceFilename =
     orphan.last_known_source_path.split(/[/\\]/).pop() ?? orphan.last_known_source_path;
@@ -205,7 +208,7 @@ function OrphanRow({
           {stemFilename}
         </p>
         <p className="truncate text-xs text-muted-foreground" title={orphan.last_known_source_path}>
-          Was: {sourceFilename}
+          {t('library.was', { filename: sourceFilename })}
         </p>
         <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
           {orphan.file_size != null && (
@@ -218,7 +221,7 @@ function OrphanRow({
       <div className="flex items-center gap-1">
         {isDeleteConfirming ? (
           <>
-            <span className="text-xs text-muted-foreground mr-1">Delete?</span>
+            <span className="text-xs text-muted-foreground mr-1">{t('library.deleteQuestion')}</span>
             <Button
               variant="destructive"
               size="sm"
@@ -226,7 +229,7 @@ function OrphanRow({
               onClick={onDeleteConfirm}
               data-testid="delete-confirm-btn"
             >
-              Yes
+              {t('library.yes')}
             </Button>
             <Button
               variant="outline"
@@ -235,7 +238,7 @@ function OrphanRow({
               onClick={onDeleteCancel}
               data-testid="delete-cancel-btn"
             >
-              No
+              {t('library.no')}
             </Button>
           </>
         ) : (
@@ -245,8 +248,8 @@ function OrphanRow({
               size="sm"
               className="h-7 px-2"
               onClick={onRelink}
-              title="Re-link to source"
-              aria-label="Re-link to source"
+              title={t('library.relinkToSource')}
+              aria-label={t('library.relinkToSource')}
               data-testid="relink-btn"
             >
               <Link2 className="h-3 w-3" />
@@ -256,8 +259,8 @@ function OrphanRow({
               size="sm"
               className="h-7 px-2"
               onClick={onIgnore}
-              title="Ignore"
-              aria-label="Ignore"
+              title={t('library.ignore')}
+              aria-label={t('library.ignore')}
               data-testid="ignore-btn"
             >
               <EyeOff className="h-3 w-3" />
@@ -267,8 +270,8 @@ function OrphanRow({
               size="sm"
               className="h-7 px-2"
               onClick={onDeleteRequest}
-              title="Delete"
-              aria-label="Delete"
+              title={t('library.delete')}
+              aria-label={t('library.delete')}
               data-testid="delete-btn"
             >
               <Trash2 className="h-3 w-3 text-destructive" />

@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -43,10 +44,11 @@ export function BatchConfirmDialog({
   onConfirm,
   onCancel,
 }: BatchConfirmDialogProps) {
+  const { t } = useTranslation();
   const [includeUnknown, setIncludeUnknown] = useState(false);
 
   const title =
-    mode === 'generate' ? 'Generate Missing Stems' : 'Regenerate Outdated Stems';
+    mode === 'generate' ? t('library.generateMissingTitle') : t('library.regenerateOutdatedTitle');
 
   return (
     <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
@@ -57,26 +59,26 @@ export function BatchConfirmDialog({
             <div className="space-y-3">
               <p>
                 <span className="font-medium text-foreground">{fileCount}</span>{' '}
-                file{fileCount !== 1 ? 's' : ''} will be processed.
+                {t('library.filesWillBeProcessed', { count: fileCount })}
               </p>
 
               {estimatedDurationSecs > 0 && (
                 <p className="text-sm">
-                  Estimated time: {formatDuration(estimatedDurationSecs)}
+                  {t('library.estimatedTime', { duration: formatDuration(estimatedDurationSecs) })}
                 </p>
               )}
 
               <div className="text-sm space-y-1">
                 <p>
-                  <span className="text-muted-foreground">Model:</span>{' '}
+                  <span className="text-muted-foreground">{t('library.modelLabel')}</span>{' '}
                   <span className="text-foreground">{modelName}</span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground">Preset:</span>{' '}
+                  <span className="text-muted-foreground">{t('library.presetLabel')}</span>{' '}
                   <span className="text-foreground">{djPreset}</span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground">Format:</span>{' '}
+                  <span className="text-muted-foreground">{t('library.formatLabel')}</span>{' '}
                   <span className="text-foreground">{outputFormat.toUpperCase()}</span>
                 </p>
               </div>
@@ -84,7 +86,7 @@ export function BatchConfirmDialog({
               {mode === 'regenerate' && (
                 <>
                   <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                    Existing stem files will be replaced.
+                    {t('library.existingStemsReplaced')}
                   </p>
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input
@@ -93,7 +95,7 @@ export function BatchConfirmDialog({
                       onChange={(e) => setIncludeUnknown(e.target.checked)}
                       data-testid="include-unknown-checkbox"
                     />
-                    Include unknown-provenance stems
+                    {t('library.includeUnknownProvenance')}
                   </label>
                 </>
               )}
@@ -102,13 +104,13 @@ export function BatchConfirmDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel data-testid="batch-cancel-btn" onClick={onCancel}>
-            Cancel
+            {t('library.cancel')}
           </AlertDialogCancel>
           <AlertDialogAction
             data-testid="batch-start-btn"
             onClick={() => onConfirm(includeUnknown)}
           >
-            Start
+            {t('library.start')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

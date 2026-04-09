@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { Button } from '@/components/ui/Button';
 import { LibraryRootSettings } from './LibraryRootSettings';
@@ -15,6 +16,7 @@ import { Plus } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 
 export function LibraryView() {
+  const { t } = useTranslation();
   const { libraryRoots, loadLibraryRoots, scanLibraryRoot, isScanning } =
     useLibraryStore();
   const [showSettings, setShowSettings] = useState(false);
@@ -37,7 +39,7 @@ export function LibraryView() {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Select Library Root',
+      title: t('library.selectRoot'),
     });
     if (selected && typeof selected === 'string') {
       const { addLibraryRoot } = useLibraryStore.getState();
@@ -51,14 +53,14 @@ export function LibraryView() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
         <div className="text-center">
-          <h2 className="text-2xl font-semibold">Set up your Library</h2>
+          <h2 className="text-2xl font-semibold">{t('library.setUpLibrary')}</h2>
           <p className="mt-2 text-muted-foreground">
-            Add a folder containing your music collection to get started with stem management.
+            {t('library.setUpDescription')}
           </p>
         </div>
         <Button onClick={handleAddRoot} size="lg">
           <Plus className="mr-2 h-5 w-5" />
-          Add Library Folder
+          {t('library.addLibraryFolder')}
         </Button>
       </div>
     );
@@ -79,7 +81,7 @@ export function LibraryView() {
       <div className="flex-1 overflow-hidden">
         {isScanning ? (
           <div className="flex h-full items-center justify-center text-muted-foreground">
-            Scanning...
+            {t('library.scanning')}
           </div>
         ) : (
           <LibraryTable />

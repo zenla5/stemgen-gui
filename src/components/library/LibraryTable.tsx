@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { StemInfoPanel } from './StemInfoPanel';
 import { Button } from '@/components/ui/Button';
@@ -62,10 +63,11 @@ function ContextMenu({
   onClose: () => void;
   onAction: (action: string, entry: LibraryIndexEntry) => void;
 }) {
+  const { t } = useTranslation();
   const items = [
-    { label: 'Regenerate', action: 'regenerate' },
-    { label: 'Mark as Ignored', action: 'ignore' },
-    { label: 'Delete Stem', action: 'delete' },
+    { label: t('library.regenerate'), action: 'regenerate' },
+    { label: t('library.markAsIgnored'), action: 'ignore' },
+    { label: t('library.deleteStem'), action: 'delete' },
   ];
 
   return (
@@ -95,6 +97,7 @@ function ContextMenu({
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function LibraryTable() {
+  const { t } = useTranslation();
   const {
     libraryIndex,
     statusFilter,
@@ -253,7 +256,7 @@ export function LibraryTable() {
   if (libraryIndex.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground" data-testid="library-table-empty">
-        No entries found. Scan your library to see entries here.
+        {t('library.noEntries')}
       </div>
     );
   }
@@ -271,7 +274,7 @@ export function LibraryTable() {
           {/* Search */}
           <input
             type="text"
-            placeholder="Search files..."
+            placeholder={t('library.searchFiles')}
             value={searchQuery}
             onChange={handleSearchChange}
             className="h-8 rounded-md border border-input bg-background px-3 text-sm"
@@ -306,16 +309,16 @@ export function LibraryTable() {
             className="h-8 rounded-md border border-input bg-background px-2 text-xs"
             data-testid="group-select"
           >
-            <option value="none">No grouping</option>
-            <option value="folder">Group by folder</option>
-            <option value="model">Group by model</option>
-            <option value="status">Group by status</option>
+            <option value="none">{t('library.noGrouping')}</option>
+            <option value="folder">{t('library.groupByFolder')}</option>
+            <option value="model">{t('library.groupByModel')}</option>
+            <option value="status">{t('library.groupByStatus')}</option>
           </select>
 
           {/* Selection info */}
           {selectedStems.size > 0 && (
             <span className="ml-auto text-xs text-muted-foreground">
-              {selectedStems.size} selected
+              {t('library.selected', { count: selectedStems.size })}
             </span>
           )}
         </div>
@@ -340,7 +343,7 @@ export function LibraryTable() {
                     onClick={() => handleSort('status')}
                     data-testid="sort-status"
                   >
-                    Status <SortIcon field="status" />
+                    {t('library.status')} <SortIcon field="status" />
                   </button>
                 </th>
                 <th className="px-2 py-2 text-left">
@@ -349,7 +352,7 @@ export function LibraryTable() {
                     onClick={() => handleSort('source_path')}
                     data-testid="sort-source-path"
                   >
-                    File <SortIcon field="source_path" />
+                    {t('library.file')} <SortIcon field="source_path" />
                   </button>
                 </th>
                 <th className="px-2 py-2 text-left">
@@ -358,7 +361,7 @@ export function LibraryTable() {
                     onClick={() => handleSort('stem_model')}
                     data-testid="sort-stem-model"
                   >
-                    Model <SortIcon field="stem_model" />
+                    {t('library.model')} <SortIcon field="stem_model" />
                   </button>
                 </th>
                 <th className="px-2 py-2 text-left">
@@ -367,7 +370,7 @@ export function LibraryTable() {
                     onClick={() => handleSort('stem_date')}
                     data-testid="sort-stem-date"
                   >
-                    Stem Date <SortIcon field="stem_date" />
+                    {t('library.stemDate')} <SortIcon field="stem_date" />
                   </button>
                 </th>
                 <th className="w-10 px-2 py-2" />
@@ -444,7 +447,7 @@ export function LibraryTable() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">
             <span>
-              {sortedEntries.length} entries &middot; Page {safePage + 1} of {totalPages}
+              {t('library.entriesPageInfo', { count: sortedEntries.length, page: safePage + 1, totalPages })}
             </span>
             <div className="flex gap-1">
               <Button
@@ -454,7 +457,7 @@ export function LibraryTable() {
                 onClick={() => setPage((p) => p - 1)}
                 data-testid="prev-page"
               >
-                Prev
+                {t('library.prev')}
               </Button>
               <Button
                 variant="outline"
@@ -463,7 +466,7 @@ export function LibraryTable() {
                 onClick={() => setPage((p) => p + 1)}
                 data-testid="next-page"
               >
-                Next
+                {t('library.next')}
               </Button>
             </div>
           </div>
@@ -491,7 +494,7 @@ export function LibraryTable() {
             <StemInfoPanel stemPath={selectedEntry.stem_path} />
           ) : (
             <div className="p-4 text-sm text-muted-foreground">
-              No stem file for this entry.
+              {t('library.noStemForEntry')}
             </div>
           )}
         </div>

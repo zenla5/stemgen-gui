@@ -56,7 +56,7 @@ describe('OrphanedStemsView', () => {
     render(<OrphanedStemsView rootId="root-1" />);
 
     expect(screen.getByTestId('orphans-empty')).toBeInTheDocument();
-    expect(screen.getByText('No orphaned stems found.')).toBeInTheDocument();
+    expect(screen.getByText('library.noOrphans')).toBeInTheDocument();
   });
 
   it('renders orphan list with 2 entries', () => {
@@ -72,14 +72,14 @@ describe('OrphanedStemsView', () => {
     resetStore([orphan1, orphan2]);
     render(<OrphanedStemsView rootId="root-1" />);
 
-    expect(screen.getByText('2 orphaned stems found')).toBeInTheDocument();
+    expect(screen.getByText(/library\.orphanedStemsCount/)).toBeInTheDocument();
   });
 
   it('shows last known source path for each orphan', () => {
     resetStore([orphan1]);
     render(<OrphanedStemsView rootId="root-1" />);
 
-    expect(screen.getByText(/Was: track1.flac/)).toBeInTheDocument();
+    expect(screen.getByText(/library\.was/)).toBeInTheDocument();
   });
 
   it('shows file size formatted', () => {
@@ -169,7 +169,7 @@ describe('OrphanedStemsView', () => {
     render(<OrphanedStemsView rootId="root-1" />);
     await user.click(screen.getByTestId('bulk-delete-btn'));
 
-    expect(screen.getByText('Delete all 2?')).toBeInTheDocument();
+    expect(screen.getByText(/library\.deleteAllQuestion/)).toBeInTheDocument();
   });
 
   it('Bulk Delete confirm calls deleteOrphan for each orphan', async () => {
@@ -195,7 +195,7 @@ describe('OrphanedStemsView', () => {
     await user.click(screen.getByTestId('bulk-delete-btn'));
     await user.click(screen.getByTestId('bulk-delete-cancel-btn'));
 
-    expect(screen.queryByText(/Delete all/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/library\.deleteAllQuestion/)).not.toBeInTheDocument();
   });
 
   it('calls loadOrphans on mount', () => {
