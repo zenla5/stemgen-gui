@@ -41,6 +41,11 @@ try:
 except ImportError:
     requests = None  # type: ignore[assignment]
 
+try:
+    import replicate as replicate_module
+except ImportError:
+    replicate_module = None  # type: ignore[assignment]
+
 # ------------------------------------------------------------------------------
 # JSON line output helper
 # ------------------------------------------------------------------------------
@@ -427,6 +432,170 @@ def run_fal(
     return stems
 
 
+# Model name mapping: local model name → Replicate model identifier
+REPLICATE_MODEL_MAP = {
+    "demucs": "ryan5453/demucs",
+    "htdemucs": "ryan5453/demucs",
+    "htdemucs_ft": "ryan5453/demucs",
+    "bs_roformer": "ryan5453/demucs",
+}
+
+REPLICATE_POLL_INTERVAL = 3  # seconds
+REPLICATE_TIMEOUT_SECONDS = 300
+
+
+def run_replicate(
+    input_path: Path,
+    output_dir: Path,
+    model: str,
+    api_key: str,
+    version_hash: str,
+) -> Dict[str, Path]:
+    """Run stem separation via Replicate cloud API.
+
+    API key is never logged or emitted.
+    """
+    if replicate_module is None or requests is None:
+        emit({
+            "status": "error",
+            "error": "Cloud provider packages not installed. Run: pip install replicate requests",
+            "fallback_hint": "switch_to_local",
+        })
+        raise ImportError("replicate and requests are required for cloud inference")
+
+    replicate_model = REPLICATE_MODEL_MAP.get(model.lower(), "ryan5453/demucs")
+    source = str(input_path.stem)
+
+    # --- Upload ---
+    emit({
+        "status": "progress",
+        "stage": "uploading",
+        "progress": 0.05,
+        "message": "Uploading audio to Replicate...",
+    })
+
+    try:
+        with open(input_path, "rb") as f:
+            prediction = replicate_module.predictions.create(
+                version=version_hash,
+                input={"audio": f},
+            )
+    except Exception as e:
+        error_msg = str(e)
+        if "401" in error_msg or "Unauthorized" in error_msg or "Invalid token" in error_msg:
+            emit({
+                "status": "error",
+                "error": "API key rejected by Replicate — check Settings",
+                "fallback_hint": "switch_to_local",
+            })
+        else:
+            emit({
+                "status": "error",
+                "error": "Upload failed — check your internet connection",
+                "fallback_hint": "switch_to_local",
+            })
+        raise
+
+    # --- Poll for completion ---
+    emit({
+        "status": "progress",
+        "stage": "queued",
+        "progress": 0.10,
+        "message": "Queued on Replicate...",
+    })
+
+    start_time = time.monotonic()
+
+    while True:
+        elapsed = time.monotonic() - start_time
+
+        if elapsed > REPLICATE_TIMEOUT_SECONDS:
+            emit({
+                "status": "error",
+                "error": "Provider timed out — try again or use Local",
+                "fallback_hint": "switch_to_local",
+            })
+            raise TimeoutError("Provider timed out — try again or use Local")
+
+        try:
+            prediction.reload()
+        except (requests.ConnectionError, requests.Timeout):
+            time.sleep(5)
+            try:
+                prediction.reload()
+            except (requests.ConnectionError, requests.Timeout):
+                emit({
+                    "status": "error",
+                    "error": "Upload failed — check your internet connection",
+                    "fallback_hint": "switch_to_local",
+                })
+                raise
+
+        if prediction.status == "succeeded":
+            break
+        elif prediction.status in ("failed", "canceled"):
+            error_detail = prediction.error or prediction.status
+            emit({
+                "status": "error",
+                "error": f"Provider returned an error: {error_detail}",
+                "fallback_hint": "switch_to_local",
+            })
+            raise RuntimeError(f"Replicate prediction {prediction.status}: {error_detail}")
+
+        # Estimate progress: linear interpolation over assumed 120s median job
+        estimated = min(0.20 + 0.60 * (elapsed / 120.0), 0.79)
+        emit({
+            "status": "progress",
+            "stage": "separating",
+            "progress": round(estimated, 3),
+            "message": "Separating stems on Replicate...",
+        })
+
+        time.sleep(REPLICATE_POLL_INTERVAL)
+
+    # --- Download stems ---
+    emit({
+        "status": "progress",
+        "stage": "downloading",
+        "progress": 0.85,
+        "message": "Downloading stems from Replicate...",
+    })
+
+    stem_urls: Dict[str, str] = {}
+    output = prediction.output
+    if isinstance(output, dict) and "stems" in output:
+        for stem_info in output["stems"]:
+            name = stem_info.get("stem", stem_info.get("type", "")).lower()
+            url = stem_info.get("url", "")
+            if name and url:
+                stem_urls[name] = url
+    elif isinstance(output, list):
+        # Output is a list of URLs — map to standard stem names
+        stem_names = ["drums", "bass", "other", "vocals"]
+        for i, url in enumerate(output):
+            if i < len(stem_names):
+                stem_urls[stem_names[i]] = url
+
+    try:
+        stems = _save_stems_from_urls(stem_urls, source, output_dir, 0.85, 0.99)
+    except requests.HTTPError:
+        emit({
+            "status": "error",
+            "error": "Download failed — check your internet connection",
+            "fallback_hint": "switch_to_local",
+        })
+        raise
+    except RuntimeError as e:
+        emit({
+            "status": "error",
+            "error": str(e),
+            "fallback_hint": "switch_to_local",
+        })
+        raise
+
+    return stems
+
+
 def run_separation(
     model: str,
     input_path: Path,
@@ -434,11 +603,14 @@ def run_separation(
     device: str,
     provider: Optional[str] = None,
     api_key: Optional[str] = None,
+    version_hash: Optional[str] = None,
 ) -> Dict[str, Path]:
     """Dispatch to the appropriate model runner."""
     # Cloud dispatch
     if device == "cloud" and provider == "fal" and api_key:
         return run_fal(input_path, output_dir, model, api_key)
+    if device == "cloud" and provider == "replicate" and api_key and version_hash:
+        return run_replicate(input_path, output_dir, model, api_key, version_hash)
 
     # Local dispatch
     model_lower = model.lower()
