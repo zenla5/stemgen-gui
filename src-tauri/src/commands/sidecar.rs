@@ -119,6 +119,7 @@ impl SidecarManager {
     /// When `provider` is Some, device is set to "cloud" and additional flags
     /// are passed. **Security note:** API key is passed as a CLI argument to the
     /// sidecar subprocess — it is never logged by tracing.
+    #[allow(clippy::too_many_arguments)]
     pub async fn run_separation(
         &mut self,
         job_id: String,
