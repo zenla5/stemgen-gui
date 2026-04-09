@@ -1,7 +1,8 @@
 /**
  * Stem Info Panel Component
- * 
+ *
  * Displays detailed provenance metadata for a selected stem file.
+ * Sections: Separation, Toolchain, Source, Export, Job, User Notes.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -16,12 +17,23 @@ import {
   History,
   Info,
   Loader2,
+  Package,
   Save,
+  Settings,
   Tag,
   XCircle,
 } from 'lucide-react';
 import type { StemProvenance, StalenessReport } from '@/lib/types/library';
-import { formatTimestamp, isStemCurrent, isStemStale, isStemUnknown } from '@/lib/types/library';
+import {
+  formatTimestamp,
+  formatDuration,
+  formatFileSize,
+  formatBitdepth,
+  getStalenessReasonDescription,
+  isStemCurrent,
+  isStemStale,
+  isStemUnknown,
+} from '@/lib/types/library';
 
 interface StemInfoPanelProps {
   stemPath: string;
@@ -41,7 +53,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
     async function loadData() {
       setIsLoading(true);
       setError(null);
-      
+
       try {
         // Load provenance
         const prov = await invoke<StemProvenance | null>('read_stem_provenance', { stemPath });
@@ -97,7 +109,7 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
   // Get staleness badge
   const StalenessBadge = () => {
     if (!stalenessReport) return null;
-    
+
     if (isStemCurrent(stalenessReport.status)) {
       return <span className="inline-flex items-center rounded-full bg-green-500 px-2 py-1 text-xs font-medium text-white">Current</span>;
     }
@@ -177,57 +189,68 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
         <p className="text-sm text-muted-foreground truncate" title={stemPath}>
           {stemPath.split(/[/\\]/).pop()}
         </p>
+
+        {/* Staleness reasons */}
+        {stalenessReport && isStemStale(stalenessReport.status) && (
+          <div className="mt-2 space-y-1">
+            {stalenessReport.status.reasons.map((reason, i) => (
+              <p key={i} className="text-xs text-yellow-600">
+                {getStalenessReasonDescription(reason)}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
-      
+
       <div className="p-6 pt-0 space-y-6">
         {provenance ? (
           <>
-            {/* Model Information */}
+            {/* SEPARATION section */}
             <section>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <Database className="h-4 w-4" />
-                Separation Model
+                Separation
               </h3>
               <div className="rounded-md border">
                 <table className="w-full">
                   <tbody>
-                    <tr className="border-b">
-                      <td className="p-3 text-muted-foreground">Model</td>
-                      <td className="p-3 font-medium">{provenance.separation_model}</td>
-                    </tr>
+                    <InfoRow label="Model" value={provenance.separation_model} />
                     {provenance.model_version && (
-                      <tr className="border-b">
-                        <td className="p-3 text-muted-foreground">Version</td>
-                        <td className="p-3 font-medium">
+                      <InfoRow
+                        label="Version"
+                        value={
                           <div className="flex items-center gap-2">
                             <code className="text-xs bg-muted px-1 py-0.5 rounded">
                               {provenance.model_version}
                             </code>
                             <CopyButton text={provenance.model_version} />
                           </div>
-                        </td>
-                      </tr>
+                        }
+                      />
                     )}
-                    {provenance.stemgen_version && (
-                      <tr className="border-b">
-                        <td className="p-3 text-muted-foreground">stemgen Version</td>
-                        <td className="p-3 font-medium">{provenance.stemgen_version}</td>
-                      </tr>
+                    {provenance.model_family && (
+                      <InfoRow label="Model Family" value={provenance.model_family} />
                     )}
-                    <tr className="border-b">
-                      <td className="p-3 text-muted-foreground">stemgen-gui Version</td>
-                      <td className="p-3 font-medium">{provenance.stemgen_gui_version}</td>
-                    </tr>
+                    {provenance.device && (
+                      <InfoRow label="Device" value={provenance.device.toUpperCase()} />
+                    )}
+                    {provenance.separation_duration_secs != null && (
+                      <InfoRow
+                        label="Duration"
+                        value={formatDuration(provenance.separation_duration_secs)}
+                      />
+                    )}
                     {provenance.separation_quality_preset && (
-                      <tr>
-                        <td className="p-3 text-muted-foreground">Quality Preset</td>
-                        <td className="p-3 font-medium">
+                      <InfoRow
+                        label="Quality Preset"
+                        value={
                           <span className="inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium">
                             {provenance.separation_quality_preset}
                           </span>
-                        </td>
-                      </tr>
+                        }
+                      />
                     )}
+                    <InfoRow label="Created At" value={formatTimestamp(provenance.separation_timestamp)} />
                   </tbody>
                 </table>
               </div>
@@ -235,49 +258,78 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
 
             <hr className="border-t" />
 
-            {/* Source Information */}
+            {/* TOOLCHAIN section */}
             <section>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <FileAudio className="h-4 w-4" />
-                Source File
+                <Settings className="h-4 w-4" />
+                Toolchain
               </h3>
               <div className="rounded-md border">
                 <table className="w-full">
                   <tbody>
-                    <tr className="border-b">
-                      <td className="p-3 text-muted-foreground">Path</td>
-                      <td className="p-3 font-medium">
+                    <InfoRow label="stemgen-gui" value={provenance.stemgen_gui_version} />
+                    {provenance.stemgen_version && (
+                      <InfoRow label="stemgen" value={provenance.stemgen_version} />
+                    )}
+                    {provenance.ffmpeg_version && (
+                      <InfoRow label="FFmpeg" value={provenance.ffmpeg_version} />
+                    )}
+                    {provenance.os_info && <InfoRow label="OS" value={provenance.os_info} />}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <hr className="border-t" />
+
+            {/* SOURCE section */}
+            <section>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <FileAudio className="h-4 w-4" />
+                Source
+              </h3>
+              <div className="rounded-md border">
+                <table className="w-full">
+                  <tbody>
+                    <InfoRow
+                      label="Path"
+                      value={
                         <div className="flex items-center gap-2 max-w-[300px]">
                           <span className="truncate" title={provenance.source_path}>
                             {provenance.source_path}
                           </span>
                           <CopyButton text={provenance.source_path} />
                         </div>
-                      </td>
-                    </tr>
-                    <tr className="border-b">
-                      <td className="p-3 text-muted-foreground">Content Hash</td>
-                      <td className="p-3 font-medium">
+                      }
+                    />
+                    <InfoRow
+                      label="SHA-256"
+                      value={
                         <div className="flex items-center gap-2">
                           <code className="text-xs bg-muted px-1 py-0.5 rounded truncate max-w-[200px]">
                             {provenance.source_content_hash}
                           </code>
                           <CopyButton text={provenance.source_content_hash} />
                         </div>
-                      </td>
-                    </tr>
-                    <tr className="border-b">
-                      <td className="p-3 text-muted-foreground">Duration</td>
-                      <td className="p-3 font-medium">
-                        {provenance.source_duration_secs.toFixed(1)} seconds
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 text-muted-foreground">Sample Rate</td>
-                      <td className="p-3 font-medium">
-                        {provenance.source_sample_rate.toLocaleString()} Hz
-                      </td>
-                    </tr>
+                      }
+                    />
+                    {provenance.source_format && (
+                      <InfoRow label="Format" value={provenance.source_format.toUpperCase()} />
+                    )}
+                    <InfoRow
+                      label="Sample Rate"
+                      value={`${provenance.source_sample_rate.toLocaleString()} Hz`}
+                    />
+                    {provenance.source_bitdepth != null && (
+                      <InfoRow label="Bit Depth" value={formatBitdepth(provenance.source_bitdepth)} />
+                    )}
+                    {provenance.source_size_bytes != null && (
+                      <InfoRow label="Size" value={formatFileSize(provenance.source_size_bytes)} />
+                    )}
+                    <InfoRow
+                      label="Duration"
+                      value={formatDuration(provenance.source_duration_secs)}
+                    />
                   </tbody>
                 </table>
               </div>
@@ -285,48 +337,76 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
 
             <hr className="border-t" />
 
-            {/* Job Information */}
+            {/* EXPORT section */}
             <section>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <History className="h-4 w-4" />
-                Job Information
+                <Package className="h-4 w-4" />
+                Export
               </h3>
               <div className="rounded-md border">
                 <table className="w-full">
                   <tbody>
-                    <tr className="border-b">
-                      <td className="p-3 text-muted-foreground">Job ID</td>
-                      <td className="p-3 font-medium">
+                    {provenance.export_codec && (
+                      <InfoRow
+                        label="Codec"
+                        value={provenance.export_codec.toUpperCase()}
+                      />
+                    )}
+                    {provenance.export_dj_preset && (
+                      <InfoRow
+                        label="DJ Preset"
+                        value={
+                          <span className="inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium">
+                            {provenance.export_dj_preset}
+                          </span>
+                        }
+                      />
+                    )}
+                    {!provenance.export_codec && !provenance.export_dj_preset && (
+                      <tr>
+                        <td className="p-3 text-muted-foreground" colSpan={2}>
+                          No export metadata available.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <hr className="border-t" />
+
+            {/* JOB section */}
+            <section>
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Job
+              </h3>
+              <div className="rounded-md border">
+                <table className="w-full">
+                  <tbody>
+                    <InfoRow
+                      label="Job ID"
+                      value={
                         <div className="flex items-center gap-2">
                           <code className="text-xs bg-muted px-1 py-0.5 rounded">
                             {provenance.job_id}
                           </code>
                           <CopyButton text={provenance.job_id} />
                         </div>
-                      </td>
-                    </tr>
+                      }
+                    />
                     {provenance.batch_id && (
-                      <tr className="border-b">
-                        <td className="p-3 text-muted-foreground">Batch ID</td>
-                        <td className="p-3 font-medium">
+                      <InfoRow
+                        label="Batch ID"
+                        value={
                           <code className="text-xs bg-muted px-1 py-0.5 rounded">
                             {provenance.batch_id}
                           </code>
-                        </td>
-                      </tr>
+                        }
+                      />
                     )}
-                    <tr className="border-b">
-                      <td className="p-3 text-muted-foreground">Separation Time</td>
-                      <td className="p-3 font-medium">
-                        {formatTimestamp(provenance.separation_timestamp)}
-                      </td>
-                    </tr>
-                    {provenance.schema_version && (
-                      <tr>
-                        <td className="p-3 text-muted-foreground">Schema Version</td>
-                        <td className="p-3 font-medium">{provenance.schema_version}</td>
-                      </tr>
-                    )}
+                    <InfoRow label="Schema" value={String(provenance.schema_version)} />
                   </tbody>
                 </table>
               </div>
@@ -375,6 +455,17 @@ export function StemInfoPanel({ stemPath }: StemInfoPanelProps) {
         )}
       </div>
     </div>
+  );
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <tr className="border-b last:border-b-0">
+      <td className="p-3 text-muted-foreground whitespace-nowrap">{label}</td>
+      <td className="p-3 font-medium">{value}</td>
+    </tr>
   );
 }
 

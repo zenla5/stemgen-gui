@@ -891,7 +891,7 @@ Create `src/components/library/__tests__/LibraryView.test.tsx`: empty state rend
 
 ---
 
-#### [ ] TASK-028 — Enhance `StemInfoPanel` with full nested provenance display
+#### [x] TASK-028 — Enhance `StemInfoPanel` with full nested provenance display
 
 **Description:** Update `src/components/library/StemInfoPanel.tsx` to display all the new provenance fields from TASK-009:
 - **SEPARATION section:** Model, Model Version, Model Family, Device, Separation Duration (formatted as `"1m 34s"`), Created At.

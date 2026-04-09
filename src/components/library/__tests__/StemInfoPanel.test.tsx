@@ -93,7 +93,7 @@ describe('StemInfoPanel', () => {
     // Source File section
     expect(screen.getByText('/music/track1.mp3')).toBeInTheDocument();
     expect(screen.getByText('abc123def456')).toBeInTheDocument();
-    expect(screen.getByText('240.5 seconds')).toBeInTheDocument();
+    expect(screen.getByText('4m 0s')).toBeInTheDocument();
     // Sample rate uses toLocaleString() which may format differently per environment
     expect(screen.getByText(/Hz/)).toBeInTheDocument();
 
