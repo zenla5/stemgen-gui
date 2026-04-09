@@ -228,5 +228,56 @@
     "relinkToSource": "Mit Quelle neu verknüpfen",
     "ignore": "Ignorieren",
     "delete": "Löschen"
+  },
+  "inference": {
+    "sectionTitle": "Inferenz",
+    "providerLabel": "Inferenz-Anbieter",
+    "providers": {
+      "local": "Lokal (CPU / GPU)",
+      "fal": "fal.ai",
+      "replicate": "Replicate"
+    },
+    "apiKeyLabel": {
+      "fal": "fal.ai API-Schlüssel",
+      "replicate": "Replicate API-Token"
+    },
+    "testConnection": "Verbindung testen",
+    "clearKey": "Löschen",
+    "connectionOk": "Verbindung erfolgreich",
+    "connectionFailed": "Verbindung fehlgeschlagen",
+    "costEstimate": "Geschätzte Kosten: {{cost}} pro Durchlauf",
+    "statusBar": {
+      "label": "{{provider}}"
+    },
+    "privacyModal": {
+      "title": "Cloud-Inferenz Datenschutzhinweis",
+      "body": "Bei der Nutzung von {{provider}} wird Ihre Audiodatei zur Verarbeitung auf deren Server hochgeladen. Bitte lesen Sie deren Datenschutzerklärung: {{policyUrl}}",
+      "dontShowAgain": "Nicht mehr anzeigen",
+      "confirm": "Bestätigen"
+    },
+    "versionDropdown": {
+      "label": "Modellversion",
+      "refresh": "Aktualisieren",
+      "olderVersionWarning": "Dies ist nicht die neueste Version.",
+      "newerVersionWarning": "Diese Version ist neuer als das Erstellungsdatum der App."
+    },
+    "errors": {
+      "noKey": "Kein API-Schlüssel gesetzt — zu den Einstellungen gehen",
+      "keyRejected": "API-Schlüssel abgelehnt — Einstellungen prüfen",
+      "uploadFailed": "Upload fehlgeschlagen — Internetverbindung prüfen",
+      "providerError": "Anbieter hat einen Fehler zurückgegeben: {{message}}",
+      "downloadFailed": "Download der Stems fehlgeschlagen",
+      "timeout": "Anbieter-Zeitüberschreitung — erneut versuchen oder Lokal verwenden"
+    },
+    "fallback": {
+      "switchToLocal": "Zu Lokal wechseln"
+    },
+    "durationWarning": "Diese Datei ist {{minutes}} Min. lang — Cloud-Verarbeitung durch {{provider}} kann eine Weile dauern",
+    "offlineFallback": "Sie sind offline — wechsle zur lokalen Inferenz",
+    "batchMode": {
+      "label": "Stapelmodus",
+      "sequential": "Sequentiell",
+      "parallel": "Parallel"
+    }
   }
 }

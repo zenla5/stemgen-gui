@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] — 2026-04-10 — Cloud Inference Providers
+
+### Added
+- **[CLOUD-PROVIDER]** Cloud inference provider support: choose fal.ai or Replicate as a cloud-hosted GPU backend from Settings → Inference. Once configured with an API key, stem-separation jobs route transparently to the selected provider.
+- **[CLOUD-KEYCHAIN]** Secure API key storage via OS keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service). Keys are never written to SQLite, logs, or Tauri event payloads.
+- **[CLOUD-UI]** New `InferenceSection` settings panel with provider radio group, masked API key input, Test Connection button, cost estimate, Replicate version dropdown with staleness warnings, and batch mode toggle (sequential/parallel).
+- **[CLOUD-PRIVACY]** Privacy notice modal shown the first time a cloud provider is activated, with "Don't show again" checkbox persisted to DB.
+- **[CLOUD-VERSION]** Replicate model version selector: fetches available versions, shows latest badge, warns when selecting older or newer-than-build-date versions.
+- **[CLOUD-PROGRESS]** Pulsing animation on the progress bar during cloud GPU processing phase. Shows cloud icon and "Cloud" label instead of numeric percentage.
+- **[CLOUD-OFFLINE]** Automatic local fallback when offline: detects network status and temporarily falls back to local inference with a toast warning. `activeProvider` is preserved for subsequent jobs.
+- **[CLOUD-DURATION]** Configurable file-duration warning (default 15 min) and hard cap thresholds for cloud jobs. Toast warning for long files, blocking dialog when cap is exceeded.
+- **[CLOUD-BATCH]** Batch parallel/sequential mode for cloud inference: choose to submit all cloud jobs simultaneously or process them one at a time.
+- **[CLOUD-FALLBACK]** Error handling with "Switch to Local" recovery action: when a cloud job fails, a toast with an inline action button offers to switch to local inference.
+- **[CLOUD-STATUS]** Cloud provider indicator in the status bar with cloud icon and provider name. Shows offline warning icon when disconnected.
+- **[CLOUD-I18N]** Full English and German localisation for all new cloud inference UI strings.
+- **[CLOUD-CI]** Python test CI job runs `pytest` on `python/tests/` in CI pipeline. `VITE_BUILD_DATE` env variable injected for version comparison.
+
+### Changed
+- **[SIDECAR-REFACTOR]** Python sidecar runner code refactored: `run_demucs`, `run_htdemucs`, `run_htdemucs_ft` deduplicated into shared `_run_demucs_model` helper. No user-visible change.
+- **[SIDECAR-CLI]** Sidecar CLI extended with `--provider`, `--api-key`, `--provider-version` flags for cloud inference routing.
+- **[SIDECAR-CLOUD]** New `run_fal()` and `run_replicate()` cloud runners with progress reporting, retry logic, 300s timeout watchdog, and `fallback_hint` error field.
+- **[RUST-CFG]** `InferenceProvider` enum and `InferenceProviderConfig` struct added to Rust with SQLite persistence.
+- **[RUST-PROVIDER]** New Tauri commands: `get_inference_provider_config`, `set_inference_provider`, `set_provider_api_key`, `clear_provider_api_key`, `test_provider_connection`, `fetch_replicate_versions`.
+- **[RUST-SIDECAR]** `SidecarManager::run_separation` extended to pass cloud provider flags (`--device cloud --provider <name> --api-key <key> --provider-version <hash>`).
+- **[FRONTEND-STORE]** `settingsStore` extended with inference provider fields and actions; `settingsStore.loadProviderConfig()` hydrates from Rust DB on init.
+- **[TYPES]** `InferenceProvider` type updated to `'local' | 'fal' | 'replicate'` (removed 'magnetic' and 'argilla' aliases).
+- **[CSP]** Tauri CSP `connect-src` updated to allow HTTPS to `fal.run`, `queue.fal.run`, `api.replicate.com`, and `storage.googleapis.com`.
+
+### Internal
+- **[TEST-PYTHON]** Python unit tests added: smoke tests for CLI, cloud runner tests for `run_fal` and `run_replicate` with mocked HTTP calls.
+- **[TEST-FRONTEND]** New unit tests for inference provider store actions, `cloudCostEstimate` utility, and i18n key coverage.
+- **[TEST-RUST]** New Rust unit tests for `InferenceProviderConfig` serialization and provider command registration.
+
 ## [1.3.0] — 2026-04-09 — Library Management
 
 ### Added

@@ -228,5 +228,56 @@
     "relinkToSource": "Re-link to source",
     "ignore": "Ignore",
     "delete": "Delete"
+  },
+  "inference": {
+    "sectionTitle": "Inference",
+    "providerLabel": "Inference Provider",
+    "providers": {
+      "local": "Local (CPU / GPU)",
+      "fal": "fal.ai",
+      "replicate": "Replicate"
+    },
+    "apiKeyLabel": {
+      "fal": "fal.ai API Key",
+      "replicate": "Replicate API Token"
+    },
+    "testConnection": "Test Connection",
+    "clearKey": "Clear",
+    "connectionOk": "Connection successful",
+    "connectionFailed": "Connection failed",
+    "costEstimate": "Estimated cost: {{cost}} per run",
+    "statusBar": {
+      "label": "{{provider}}"
+    },
+    "privacyModal": {
+      "title": "Cloud Inference Privacy Notice",
+      "body": "When using {{provider}}, your audio file will be uploaded to their servers for processing. Please review their privacy policy: {{policyUrl}}",
+      "dontShowAgain": "Don't show again",
+      "confirm": "Confirm"
+    },
+    "versionDropdown": {
+      "label": "Model Version",
+      "refresh": "Refresh",
+      "olderVersionWarning": "This is not the latest version.",
+      "newerVersionWarning": "This version is newer than the app build date."
+    },
+    "errors": {
+      "noKey": "No API key set — go to Settings",
+      "keyRejected": "API key rejected — check Settings",
+      "uploadFailed": "Upload failed — check your internet connection",
+      "providerError": "Provider returned an error: {{message}}",
+      "downloadFailed": "Failed to download stems",
+      "timeout": "Provider timed out — try again or use Local"
+    },
+    "fallback": {
+      "switchToLocal": "Switch to Local"
+    },
+    "durationWarning": "This file is {{minutes}} min long — cloud processing by {{provider}} may take a while",
+    "offlineFallback": "You are offline — falling back to local inference",
+    "batchMode": {
+      "label": "Batch Mode",
+      "sequential": "Sequential",
+      "parallel": "Parallel"
+    }
   }
 }

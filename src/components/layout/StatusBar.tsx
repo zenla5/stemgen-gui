@@ -1,9 +1,13 @@
 import { useAppStore, computeEnvironmentReadiness } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { cn } from '@/lib/utils';
-import { CheckCircle, XCircle, AlertCircle, Cpu } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle, Cpu, Cloud, WifiOff } from 'lucide-react';
 
 export function StatusBar() {
   const { environmentValidation, environmentValidated, dependencies, audioFiles, jobs } = useAppStore();
+  const { activeProvider } = useSettingsStore();
+  const isOnline = useNetworkStatus();
   const envReady = computeEnvironmentReadiness(environmentValidation);
 
   const allDepsOk = environmentValidated && envReady.isReady && dependencies.models;
@@ -58,6 +62,21 @@ export function StatusBar() {
           <Cpu className="h-3 w-3" />
           <span>{deviceLabel}</span>
         </div>
+
+        {/* Cloud Provider Indicator */}
+        {activeProvider !== 'local' && (
+          <div
+            className="flex items-center gap-1 text-blue-500"
+            title={`Cloud inference: ${activeProvider}`}
+          >
+            {!isOnline ? (
+              <WifiOff className="h-3 w-3 text-amber-500" />
+            ) : (
+              <Cloud className="h-3 w-3" />
+            )}
+            <span>{activeProvider}</span>
+          </div>
+        )}
       </div>
     </footer>
   );

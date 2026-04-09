@@ -6,6 +6,7 @@ import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import { ModelManager } from './ModelManager';
+import { InferenceSection } from './InferenceSection';
 import { InstallProgress } from '@/components/ui/InstallProgress';
 import { Button } from '@/components/ui/Button';
 import type { AvailableInstaller, PackageStatus } from '@/lib/types';
@@ -656,6 +657,9 @@ export function SettingsPanel() {
           ))}
         </div>
       </section>
+
+      {/* Inference Provider */}
+      <InferenceSection />
 
       {/* GPU Settings */}
       <section className="space-y-3">
