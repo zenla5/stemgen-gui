@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] — 2026-04-09 — Library Management
+
+### Added
+- **[LIB-TAB]** New Library tab in sidebar navigation with keyboard shortcut (key 5). Displays stem library overview, filterable table, and detailed provenance panel.
+- **[LIB-ROOTS]** Library root configuration panel: add/remove watched directories, choose output strategy (alongside/mirrored/flat), configure staleness policies and ignore glob patterns per root.
+- **[LIB-SCANNER]** Source-file-aware library scanner with full and incremental scan modes. Detects `NoStem`, `HasStemCurrent`, `HasStemOutdated`, `HasStemUnknownProvenance`, and `OrphanedStem` states. Incremental scans skip unchanged files via mtime/inode cache.
+- **[LIB-TABLE]** Filterable, sortable library table with status badges, model info, search, and pagination. Supports bulk selection for batch operations.
+- **[LIB-OVERVIEW]** Summary dashboard with per-root stats grid, color-coded status bar, and action buttons for "Generate Missing" and "Regenerate Outdated".
+- **[LIB-PROVENANCE]** Enhanced StemInfoPanel with full nested provenance display: Separation, Toolchain, Source, and Export sections. Copy-to-clipboard for all fields. Editable user notes.
+- **[LIB-BATCH]** Batch generate/regenerate queue with confirmation dialog, progress UI, pause/resume/cancel controls, and real-time progress events via Tauri IPC.
+- **[LIB-ORPHAN]** Orphaned stem detection and cleanup UI: bulk delete, re-link (with hash verification), and ignore actions.
+- **[LIB-STALE]** Extended staleness engine: quality-rank threshold, preferred model family, age-based staleness, and unknown-provenance flagging.
+- **[LIB-I18N]** Full internationalization support for all library components (English, German, Japanese).
+- **[PROVENANCE]** Extended `StemProvenance` with 12 new optional fields: `model_name`, `model_family`, `model_sha256`, `separation_duration_secs`, `device`, `ffmpeg_version`, `os_info`, `source_size_bytes`, `source_format`, `source_bitdepth`, `export_codec`, `export_dj_preset`. All backward-compatible.
+- **[MODEL-INFO]** `ModelInfo` extended with `quality_rank`, `released_at`, `changelog_url` fields for model comparison and staleness detection.
+- **[DB]** New SQLite tables: `library_roots`, `library_index`, `batch_queue`. Idempotent migrations with cascade delete support.
+- **[TAURI-CMDS]** 13 new Tauri commands: `add_library_root`, `list_library_roots`, `get_library_root`, `update_library_root`, `delete_library_root`, `scan_library_root`, `queue_batch_generate`, `queue_batch_regenerate`, `get_batch_queue_status`, `pause_batch_queue`, `resume_batch_queue`, `cancel_batch_queue`, `clear_completed_queue`, `start_batch_processor`, `get_library_orphans`, `re_link_orphan`, `delete_orphan_stem`, `ignore_orphan_stem`.
+
+### Internal
+- **[TEST-RUST]** Added 21 Rust integration tests for scanner, batch queue, orphan management, and database operations.
+- **[TEST-FRONTEND]** Added Vitest integration tests for LibraryView, LibraryTable, LibraryOverviewPanel, BatchConfirmDialog, BatchQueueView, OrphanedStemsView.
+- **[TEST-E2E]** Added Playwright E2E tests for Library tab navigation, settings panel, overview rendering, and table interaction.
+- **[TEST-UNIT]** Added StemInfoPanel and extended libraryStore unit tests.
+- **[COVERAGE]** Raised coverage thresholds from lines 36→42, functions 64→65, statements 36→42.
+- **[CLIPPY]** Fixed pre-existing clippy warnings across 5 source files.
+
 ## [1.2.5] — 2026-04-08 — Sidecar Deployment Fix & Quality Improvements
 
 ### Fixed
