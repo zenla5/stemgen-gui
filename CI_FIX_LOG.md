@@ -40,14 +40,23 @@ Added `localStorage` injection in `beforeEach` before page navigation. Injects `
 **Fix 2 — `src/__tests__/e2e/binary/navigation.spec.ts:75`:**
 Changed keyboard shortcut from `'4'` to `'5'` and updated test name from `"keyboard shortcut 4 navigates to Settings"` to `"keyboard shortcut 5 navigates to Settings"`.
 
-### Push 1 — 2026-04-09
+**Fix 3 — `src/__tests__/e2e/library.spec.ts` (empty state selector):**
+The `empty state` test had a broken Playwright selector mixing CSS attribute selectors with `text=` syntax (`'[data-testid="..."], text=library.setUpLibrary'`). Fixed by using Playwright's `.or()` combinator.
 
-- Committed both fixes
+### Push 1 — 2026-04-09 (commit `c9a8cc6`)
+
+- Committed all three fixes + this log
 - Pushed to `feature/library-management`
-- Monitoring CI run...
+- CI run: `24188291867`
 
-### Verification
+### Verification — Push 1 (2026-04-09)
 
-- [ ] E2E Tests (chromium) pass
-- [ ] Binary E2E Tests (Windows) pass
-- [ ] All Checks Passed job succeeds
+**Result: ALL PASSED**
+
+| Job | Status | Duration |
+|-----|--------|----------|
+| E2E Tests (chromium) | ✓ | 1m38s |
+| Binary E2E Tests (windows-latest) | ✓ | 18m20s |
+| Binary E2E Tests (ubuntu-latest) | ✓ | 14m7s |
+| All Checks Passed | ✓ | 2s |
+| All other jobs (Frontend, Backend, Integration, Security) | ✓ | — |
