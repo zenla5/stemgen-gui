@@ -256,7 +256,7 @@ Do not block on fields that require sidecar data from the Python sidecar (like `
 
 ---
 
-#### [ ] TASK-010 — Add `library_roots` and `library_index` database tables
+#### [x] TASK-010 — Add `library_roots` and `library_index` database tables
 
 **Description:** In `src-tauri/src/commands/db.rs`, add migration code in `run_migrations` to create the following tables if they do not exist:
 
@@ -315,7 +315,7 @@ The migration must be idempotent (re-running on an existing DB must not fail). A
 
 ---
 
-#### [ ] TASK-011 — Add `batch_queue` database table and status types
+#### [x] TASK-011 — Add `batch_queue` database table and status types
 
 **Description:** Extend the migration in `db.rs` (TASK-010) with:
 
@@ -358,7 +358,7 @@ Define a Rust `BatchQueueStatus` enum and `BatchQueueItem` struct in `db.rs` (or
 
 ---
 
-#### [ ] TASK-012 — Implement library root CRUD Tauri commands
+#### [x] TASK-012 — Implement library root CRUD Tauri commands
 
 **Description:** Create `src-tauri/src/commands/library_roots.rs`. Implement and register the following `#[tauri::command]` functions:
 
@@ -392,7 +392,7 @@ Define `LibraryRoot` and `LibraryRootUpdate` structs. Register all new commands 
 
 ---
 
-#### [ ] TASK-013 — Implement source-file-aware library scanner
+#### [x] TASK-013 — Implement source-file-aware library scanner
 
 **Description:** Overhaul `scan_library` in `src-tauri/src/commands/library.rs` (or a new `src-tauri/src/commands/scanner.rs`). The new scanner must:
 
@@ -429,7 +429,7 @@ Keep the existing `scan_library` signature as a deprecated shim or rename it. Th
 
 ---
 
-#### [ ] TASK-014 — Implement incremental scanning (mtime/inode cache)
+#### [x] TASK-014 — Implement incremental scanning (mtime/inode cache)
 
 **Description:** Extend the scanner from TASK-013. When `full_rescan` is `false`:
 1. For each file on disk, compare its current `mtime` (Unix timestamp) and `inode` against the stored values in `library_index`.
@@ -457,7 +457,7 @@ Add a test: perform a full scan, then modify one file's mtime, then perform an i
 
 ---
 
-#### [ ] TASK-015 — Implement glob exclusion pattern filtering
+#### [x] TASK-015 — Implement glob exclusion pattern filtering
 
 **Description:** In the scanner (TASK-013), implement support for the `ignored_globs` field on `LibraryRoot`. The field is stored as a JSON array of glob strings (e.g. `["**/Samples/**", "**/_archive/**"]`). During the walk, skip any file whose relative path (relative to the root) matches any pattern. Use the `glob` crate's `Pattern::matches_path`. Write unit tests: a directory with 5 files where 2 are in a `Samples/` subdirectory, the glob `**/Samples/**` excludes them, and the scan returns 3 entries.
 
@@ -482,7 +482,7 @@ Add a test: perform a full scan, then modify one file's mtime, then perform an i
 
 ---
 
-#### [ ] TASK-016 — Extend `StalenessRules` with quality-rank and age-based policies
+#### [x] TASK-016 — Extend `StalenessRules` with quality-rank and age-based policies
 
 **Description:** In `src-tauri/src/stems/staleness.rs`, extend `StalenessRules` with:
 ```rust
@@ -517,7 +517,7 @@ Update `check_stem_staleness` to evaluate the new rules. The function now needs 
 
 ---
 
-#### [ ] TASK-017 — Add orphan management Tauri commands
+#### [x] TASK-017 — Add orphan management Tauri commands
 
 **Description:** In `src-tauri/src/commands/library.rs`, add:
 
@@ -549,7 +549,7 @@ Define `OrphanedStemEntry` and `RelinkResult` structs. Register all commands. Wr
 
 ---
 
-#### [ ] TASK-018 — Implement batch queue Tauri commands
+#### [x] TASK-018 — Implement batch queue Tauri commands
 
 **Description:** Create `src-tauri/src/commands/batch.rs`. Implement:
 
@@ -581,7 +581,7 @@ Define `BatchQueueResult`, `BatchQueueStatusSummary`, `BatchQueueItemPublic` str
 
 ---
 
-#### [ ] TASK-019 — Implement batch queue processor (async background task)
+#### [x] TASK-019 — Implement batch queue processor (async background task)
 
 **Description:** Implement a background Tokio task in `batch.rs` that processes the batch queue. The processor:
 1. Polls `batch_queue` for the next `pending` item (order by `priority DESC, created_at ASC`).
@@ -617,7 +617,7 @@ The processor must be started via a `start_batch_processor(state, app_handle, ro
 
 ---
 
-#### [ ] TASK-020 — Update TypeScript types for scanner states and batch queue
+#### [x] TASK-020 — Update TypeScript types for scanner states and batch queue
 
 **Description:** In `src/lib/types/library.ts`:
 1. Add `StemFileState` type:
@@ -654,7 +654,7 @@ export type StemFileState =
 
 ---
 
-#### [ ] TASK-021 — Extend `libraryStore` with library root management and new scanner
+#### [x] TASK-021 — Extend `libraryStore` with library root management and new scanner
 
 **Description:** In `src/stores/libraryStore.ts`, add:
 - State and actions for `libraryRoots: LibraryRoot[]`: `loadLibraryRoots`, `addLibraryRoot`, `updateLibraryRoot`, `deleteLibraryRoot`.
@@ -682,7 +682,7 @@ export type StemFileState =
 
 ---
 
-#### [ ] TASK-022 — Add `batchQueueStore` Zustand store
+#### [x] TASK-022 — Add `batchQueueStore` Zustand store
 
 **Description:** Create `src/stores/batchQueueStore.ts`. State and actions:
 - `queueStatus: BatchQueueStatusSummary | null`
@@ -722,7 +722,7 @@ Create `src/stores/__tests__/batchQueueStore.test.ts` with tests for all actions
 
 ---
 
-#### [ ] TASK-023 — Add Library tab to sidebar navigation
+#### [x] TASK-023 — Add Library tab to sidebar navigation
 
 **Description:** In `src/components/layout/Sidebar.tsx`, add a Library nav item:
 ```typescript
@@ -750,7 +750,7 @@ Update `src/components/layout/__tests__/Sidebar.test.tsx` to assert the Library 
 
 ---
 
-#### [ ] TASK-024 — Implement `LibraryRootSettings` configuration panel
+#### [x] TASK-024 — Implement `LibraryRootSettings` configuration panel
 
 **Description:** Create `src/components/library/LibraryRootSettings.tsx`. This panel lets users manage library roots:
 - List of configured roots with path, output strategy badge, and last-scanned time.
