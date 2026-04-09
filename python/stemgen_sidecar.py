@@ -41,20 +41,39 @@ def emit(data: dict) -> None:
 # Model runners
 # ------------------------------------------------------------------------------
 
-def run_demucs(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
-    """Run demucs stem separation."""
+def _run_demucs_model(
+    input_path: Path,
+    output_dir: Path,
+    device: str,
+    model_name: str,
+    shifts: int = 0,
+) -> Dict[str, Path]:
+    """Shared implementation for all demucs-family models.
+
+    Parameters
+    ----------
+    input_path : Path
+        Input audio file.
+    output_dir : Path
+        Directory to write stem WAVs.
+    device : str
+        "cpu", "cuda", or "mps".
+    model_name : str
+        Pretrained model name (e.g. "htdemucs", "htdemucs_ft").
+    shifts : int
+        Number of random shifts for apply_model (0 = deterministic).
+    """
     import torch
     from demucs.pretrained import get_model
     from demucs.apply import apply_model
     from demucs.audio import AudioFile
     import torchaudio
 
-    model_name = "htdemucs"
     emit({
         "status": "progress",
         "stage": "loading",
         "progress": 0.05,
-        "message": f"Loading demucs model '{model_name}'...",
+        "message": f"Loading {model_name} model...",
     })
 
     # Determine device
@@ -93,14 +112,13 @@ def run_demucs(input_path: Path, output_dir: Path, device: str) -> Dict[str, Pat
     with torch.no_grad():
         mix = wav[0]
         if mix.shape[0] > 2:
-            # Convert stereo to mono for demucs
             mix = mix.mean(0)
         mix = torch.from_numpy(mix).to(run_device)
         ref = mix.mean(0)
         mix = (mix - ref.mean()) / (ref.std() + 1e-8)
         mix = mix[None, None, ...]
-        
-        sources = apply_model(model, mix, device=run_device, shifts=0, progress=False)[0]
+
+        sources = apply_model(model, mix, device=run_device, shifts=shifts, progress=False)[0]
 
     emit({
         "status": "progress",
@@ -109,35 +127,22 @@ def run_demucs(input_path: Path, output_dir: Path, device: str) -> Dict[str, Pat
         "message": "Saving stem files...",
     })
 
-    # Source names from demucs (in order)
     source_names = model.sources
     stem_names = ["drums", "bass", "other", "vocals"]
-    
-    # Map demucs source order to our standard order
-    # demucs default order: drums, bass, other, vocals
     stems: Dict[str, Path] = {}
-    
+
     for i, stem_name in enumerate(stem_names):
-        source_name = source_names[i]
         stem_data = sources[i].cpu().numpy()
         stem_filename = f"{source}_{stem_name}.wav"
         stem_path = output_dir / stem_filename
 
-        # Convert to 44.1kHz stereo if needed
         stem_tensor = torch.from_numpy(stem_data)
         if stem_tensor.dim() == 1:
-            stem_tensor = stem_tensor.unsqueeze(0)  # Add channel dim
+            stem_tensor = stem_tensor.unsqueeze(0)
         elif stem_tensor.dim() == 2 and stem_tensor.shape[0] > 2:
-            # Mix down to mono then duplicate to stereo
             stem_tensor = stem_tensor.mean(0, keepdim=True).repeat(2, 1)
-        
-        # Resample to 44.1kHz if needed
-        orig_sr = 44100  # demucs default
-        target_sr = 44100
-        if orig_sr != target_sr:
-            stem_tensor = torchaudio.functional.resample(stem_tensor, orig_sr, target_sr)
-        
-        torchaudio.save(str(stem_path), stem_tensor, target_sr)
+
+        torchaudio.save(str(stem_path), stem_tensor, 44100)
         stems[stem_name] = stem_path
 
         emit({
@@ -148,172 +153,21 @@ def run_demucs(input_path: Path, output_dir: Path, device: str) -> Dict[str, Pat
         })
 
     return stems
+
+
+def run_demucs(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
+    """Run demucs stem separation (uses htdemucs pretrained model)."""
+    return _run_demucs_model(input_path, output_dir, device, model_name="htdemucs", shifts=0)
 
 
 def run_htdemucs(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
     """Run htdemucs (high-quality demucs) stem separation."""
-    # htdemucs is a demucs variant, use the same approach
-    import torch
-    from demucs.pretrained import get_model
-    from demucs.apply import apply_model
-    from demucs.audio import AudioFile
-    import torchaudio
-
-    model_name = "htdemucs"
-
-    emit({
-        "status": "progress",
-        "stage": "loading",
-        "progress": 0.05,
-        "message": f"Loading htdemucs model...",
-    })
-
-    if device == "cuda" and torch.cuda.is_available():
-        run_device = torch.device("cuda")
-    elif device == "mps" and torch.backends.mps.is_available():
-        run_device = torch.device("mps")
-    else:
-        run_device = torch.device("cpu")
-
-    model = get_model(model_name, device=run_device)
-    model.eval()
-
-    emit({
-        "status": "progress",
-        "stage": "separating",
-        "progress": 0.2,
-        "message": "Running AI separation (htdemucs)...",
-    })
-
-    wav = AudioFile(input_path).read(streams=0)
-    source = str(input_path.stem)
-
-    with torch.no_grad():
-        mix = wav[0]
-        if mix.shape[0] > 2:
-            mix = mix.mean(0)
-        mix = torch.from_numpy(mix).to(run_device)
-        ref = mix.mean(0)
-        mix = (mix - ref.mean()) / (ref.std() + 1e-8)
-        mix = mix[None, None, ...]
-        sources = apply_model(model, mix, device=run_device, shifts=0, progress=False)[0]
-
-    emit({
-        "status": "progress",
-        "stage": "saving",
-        "progress": 0.85,
-        "message": "Saving stem files...",
-    })
-
-    source_names = model.sources
-    stem_names = ["drums", "bass", "other", "vocals"]
-    stems: Dict[str, Path] = {}
-
-    for i, stem_name in enumerate(stem_names):
-        source_name = source_names[i]
-        stem_data = sources[i].cpu().numpy()
-        stem_filename = f"{source}_{stem_name}.wav"
-        stem_path = output_dir / stem_filename
-
-        stem_tensor = torch.from_numpy(stem_data)
-        if stem_tensor.dim() == 1:
-            stem_tensor = stem_tensor.unsqueeze(0)
-        elif stem_tensor.dim() == 2 and stem_tensor.shape[0] > 2:
-            stem_tensor = stem_tensor.mean(0, keepdim=True).repeat(2, 1)
-
-        torchaudio.save(str(stem_path), stem_tensor, 44100)
-        stems[stem_name] = stem_path
-
-        emit({
-            "status": "progress",
-            "stage": "saving",
-            "progress": 0.85 + (0.14 * (i + 1) / len(stem_names)),
-            "message": f"Saved {stem_name}.wav",
-        })
-
-    return stems
+    return _run_demucs_model(input_path, output_dir, device, model_name="htdemucs", shifts=0)
 
 
 def run_htdemucs_ft(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
     """Run htdemucs_ft (fine-tuned, highest quality) stem separation."""
-    import torch
-    from demucs.pretrained import get_model
-    from demucs.apply import apply_model
-    from demucs.audio import AudioFile
-    import torchaudio
-
-    model_name = "htdemucs_ft"
-
-    emit({
-        "status": "progress",
-        "stage": "loading",
-        "progress": 0.05,
-        "message": f"Loading htdemucs_ft model (this may take a moment)...",
-    })
-
-    if device == "cuda" and torch.cuda.is_available():
-        run_device = torch.device("cuda")
-    elif device == "mps" and torch.backends.mps.is_available():
-        run_device = torch.device("mps")
-    else:
-        run_device = torch.device("cpu")
-
-    model = get_model(model_name, device=run_device)
-    model.eval()
-
-    emit({
-        "status": "progress",
-        "stage": "separating",
-        "progress": 0.1,
-        "message": "Running AI separation (htdemucs_ft, highest quality)...",
-    })
-
-    wav = AudioFile(input_path).read(streams=0)
-    source = str(input_path.stem)
-
-    with torch.no_grad():
-        mix = wav[0]
-        if mix.shape[0] > 2:
-            mix = mix.mean(0)
-        mix = torch.from_numpy(mix).to(run_device)
-        ref = mix.mean(0)
-        mix = (mix - ref.mean()) / (ref.std() + 1e-8)
-        mix = mix[None, None, ...]
-        sources = apply_model(model, mix, device=run_device, shifts=1, progress=False)[0]
-
-    emit({
-        "status": "progress",
-        "stage": "saving",
-        "progress": 0.85,
-        "message": "Saving stem files...",
-    })
-
-    source_names = model.sources
-    stem_names = ["drums", "bass", "other", "vocals"]
-    stems: Dict[str, Path] = {}
-
-    for i, stem_name in enumerate(stem_names):
-        stem_data = sources[i].cpu().numpy()
-        stem_filename = f"{source}_{stem_name}.wav"
-        stem_path = output_dir / stem_filename
-
-        stem_tensor = torch.from_numpy(stem_data)
-        if stem_tensor.dim() == 1:
-            stem_tensor = stem_tensor.unsqueeze(0)
-        elif stem_tensor.dim() == 2 and stem_tensor.shape[0] > 2:
-            stem_tensor = stem_tensor.mean(0, keepdim=True).repeat(2, 1)
-
-        torchaudio.save(str(stem_path), stem_tensor, 44100)
-        stems[stem_name] = stem_path
-
-        emit({
-            "status": "progress",
-            "stage": "saving",
-            "progress": 0.85 + (0.14 * (i + 1) / len(stem_names)),
-            "message": f"Saved {stem_name}.wav",
-        })
-
-    return stems
+    return _run_demucs_model(input_path, output_dir, device, model_name="htdemucs_ft", shifts=1)
 
 
 def run_bs_roformer(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
