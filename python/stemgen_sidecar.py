@@ -26,8 +26,20 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Dict, Optional
+
+# Cloud provider SDKs — optional; only needed for --device cloud
+try:
+    import fal_client
+except ImportError:
+    fal_client = None  # type: ignore[assignment]
+
+try:
+    import requests
+except ImportError:
+    requests = None  # type: ignore[assignment]
 
 # ------------------------------------------------------------------------------
 # JSON line output helper
@@ -214,8 +226,221 @@ def run_bs_roformer(input_path: Path, output_dir: Path, device: str) -> Dict[str
     sys.exit(1)
 
 
-def run_separation(model: str, input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
+# ------------------------------------------------------------------------------
+# Cloud runners
+# ------------------------------------------------------------------------------
+
+# Model name mapping: local model name → fal.ai endpoint
+FAL_MODEL_MAP = {
+    "demucs": "fal-ai/demucs",
+    "htdemucs": "fal-ai/demucs",
+    "htdemucs_ft": "fal-ai/demucs",
+    "bs_roformer": "fal-ai/demucs",
+}
+
+FAL_TIMEOUT_SECONDS = 300
+
+
+def _save_stems_from_urls(
+    stem_urls: Dict[str, str],
+    input_stem: str,
+    output_dir: Path,
+    stage_progress_start: float,
+    stage_progress_end: float,
+) -> Dict[str, Path]:
+    """Download and save stem WAVs from URLs, emitting progress."""
+    stem_names = ["drums", "bass", "other", "vocals"]
+    stems: Dict[str, Path] = {}
+    total = len(stem_names)
+
+    for i, stem_name in enumerate(stem_names):
+        url = stem_urls.get(stem_name)
+        if url is None:
+            raise RuntimeError(f"Provider did not return '{stem_name}' stem")
+
+        stem_path = output_dir / f"{input_stem}_{stem_name}.wav"
+        progress = stage_progress_start + (stage_progress_end - stage_progress_start) * (i + 1) / total
+
+        emit({
+            "status": "progress",
+            "stage": "downloading",
+            "progress": round(progress, 3),
+            "message": f"Downloading {stem_name}...",
+        })
+
+        resp = requests.get(url, timeout=120)
+        resp.raise_for_status()
+        stem_path.write_bytes(resp.content)
+        stems[stem_name] = stem_path
+
+    return stems
+
+
+def run_fal(
+    input_path: Path,
+    output_dir: Path,
+    model: str,
+    api_key: str,
+) -> Dict[str, Path]:
+    """Run stem separation via fal.ai cloud API.
+
+    API key is never logged or emitted.
+    """
+    if fal_client is None or requests is None:
+        emit({
+            "status": "error",
+            "error": "Cloud provider packages not installed. Run: pip install fal-client requests",
+            "fallback_hint": "switch_to_local",
+        })
+        raise ImportError("fal-client and requests are required for cloud inference")
+
+    fal_model = FAL_MODEL_MAP.get(model.lower(), "fal-ai/demucs")
+    source = str(input_path.stem)
+
+    # --- Upload ---
+    emit({
+        "status": "progress",
+        "stage": "uploading",
+        "progress": 0.05,
+        "message": "Uploading audio to fal.ai...",
+    })
+
+    try:
+        upload_url = fal_client.upload_file(str(input_path))
+    except Exception:
+        emit({
+            "status": "error",
+            "error": "Upload failed — check your internet connection",
+            "fallback_hint": "switch_to_local",
+        })
+        raise
+
+    # --- Queue / Separate ---
+    emit({
+        "status": "progress",
+        "stage": "queued",
+        "progress": 0.10,
+        "message": "Queued on fal.ai...",
+    })
+
+    start_time = time.monotonic()
+
+    def on_queue_update(update):
+        elapsed = time.monotonic() - start_time
+        if elapsed > FAL_TIMEOUT_SECONDS:
+            raise TimeoutError("Provider timed out — try again or use Local")
+        if isinstance(update, fal_client.InProgress):
+            for log_entry in update.logs:
+                msg = log_entry.get("message", "Separating...")
+                emit({
+                    "status": "progress",
+                    "stage": "separating",
+                    "progress": 0.20,
+                    "message": msg,
+                })
+
+    try:
+        result = fal_client.subscribe(
+            fal_model,
+            arguments={"audio_url": upload_url},
+            with_logs=True,
+            on_queue_update=on_queue_update,
+        )
+    except fal_client.client.FalClientError as e:
+        error_msg = str(e)
+        if "401" in error_msg or "Unauthorized" in error_msg:
+            emit({
+                "status": "error",
+                "error": "API key rejected by fal.ai — check Settings",
+                "fallback_hint": "switch_to_local",
+            })
+        else:
+            emit({
+                "status": "error",
+                "error": f"Provider returned an error: {error_msg}",
+                "fallback_hint": "switch_to_local",
+            })
+        raise
+    except (requests.ConnectionError, requests.Timeout):
+        # Retry once after brief sleep
+        time.sleep(5)
+        try:
+            result = fal_client.subscribe(
+                fal_model,
+                arguments={"audio_url": upload_url},
+                with_logs=True,
+                on_queue_update=on_queue_update,
+            )
+        except (requests.ConnectionError, requests.Timeout):
+            emit({
+                "status": "error",
+                "error": "Upload failed — check your internet connection",
+                "fallback_hint": "switch_to_local",
+            })
+            raise
+
+    # Check timeout
+    if time.monotonic() - start_time > FAL_TIMEOUT_SECONDS:
+        emit({
+            "status": "error",
+            "error": "Provider timed out — try again or use Local",
+            "fallback_hint": "switch_to_local",
+        })
+        raise TimeoutError("Provider timed out — try again or use Local")
+
+    # --- Download stems ---
+    emit({
+        "status": "progress",
+        "stage": "saving",
+        "progress": 0.90,
+        "message": "Downloading stems from fal.ai...",
+    })
+
+    stem_urls: Dict[str, str] = {}
+    if "stems" in result:
+        for stem_info in result["stems"]:
+            name = stem_info.get("stem", stem_info.get("type", "")).lower()
+            url = stem_info.get("url", "")
+            if name and url:
+                stem_urls[name] = url
+    elif "audio_url" in result:
+        # Single output format — fall back to audio_url
+        stem_urls = {"other": result["audio_url"]}
+
+    try:
+        stems = _save_stems_from_urls(stem_urls, source, output_dir, 0.90, 0.99)
+    except requests.HTTPError:
+        emit({
+            "status": "error",
+            "error": "Download failed — check your internet connection",
+            "fallback_hint": "switch_to_local",
+        })
+        raise
+    except RuntimeError as e:
+        emit({
+            "status": "error",
+            "error": str(e),
+            "fallback_hint": "switch_to_local",
+        })
+        raise
+
+    return stems
+
+
+def run_separation(
+    model: str,
+    input_path: Path,
+    output_dir: Path,
+    device: str,
+    provider: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> Dict[str, Path]:
     """Dispatch to the appropriate model runner."""
+    # Cloud dispatch
+    if device == "cloud" and provider == "fal" and api_key:
+        return run_fal(input_path, output_dir, model, api_key)
+
+    # Local dispatch
     model_lower = model.lower()
 
     if model_lower == "demucs":
