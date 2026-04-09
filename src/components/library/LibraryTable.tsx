@@ -5,7 +5,7 @@
  * sorting, filtering, grouping, multi-select, and context menu.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { StemInfoPanel } from './StemInfoPanel';
 import { Button } from '@/components/ui/Button';
