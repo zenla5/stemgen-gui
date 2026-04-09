@@ -9,8 +9,9 @@ import { useEffect, useState } from 'react';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { Button } from '@/components/ui/Button';
 import { LibraryRootSettings } from './LibraryRootSettings';
-import { Plus, RefreshCw, Settings } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { LibraryOverviewPanel } from './LibraryOverviewPanel';
+import { Plus } from 'lucide-react';
+import { open } from '@tauri-apps/plugin-dialog';
 
 export function LibraryView() {
   const { libraryRoots, loadLibraryRoots, scanLibraryRoot, isScanning, scanResultV2 } =
@@ -32,23 +33,15 @@ export function LibraryView() {
   }, [libraryRoots, selectedRootId, scanLibraryRoot]);
 
   const handleAddRoot = async () => {
-    try {
-      const selected = await invoke<string | null>('open', {
-        options: { directory: true, multiple: false, title: 'Select Library Root' },
-      });
-      if (selected) {
-        const { addLibraryRoot } = useLibraryStore.getState();
-        const id = await addLibraryRoot(selected, 'alongside');
-        setSelectedRootId(id);
-      }
-    } catch (error) {
-      console.error('Failed to add library root:', error);
-    }
-  };
-
-  const handleScan = () => {
-    if (selectedRootId) {
-      scanLibraryRoot(selectedRootId, true);
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: 'Select Library Root',
+    });
+    if (selected && typeof selected === 'string') {
+      const { addLibraryRoot } = useLibraryStore.getState();
+      const id = await addLibraryRoot(selected, 'alongside');
+      setSelectedRootId(id);
     }
   };
 
@@ -74,38 +67,12 @@ export function LibraryView() {
   const stats = scanResultV2;
   return (
     <div className="flex h-full flex-col">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Library</h2>
-          {selectedRootId && (
-            <span className="text-sm text-muted-foreground">
-              {libraryRoots.find((r) => r.id === selectedRootId)?.path}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleScan} disabled={isScanning}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${isScanning ? 'animate-spin' : ''}`} />
-            {isScanning ? 'Scanning...' : 'Scan Now'}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowSettings(!showSettings)}>
-            <Settings className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats overview */}
-      {stats && (
-        <div className="grid grid-cols-2 gap-4 border-b p-4 sm:grid-cols-4 lg:grid-cols-7">
-          <StatCard label="Total" value={stats.total_sources} />
-          <StatCard label="No Stem" value={stats.no_stem_count} color="text-gray-500" />
-          <StatCard label="Current" value={stats.has_stem_current_count} color="text-green-500" />
-          <StatCard label="Outdated" value={stats.has_stem_outdated_count} color="text-yellow-500" />
-          <StatCard label="Unknown" value={stats.has_stem_unknown_provenance_count} color="text-blue-500" />
-          <StatCard label="Orphaned" value={stats.orphaned_stem_count} color="text-red-500" />
-          <StatCard label="Ignored" value={stats.ignored_count} color="text-gray-400" />
-        </div>
+      {/* Overview panel */}
+      {selectedRootId && (
+        <LibraryOverviewPanel
+          selectedRootId={selectedRootId}
+          onOpenSettings={() => setShowSettings(!showSettings)}
+        />
       )}
 
       {/* Library table placeholder */}
@@ -123,23 +90,6 @@ export function LibraryView() {
 
       {/* Settings panel */}
       {showSettings && <LibraryRootSettings onClose={() => setShowSettings(false)} />}
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color?: string;
-}) {
-  return (
-    <div className="text-center">
-      <div className={`text-2xl font-bold ${color ?? ''}`}>{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   );
 }

@@ -785,7 +785,7 @@ Create `src/components/library/__tests__/LibraryRootSettings.test.tsx` with test
 
 ---
 
-#### [ ] TASK-025 — Implement `LibraryOverviewPanel` summary dashboard
+#### [x] TASK-025 — Implement `LibraryOverviewPanel` summary dashboard
 
 **Description:** Create `src/components/library/LibraryOverviewPanel.tsx`. It receives a `LibraryScanResultV2` (or reads from `libraryStore`) and renders:
 - Root path + last scanned timestamp.
