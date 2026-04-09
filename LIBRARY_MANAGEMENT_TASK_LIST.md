@@ -857,7 +857,7 @@ Create `src/components/library/__tests__/LibraryTable.test.tsx`: render with 0 r
 
 ---
 
-#### [ ] TASK-027 — Assemble the `LibraryView` page component
+#### [x] TASK-027 — Assemble the `LibraryView` page component
 
 **Description:** Create `src/components/library/LibraryView.tsx` as the top-level page. It composes:
 - If no library roots configured: an empty state CTA with "Set up Library" button → opens `LibraryRootSettings`.
