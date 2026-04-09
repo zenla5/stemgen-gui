@@ -8,6 +8,7 @@ pub mod library_roots;
 pub mod metadata;
 pub mod models;
 pub mod probe;
+pub mod provider;
 pub mod scanner;
 pub mod separation;
 pub mod sidecar;
