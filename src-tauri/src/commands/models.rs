@@ -637,8 +637,8 @@ mod tests {
     fn test_model_info_quality_rank_is_u8() {
         let models = get_available_models();
         for model in models {
-            // quality_rank is u8, so it should be <= 255
-            assert!(model.quality_rank <= 255);
+            // quality_rank is u8 — always 0..=255, just verify it's set
+            let _ = model.quality_rank;
         }
         // Verify specific quality ranks
         let bs = get_available_models()

@@ -833,7 +833,7 @@ mod tests {
 
         // Directly test that re_link returns error for non-existent source
         // This is a synchronous validation that happens before DB work
-        let stem_path = "/nonexistent/stem.mp4".to_string();
+        let _stem_path = "/nonexistent/stem.mp4".to_string();
         let source_path = "/nonexistent/source.mp3".to_string();
 
         // Can't directly call async fn in test, but we can verify the path check logic

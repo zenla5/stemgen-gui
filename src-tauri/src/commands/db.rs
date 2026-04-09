@@ -732,7 +732,7 @@ mod tests {
         let columns: Vec<String> = conn
             .prepare("PRAGMA table_info('library_roots')")
             .unwrap()
-            .query_map([], |row| Ok(row.get::<_, String>(1)?))
+            .query_map([], |row| row.get::<_, String>(1))
             .unwrap()
             .filter_map(|r| r.ok())
             .collect();
@@ -757,7 +757,7 @@ mod tests {
         let columns: Vec<String> = conn
             .prepare("PRAGMA table_info('library_index')")
             .unwrap()
-            .query_map([], |row| Ok(row.get::<_, String>(1)?))
+            .query_map([], |row| row.get::<_, String>(1))
             .unwrap()
             .filter_map(|r| r.ok())
             .collect();
@@ -958,7 +958,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
 
-        let presets = vec![
+        let presets = [
             "traktor",
             "rekordbox",
             "serato",
@@ -1025,7 +1025,7 @@ mod tests {
         let deserialized: SeparationJobLog = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.job_id, "job_123");
         assert_eq!(deserialized.separation_model, "bs_roformer");
-        assert_eq!(deserialized.success, true);
+        assert!(deserialized.success);
     }
 
     #[test]
@@ -1109,7 +1109,7 @@ mod tests {
         assert_eq!(retrieved.job_id, "job_test_001");
         assert_eq!(retrieved.separation_model, "htdemucs");
         assert_eq!(retrieved.source_hash, "deadbeef123456");
-        assert_eq!(retrieved.success, true);
+        assert!(retrieved.success);
         assert_eq!(retrieved.dj_preset, "rekordbox");
     }
 
