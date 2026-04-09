@@ -6,7 +6,8 @@ A Python script that wraps demucs/bs_roformer for stem separation
 and communicates with the Tauri frontend via JSON lines on stdout.
 
 Usage:
-    python stemgen_sidecar.py --model <model> --input <path> --output <dir> --device <cpu|cuda|mps>
+    python stemgen_sidecar.py --model <model> --input <path> --output <dir> --device <cpu|cuda|mps|cloud>
+    python stemgen_sidecar.py --model <model> --input <path> --output <dir> --device cloud --provider <fal|replicate> --api-key <key>
 
 Output:
     - Emits JSON progress lines to stdout
@@ -279,7 +280,9 @@ def main() -> None:
     parser.add_argument("--model", help="AI model to use (demucs, htdemucs, htdemucs_ft, bs_roformer)")
     parser.add_argument("--input", type=Path, help="Input audio file path")
     parser.add_argument("--output", type=Path, help="Output directory for stem files")
-    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "mps"], help="Device to use for inference")
+    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "mps", "cloud"], help="Device to use for inference")
+    parser.add_argument("--provider", default=None, choices=["fal", "replicate"], help="Cloud inference provider (required when --device cloud)")
+    parser.add_argument("--api-key", default=None, type=str, help="API key for cloud provider")
     parser.add_argument("--download-model", metavar="MODEL_ID", help="Download a demucs model by ID and exit")
 
     args = parser.parse_args()
@@ -299,6 +302,21 @@ def main() -> None:
     # Validate required args for separation mode
     if not args.model or not args.input or not args.output:
         parser.error("--model, --input, and --output are required for stem separation")
+
+    # Validate cloud provider configuration
+    if args.device == "cloud":
+        if args.provider is None:
+            emit({
+                "status": "error",
+                "error": "No API key set — go to Settings → Inference",
+            })
+            sys.exit(1)
+        if not args.api_key:
+            emit({
+                "status": "error",
+                "error": "No API key set — go to Settings → Inference",
+            })
+            sys.exit(1)
 
     # Validate input file
     if not args.input.exists():

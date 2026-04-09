@@ -58,6 +58,7 @@ coverage.lcov
 *.py
 !scripts/
 !python/
+!python/**/*.py
 
 # Python caches
 __pycache__/
