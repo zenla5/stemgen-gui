@@ -107,16 +107,16 @@ describe('Navigation', () => {
     await takeScreenshot('linux-nav-key-3');
   });
 
-  it('keyboard shortcut 4 navigates to Settings', async () => {
+  it('keyboard shortcut 5 navigates to Settings', async () => {
     const state = readBinaryState();
     if (!state?.available) return;
 
     await navigateSkippingWizard(appUrl);
-    await browser.keys('4');
+    await browser.keys('5');
     await browser.pause(200);
 
     expect(await $('[data-testid="theme-btn-light"]').isDisplayed()).toBe(true);
-    await takeScreenshot('linux-nav-key-4');
+    await takeScreenshot('linux-nav-key-5');
   });
 
   it('Ctrl+B toggles sidebar', async () => {

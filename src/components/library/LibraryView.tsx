@@ -58,7 +58,7 @@ export function LibraryView() {
             {t('library.setUpDescription')}
           </p>
         </div>
-        <Button onClick={handleAddRoot} size="lg">
+        <Button onClick={handleAddRoot} size="lg" data-testid="empty-add-root-btn">
           <Plus className="mr-2 h-5 w-5" />
           {t('library.addLibraryFolder')}
         </Button>

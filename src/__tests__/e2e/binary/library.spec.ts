@@ -29,9 +29,9 @@ test.describe('Library Navigation (Binary)', () => {
     await expect(libraryContent.first()).toBeVisible({ timeout: 5000 });
   });
 
-  test('keyboard shortcut 5 navigates to Library view', async ({ page }) => {
-    // Press '5' to navigate to Library
-    await page.keyboard.press('5');
+  test('keyboard shortcut 4 navigates to Library view', async ({ page }) => {
+    // Press '4' to navigate to Library
+    await page.keyboard.press('4');
     await page.waitForTimeout(500);
 
     // Verify the Library view is active

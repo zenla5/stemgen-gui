@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe.serial('Library Tab', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await page.waitForSelector('[data-testid="nav-library"]', { timeout: 15000 });
   });
 
   test('navigate to Library tab via sidebar click', async ({ page }) => {
@@ -16,9 +16,9 @@ test.describe.serial('Library Tab', () => {
     await expect(body).toBeVisible();
   });
 
-  test('navigate to Library tab via keyboard shortcut 5', async ({ page }) => {
-    // Press '5' to navigate to Library
-    await page.keyboard.press('5');
+  test('navigate to Library tab via keyboard shortcut 4', async ({ page }) => {
+    // Press '4' to navigate to Library
+    await page.keyboard.press('4');
     await page.waitForTimeout(500);
 
     // Verify the page is still functional (app didn't crash)

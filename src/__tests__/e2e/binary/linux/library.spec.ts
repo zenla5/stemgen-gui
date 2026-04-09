@@ -32,15 +32,14 @@ describe('Library Navigation', () => {
     await takeScreenshot('linux-nav-library');
   });
 
-  it('keyboard shortcut 5 navigates to Library view', async () => {
+  it('keyboard shortcut 4 navigates to Library view', async () => {
     const state = readBinaryState();
     if (!state?.available) return;
 
     await navigateSkippingWizard(appUrl);
 
-    // Press '5' to navigate to Library
-    const navItem = await $('[data-testid="nav-library"]');
-    await navItem.click();
+    // Press '4' to navigate to Library
+    await browser.keys('4');
     await browser.pause(500);
 
     // Library view should be active
