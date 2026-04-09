@@ -37,10 +37,10 @@ export default defineConfig({
         'src-tauri/gen/**',
       ],
       thresholds: {
-        lines: 36,
-        functions: 64,
+        lines: 42,
+        functions: 65,
         branches: 68,
-        statements: 36,
+        statements: 42,
       },
     },
   },
