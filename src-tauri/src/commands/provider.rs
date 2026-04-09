@@ -164,3 +164,69 @@ pub async fn test_provider_connection(
         }),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Replicate version listing
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplicateVersion {
+    pub id: String,
+    pub created_at: String,
+    pub is_latest: bool,
+}
+
+/// Fetch available model versions from Replicate.
+#[tauri::command]
+pub async fn fetch_replicate_versions(
+    api_key: String,
+) -> Result<Vec<ReplicateVersion>, String> {
+    info!("Fetching Replicate model versions");
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://api.replicate.com/v1/models/ryan5453/demucs/versions")
+        .header("Authorization", format!("Token {}", api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Replicate API returned {}: {}",
+            resp.status(),
+            resp.text().await.unwrap_or_default()
+        ));
+    }
+
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    let results = body
+        .get("results")
+        .and_then(|r| r.as_array())
+        .ok_or_else(|| "Unexpected response format from Replicate".to_string())?;
+
+    let mut versions: Vec<ReplicateVersion> = results
+        .iter()
+        .filter_map(|entry| {
+            let id = entry.get("id")?.as_str()?.to_string();
+            let created_at = entry.get("created_at")?.as_str()?.to_string();
+            Some(ReplicateVersion {
+                id,
+                created_at,
+                is_latest: false,
+            })
+        })
+        .collect();
+
+    // Sort by created_at descending (newest first)
+    versions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    // Mark the first as latest
+    if let Some(first) = versions.first_mut() {
+        first.is_latest = true;
+    }
+
+    Ok(versions)
+}

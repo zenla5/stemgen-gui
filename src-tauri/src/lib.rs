@@ -340,6 +340,7 @@ pub fn run() {
             commands::provider::set_provider_api_key,
             commands::provider::clear_provider_api_key,
             commands::provider::test_provider_connection,
+            commands::provider::fetch_replicate_versions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
