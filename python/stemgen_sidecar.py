@@ -680,6 +680,7 @@ def main() -> None:
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "mps", "cloud"], help="Device to use for inference")
     parser.add_argument("--provider", default=None, choices=["fal", "replicate"], help="Cloud inference provider (required when --device cloud)")
     parser.add_argument("--api-key", default=None, type=str, help="API key for cloud provider")
+    parser.add_argument("--provider-version", default=None, type=str, help="Replicate model version hash")
     parser.add_argument("--download-model", metavar="MODEL_ID", help="Download a demucs model by ID and exit")
 
     args = parser.parse_args()
@@ -714,6 +715,13 @@ def main() -> None:
                 "error": "No API key set — go to Settings → Inference",
             })
             sys.exit(1)
+        if args.provider == "replicate" and not args.provider_version:
+            emit({
+                "status": "error",
+                "error": "No Replicate version selected — choose a version in Settings",
+                "fallback_hint": "switch_to_local",
+            })
+            sys.exit(1)
 
     # Validate input file
     if not args.input.exists():
@@ -740,7 +748,12 @@ def main() -> None:
 
     try:
         # Run separation
-        stems = run_separation(args.model, args.input, args.output, args.device)
+        stems = run_separation(
+            args.model, args.input, args.output, args.device,
+            provider=args.provider,
+            api_key=args.api_key,
+            version_hash=args.provider_version,
+        )
 
         # Emit completion
         stem_paths = {name: str(path) for name, path in stems.items()}

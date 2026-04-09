@@ -90,3 +90,23 @@ class TestCloudCliValidation:
         captured = capsys.readouterr()
         parsed = json.loads(captured.out.strip())
         assert "No API key set" in parsed["error"]
+
+    def test_cloud_replicate_without_version_exits_with_error(self, capsys, monkeypatch, tmp_path):
+        """--device cloud --provider replicate --api-key X without --provider-version exits non-zero."""
+        import stemgen_sidecar
+
+        input_file = tmp_path / "test.wav"
+        input_file.write_bytes(b"fake")
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["stemgen_sidecar", "--model", "htdemucs", "--input", str(input_file),
+             "--output", str(tmp_path), "--device", "cloud", "--provider", "replicate",
+             "--api-key", "fake-key"],
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert "No Replicate version" in parsed["error"]
