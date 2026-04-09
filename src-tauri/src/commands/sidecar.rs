@@ -115,12 +115,19 @@ impl SidecarManager {
     }
 
     /// Run stem separation using the Python sidecar
+    ///
+    /// When `provider` is Some, device is set to "cloud" and additional flags
+    /// are passed. **Security note:** API key is passed as a CLI argument to the
+    /// sidecar subprocess — it is never logged by tracing.
     pub async fn run_separation(
         &mut self,
         job_id: String,
         source_path: &Path,
         model: &str,
         device: &str,
+        provider: Option<&str>,
+        api_key: Option<&str>,
+        version_hash: Option<&str>,
     ) -> Result<SeparationResult> {
         // Detect Python if not already detected
         if self.python_path.is_none() {
@@ -144,9 +151,14 @@ impl SidecarManager {
             device
         );
 
-        // Spawn the Python process
-        let mut child = Command::new(python_path)
-            .arg(&self.sidecar_path)
+        if let Some(p) = provider {
+            tracing::debug!("Spawning with provider: {}", p);
+        }
+        // API key is NEVER logged
+
+        // Build command with required args
+        let mut cmd = Command::new(python_path);
+        cmd.arg(&self.sidecar_path)
             .arg("--model")
             .arg(model)
             .arg("--input")
@@ -154,7 +166,20 @@ impl SidecarManager {
             .arg("--output")
             .arg(&job_output_dir)
             .arg("--device")
-            .arg(device)
+            .arg(device);
+
+        // Add cloud-specific flags
+        if let Some(p) = provider {
+            cmd.arg("--provider").arg(p);
+        }
+        if let Some(key) = api_key {
+            cmd.arg("--api-key").arg(key);
+        }
+        if let Some(ver) = version_hash {
+            cmd.arg("--provider-version").arg(ver);
+        }
+
+        let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
