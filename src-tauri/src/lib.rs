@@ -4,6 +4,7 @@
 
 pub mod audio;
 pub mod commands;
+pub mod inference_provider;
 pub mod stems;
 
 use std::sync::Mutex as StdMutex;
