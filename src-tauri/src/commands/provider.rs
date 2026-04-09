@@ -179,9 +179,7 @@ pub struct ReplicateVersion {
 
 /// Fetch available model versions from Replicate.
 #[tauri::command]
-pub async fn fetch_replicate_versions(
-    api_key: String,
-) -> Result<Vec<ReplicateVersion>, String> {
+pub async fn fetch_replicate_versions(api_key: String) -> Result<Vec<ReplicateVersion>, String> {
     info!("Fetching Replicate model versions");
 
     let client = reqwest::Client::new();

@@ -168,11 +168,9 @@ pub async fn start_separation(
             };
 
             // Load API key from keychain — never log the key value
-            let key = inference_provider::load_api_key(provider_name)?
-                .ok_or_else(|| {
-                    "No API key configured for this provider — go to Settings → Inference"
-                        .to_string()
-                })?;
+            let key = inference_provider::load_api_key(provider_name)?.ok_or_else(|| {
+                "No API key configured for this provider — go to Settings → Inference".to_string()
+            })?;
 
             info!("Using cloud provider: {}", provider_name);
 

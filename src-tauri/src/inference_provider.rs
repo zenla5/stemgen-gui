@@ -61,7 +61,9 @@ pub fn get_config(conn: &Connection) -> Result<InferenceProviderConfig, String> 
         .prepare("SELECT value FROM settings WHERE key = ?1")
         .map_err(|e| e.to_string())?;
 
-    let mut rows = stmt.query(params![SETTINGS_KEY]).map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query(params![SETTINGS_KEY])
+        .map_err(|e| e.to_string())?;
 
     if let Some(row) = rows.next().map_err(|e| e.to_string())? {
         let value: String = row.get(0).map_err(|e| e.to_string())?;
@@ -91,8 +93,7 @@ pub fn save_config(conn: &Connection, config: &InferenceProviderConfig) -> Resul
 /// **Security invariant:** The key is stored ONLY in the keychain. It must
 /// never be written to SQLite, log output, or Tauri event payloads.
 pub fn store_api_key(provider: &str, key: &str) -> Result<(), String> {
-    let entry =
-        keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
+    let entry = keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
     entry.set_password(key).map_err(|e| e.to_string())
 }
 
@@ -102,8 +103,7 @@ pub fn store_api_key(provider: &str, key: &str) -> Result<(), String> {
 ///
 /// **Security invariant:** Callers must never log or emit the returned key.
 pub fn load_api_key(provider: &str) -> Result<Option<String>, String> {
-    let entry =
-        keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
+    let entry = keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
     match entry.get_password() {
         Ok(key) => Ok(Some(key)),
         Err(keyring::Error::NoEntry) => Ok(None),
@@ -113,8 +113,7 @@ pub fn load_api_key(provider: &str) -> Result<Option<String>, String> {
 
 /// Delete a stored API key from the OS keychain.
 pub fn delete_api_key(provider: &str) -> Result<(), String> {
-    let entry =
-        keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
+    let entry = keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
     match entry.delete_password() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()), // already absent
@@ -202,8 +201,14 @@ mod tests {
 
     #[test]
     fn provider_enum_serializes_as_lowercase() {
-        assert_eq!(serde_json::to_string(&InferenceProvider::Local).unwrap(), "\"local\"");
-        assert_eq!(serde_json::to_string(&InferenceProvider::Fal).unwrap(), "\"fal\"");
+        assert_eq!(
+            serde_json::to_string(&InferenceProvider::Local).unwrap(),
+            "\"local\""
+        );
+        assert_eq!(
+            serde_json::to_string(&InferenceProvider::Fal).unwrap(),
+            "\"fal\""
+        );
         assert_eq!(
             serde_json::to_string(&InferenceProvider::Replicate).unwrap(),
             "\"replicate\""
