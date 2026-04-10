@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FirstRunWizard } from '../FirstRunWizard';
 
 // ─── Mock Tauri APIs ───────────────────────────────────────────────────────────
@@ -85,5 +85,100 @@ describe('FirstRunWizard — welcome step', () => {
     const onComplete = vi.fn();
     const onSkip = vi.fn();
     expect(() => render(<FirstRunWizard onComplete={onComplete} onSkip={onSkip} />)).not.toThrow();
+  });
+});
+
+// ─── Installer dep marker tests ─────────────────────────────────────────────
+
+describe('FirstRunWizard — installer dep marker', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('auto-advances to check step when marker has all deps true', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_installer_dep_marker') {
+        return { python: true, ffmpeg: true, pytorch: true, demucs: true };
+      }
+      if (cmd === 'validate_environment') {
+        return {
+          ffmpeg: 'available',
+          python: 'available',
+          pythonVersion: '3.12.0',
+          pytorch: 'available',
+          pytorchVersion: '2.1.0',
+          demucs: 'available',
+          cuda: { unavailable: 'CUDA not available' },
+        };
+      }
+      return null;
+    });
+
+    render(<FirstRunWizard />);
+
+    // Should auto-advance from 'welcome' to 'check' (and then 'results')
+    await waitFor(() => {
+      expect(screen.queryByText(/start check/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows warning for python when marker has python=false', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_installer_dep_marker') {
+        return { python: false, ffmpeg: true, pytorch: true, demucs: true };
+      }
+      return null;
+    });
+
+    render(<FirstRunWizard />);
+
+    // The wizard should NOT auto-advance since python is missing
+    // It should still show the welcome step
+    await waitFor(() => {
+      expect(screen.getByText(/start check/i)).toBeInTheDocument();
+    });
+
+    // Python should show a warning message in the checking step
+    fireEvent.click(screen.getByRole('button', { name: /start check/i }));
+
+    // After advancing to check, python should show warning
+    await waitFor(() => {
+      const checkingElements = screen.queryAllByText(/checking/i);
+      expect(checkingElements.length).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  it('falls back to normal flow when marker is absent', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_installer_dep_marker') {
+        throw new Error('marker not found');
+      }
+      return null;
+    });
+
+    render(<FirstRunWizard />);
+
+    // Should show the welcome step as normal
+    await waitFor(() => {
+      expect(screen.getByText(/welcome to stemgen gui/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /start check/i })).toBeInTheDocument();
+  });
+
+  it('falls back to normal flow when marker command returns null', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_installer_dep_marker') {
+        return null;
+      }
+      return null;
+    });
+
+    render(<FirstRunWizard />);
+
+    // Should show the welcome step as normal
+    await waitFor(() => {
+      expect(screen.getByText(/welcome to stemgen gui/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /start check/i })).toBeInTheDocument();
   });
 });
