@@ -115,8 +115,13 @@ def _run_demucs_model(
         "message": "Loading audio file...",
     })
 
-    # Load audio using demucs
-    wav = AudioFile(input_path).read(streams=0)
+    # Load audio resampled to model's sample rate and channel count
+    wav = AudioFile(input_path).read(
+        stems=0,
+        samplerate=model.samplerate,
+        channels=model.audio_channels,
+    )
+    # wav is already a torch.Tensor of shape (channels, samples)
     source = str(input_path.stem)
 
     emit({
@@ -126,17 +131,15 @@ def _run_demucs_model(
         "message": "Running AI separation...",
     })
 
-    # Apply model
     with torch.no_grad():
-        mix = wav[0]
-        if mix.shape[0] > 2:
-            mix = mix.mean(0)
-        mix = torch.from_numpy(mix).to(run_device)
-        ref = mix.mean(0)
-        mix = (mix - ref.mean()) / (ref.std() + 1e-8)
-        mix = mix[None, None, ...]
-
-        sources = apply_model(model, mix, device=run_device, shifts=shifts, progress=False)[0]
+        # wav: (channels, samples) — move to device and normalise
+        wav = wav.to(run_device)
+        ref = wav.mean(0)
+        wav = (wav - ref.mean()) / (ref.std() + 1e-8)
+        # apply_model expects (batch, channels, samples)
+        sources = apply_model(
+            model, wav[None], device=run_device, shifts=shifts, progress=False
+        )[0]
 
     emit({
         "status": "progress",
@@ -145,8 +148,9 @@ def _run_demucs_model(
         "message": "Saving stem files...",
     })
 
-    source_names = model.sources
-    stem_names = ["drums", "bass", "other", "vocals"]
+    # Use model-reported source names instead of hardcoded list.
+    # model.sources may have more or fewer than four stems depending on the model.
+    stem_names = list(model.sources)
     stems: Dict[str, Path] = {}
 
     for i, stem_name in enumerate(stem_names):
