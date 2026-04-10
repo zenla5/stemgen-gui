@@ -181,6 +181,7 @@ impl SidecarManager {
         }
 
         let mut child = cmd
+            .env("PYTHONUTF8", "1")
             .no_window()
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
