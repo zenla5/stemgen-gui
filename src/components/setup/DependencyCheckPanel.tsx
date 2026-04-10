@@ -7,7 +7,7 @@
  * Settings or any other view.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '@/stores/appStore';
 import { InstallProgress } from '@/components/ui/InstallProgress';
@@ -63,7 +63,7 @@ function getDepStatus(pkg: PackageStatus | unknown, successMsg?: string): { stat
   return { status: 'warning', message: 'Unknown status' };
 }
 
-const STATUS_ICON: Record<DepRow['status'], () => React.ReactNode> = {
+const STATUS_ICON: Record<DepRow['status'], () => ReactNode> = {
   ok: () => <CheckCircle className="h-4 w-4 text-green-500" />,
   missing: () => <XCircle className="h-4 w-4 text-red-500" />,
   warning: () => <AlertCircle className="h-4 w-4 text-yellow-500" />,
@@ -143,7 +143,7 @@ export function DependencyCheckPanel({
       // Invalidate app store cache and re-validate
       useAppStore.setState({ environmentValidatedAt: null });
       await validateEnvironment();
-    } catch (err) {
+    } catch (_err) {
       for (const depDef of DEPENDENCY_DEFS) {
         updateDep(depDef.name, 'warning', 'Could not check dependency');
       }
