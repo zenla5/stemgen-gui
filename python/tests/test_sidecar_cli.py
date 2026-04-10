@@ -347,3 +347,73 @@ class TestRunDemucsModel:
         assert result.returncode == 0, f"Exit code {result.returncode}\nstderr:\n{result.stderr}"
         wav_files = list(output_dir.glob("*.wav"))
         assert len(wav_files) == 4, f"Expected 4 WAV files, found {len(wav_files)}: {wav_files}"
+
+
+# ----------------------------------------------------------------------------------------------
+# Tests for check_dependencies() (TASK-012)
+# ----------------------------------------------------------------------------------------------
+
+
+class TestCheckDependenciesDetailed:
+    """Tests for check_dependencies() with package presence/absence."""
+
+    def test_returns_true_when_all_packages_present(self):
+        """When torch, torchaudio, and demucs are installed, check_dependencies returns True."""
+        import stemgen_sidecar
+
+        # Only run if the packages are actually available
+        try:
+            import torch  # noqa: F401
+            import torchaudio  # noqa: F401
+            from demucs.pretrained import get_model  # noqa: F401
+        except ImportError:
+            pytest.skip("Required packages not installed")
+
+        result = stemgen_sidecar.check_dependencies()
+        assert result is True
+
+    def test_returns_false_when_torch_missing(self, capsys):
+        """When torch is missing, check_dependencies returns False and emits error JSON."""
+        import stemgen_sidecar
+
+        with patch.dict(sys.modules, {"torch": None}):
+            result = stemgen_sidecar.check_dependencies()
+
+        assert result is False
+        captured = capsys.readouterr()
+        lines = [l.strip() for l in captured.out.strip().split("\n") if l.strip()]
+        assert len(lines) > 0, "Expected JSON output"
+        parsed = json.loads(lines[-1])
+        assert parsed["status"] == "error"
+        assert "torch" in parsed["error"].lower()
+
+    def test_returns_false_when_demucs_missing(self, capsys):
+        """When demucs is missing, check_dependencies returns False and emits error JSON."""
+        import stemgen_sidecar
+
+        # Remove demucs from sys.modules to simulate it being missing
+        demucs_modules = {k: None for k in sys.modules if k.startswith("demucs")}
+        with patch.dict(sys.modules, demucs_modules, clear=False):
+            # Also ensure demucs.pretrained is None
+            with patch.dict(sys.modules, {"demucs": None, "demucs.pretrained": None}):
+                result = stemgen_sidecar.check_dependencies()
+
+        assert result is False
+        captured = capsys.readouterr()
+        lines = [l.strip() for l in captured.out.strip().split("\n") if l.strip()]
+        assert len(lines) > 0
+        parsed = json.loads(lines[-1])
+        assert parsed["status"] == "error"
+        assert parsed.get("error"), "Error message should be non-empty"
+
+    def test_error_json_contains_install_hint(self, capsys):
+        """The error JSON should include a pip install hint."""
+        import stemgen_sidecar
+
+        with patch.dict(sys.modules, {"torch": None}):
+            stemgen_sidecar.check_dependencies()
+
+        captured = capsys.readouterr()
+        lines = [l.strip() for l in captured.out.strip().split("\n") if l.strip()]
+        parsed = json.loads(lines[-1])
+        assert "pip install" in parsed["error"]

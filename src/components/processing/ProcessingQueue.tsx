@@ -1,4 +1,5 @@
-import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle, Layers, Cloud } from 'lucide-react';
+import { useState } from 'react';
+import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle, Layers, Cloud, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { cn } from '@/lib/utils';
@@ -160,6 +161,7 @@ function JobItem({
   onRemove: () => void;
   onCancel: () => void;
 }) {
+  const [errorExpanded, setErrorExpanded] = useState(false);
   const getStatusIcon = (status: ProcessingStatus) => {
     switch (status) {
       case 'pending':
@@ -209,8 +211,27 @@ function JobItem({
           </span>
         </div>
         {job.status === 'failed' && job.error && (
-          <div className="mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-            {job.error}
+          <div className="mt-1">
+            <button
+              data-testid="error-details-toggle"
+              onClick={() => setErrorExpanded(!errorExpanded)}
+              className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+            >
+              {errorExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              Details
+            </button>
+            {errorExpanded && (
+              <div
+                data-testid="error-details"
+                className="mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300 whitespace-pre-wrap"
+              >
+                {job.error}
+              </div>
+            )}
           </div>
         )}
       </div>

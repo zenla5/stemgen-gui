@@ -119,6 +119,13 @@ describe('ProcessingQueue', () => {
     // Use getAllByText since "failed" might appear multiple times
     const failedElements = screen.getAllByText(/failed/i);
     expect(failedElements.length).toBeGreaterThan(0);
+
+    // Error details are collapsed by default — click "Details" toggle
+    const toggle = screen.getByTestId('error-details-toggle');
+    await act(async () => {
+      toggle.click();
+    });
+
     expect(screen.getByText(/Model not found/i)).toBeInTheDocument();
   });
 

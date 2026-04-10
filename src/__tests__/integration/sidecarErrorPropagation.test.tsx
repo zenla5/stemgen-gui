@@ -98,7 +98,13 @@ describe('Sidecar Error Propagation', () => {
 
     render(<ProcessingQueue />);
 
-    // The error message should be visible in the job card
+    // Error details are collapsed by default — click "Details" toggle
+    const toggle = screen.getByTestId('error-details-toggle');
+    await act(async () => {
+      toggle.click();
+    });
+
+    // The error message should now be visible
     expect(screen.getByText(/No module named 'demucs'/)).toBeInTheDocument();
     expect(screen.getByText(/Setup Wizard/)).toBeInTheDocument();
   });

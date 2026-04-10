@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -242,9 +242,11 @@ impl SidecarManager {
             });
         }
 
-        // Also log stderr
+        // Also log stderr and collect lines for error reporting
+        let stderr_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         if let Some(stderr) = stderr {
             let job_id_for_stderr = job_id.clone();
+            let stderr_buf = stderr_lines.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
@@ -252,6 +254,9 @@ impl SidecarManager {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() {
                         warn!("[{}] stderr: {}", job_id_for_stderr, trimmed);
+                        if let Ok(mut buf) = stderr_buf.lock() {
+                            buf.push(trimmed.to_string());
+                        }
                     }
                 }
             });
@@ -276,10 +281,33 @@ impl SidecarManager {
                 output_dir: job_output_dir,
             })
         } else {
-            Err(anyhow::anyhow!(
-                "Separation process failed with exit code: {:?}",
-                status.code()
-            ))
+            // Collect stderr tail for a more useful error message
+            let stderr_tail = stderr_lines
+                .lock()
+                .ok()
+                .map(|buf| {
+                    let tail: Vec<&String> = buf.iter().rev().take(20).collect();
+                    tail.into_iter()
+                        .rev()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default();
+
+            let exit_code = status.code();
+            if stderr_tail.is_empty() {
+                Err(anyhow::anyhow!(
+                    "Separation failed (exit {:?}): no stderr output",
+                    exit_code
+                ))
+            } else {
+                Err(anyhow::anyhow!(
+                    "Separation failed (exit {:?}): {}",
+                    exit_code,
+                    stderr_tail
+                ))
+            }
         }
     }
 
@@ -493,5 +521,69 @@ mod tests {
 
         // Cleanup
         let _ = std::fs::remove_dir_all(&output_dir);
+    }
+
+    /// Verify collect_stems returns only stem files that actually exist.
+    #[test]
+    fn test_collect_stems_returns_only_existing_files() {
+        let tmp = std::env::temp_dir().join("stemgen-test-collect-partial");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        // Create only 2 of 4 stem files
+        std::fs::write(tmp.join("track_drums.wav"), b"fake").unwrap();
+        std::fs::write(tmp.join("track_vocals.wav"), b"fake").unwrap();
+
+        let manager = SidecarManager::new(PathBuf::from("fake"), tmp.clone());
+        let source = Path::new("/music/track.wav");
+        let stems = manager.collect_stems(&tmp, source).unwrap();
+
+        assert_eq!(stems.len(), 2);
+        let types: Vec<&str> = stems.iter().map(|s| s.stem_type.as_str()).collect();
+        assert!(types.contains(&"drums"));
+        assert!(types.contains(&"vocals"));
+        assert!(!types.contains(&"bass"));
+        assert!(!types.contains(&"other"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Verify collect_stems returns an error when no stem files exist.
+    #[test]
+    fn test_collect_stems_errors_when_empty() {
+        let tmp = std::env::temp_dir().join("stemgen-test-collect-empty");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        let manager = SidecarManager::new(PathBuf::from("fake"), tmp.clone());
+        let source = Path::new("/music/track.wav");
+        let result = manager.collect_stems(&tmp, source);
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No stem files were generated"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Verify collect_stems handles Unicode source file names (guards TASK-007 regression).
+    #[test]
+    fn test_collect_stems_handles_unicode_source_name() {
+        let tmp = std::env::temp_dir().join("stemgen-test-collect-unicode");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        // Create stem files with accented source name
+        std::fs::write(tmp.join("été_drums.wav"), b"fake").unwrap();
+        std::fs::write(tmp.join("été_bass.wav"), b"fake").unwrap();
+        std::fs::write(tmp.join("été_other.wav"), b"fake").unwrap();
+        std::fs::write(tmp.join("été_vocals.wav"), b"fake").unwrap();
+
+        let manager = SidecarManager::new(PathBuf::from("fake"), tmp.clone());
+        let source = Path::new("/musique/été.wav");
+        let stems = manager.collect_stems(&tmp, source).unwrap();
+
+        assert_eq!(stems.len(), 4);
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

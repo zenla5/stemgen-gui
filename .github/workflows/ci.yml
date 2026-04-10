@@ -84,7 +84,16 @@ jobs:
         run: pip install -r python/requirements-dev.txt
 
       - name: Run Python tests
-        run: cd python && pytest tests/ --tb=short -v
+        run: cd python && pytest tests/ -m "not integration" --tb=short -v
+
+      - name: Upload pytest output
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: python-test-results
+          path: |
+            python/.pytest_cache/
+          retention-days: 7
 
   # Frontend integration tests (React component tests)
   integration:

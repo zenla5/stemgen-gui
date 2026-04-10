@@ -458,3 +458,87 @@ describe('useAppStore — additional edge cases', () => {
     expect(() => store.updateStem('non-existent', { volume: 0.5 })).not.toThrow();
   });
 });
+
+// ─── TASK-009: Error-display tests for separation failure ──────────────────
+
+describe('useAppStore — separation failure error display', () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+  });
+
+  it('sets job status to failed and stores error when start_separation rejects', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockRejectedValueOnce(
+      new Error('Separation process failed with exit code: Some(1)')
+    );
+
+    const store = useAppStore.getState();
+    const file = fakeFile({ path: '/audio/fail-test.mp3' });
+    store.addFiles([file]);
+
+    await store.startProcessing([file]);
+
+    // Wait for async processing to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    const state = useAppStore.getState();
+    const failedJob = state.jobs.find((j) => j.input_path === '/audio/fail-test.mp3');
+    expect(failedJob).toBeDefined();
+    expect(failedJob!.status).toBe('failed');
+    expect(failedJob!.error).toBeTruthy();
+    expect(failedJob!.error!.length).toBeGreaterThan(0);
+  });
+
+  it('exposes error text on the ProcessingJob object (not silently swallowed)', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockRejectedValueOnce(
+      new Error('No module named \'demucs\'')
+    );
+
+    const store = useAppStore.getState();
+    const file = fakeFile({ path: '/audio/missing-dep.mp3' });
+    store.addFiles([file]);
+
+    await store.startProcessing([file]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    const state = useAppStore.getState();
+    const failedJob = state.jobs.find((j) => j.input_path === '/audio/missing-dep.mp3');
+    expect(failedJob?.error).toContain('demucs');
+  });
+
+  it('sets isProcessing to false after a job fails', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockRejectedValueOnce(
+      new Error('Separation process failed with exit code: Some(1)')
+    );
+
+    const store = useAppStore.getState();
+    const file = fakeFile({ path: '/audio/processing-flag.mp3' });
+    store.addFiles([file]);
+
+    await store.startProcessing([file]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(useAppStore.getState().isProcessing).toBe(false);
+  });
+
+  it('appends Setup Wizard hint for dependency-related errors', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockRejectedValueOnce(
+      new Error('ModuleNotFoundError: No module named \'torch\'')
+    );
+
+    const store = useAppStore.getState();
+    const file = fakeFile({ path: '/audio/hint-test.mp3' });
+    store.addFiles([file]);
+
+    await store.startProcessing([file]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    const state = useAppStore.getState();
+    const failedJob = state.jobs.find((j) => j.input_path === '/audio/hint-test.mp3');
+    expect(failedJob?.error).toContain('Setup Wizard');
+  });
+});

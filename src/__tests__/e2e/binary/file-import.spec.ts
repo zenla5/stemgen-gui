@@ -102,4 +102,30 @@ test.describe('File Import', () => {
     // App should still be functional (no crash)
     await expect(page.locator('[data-testid="drop-zone"]')).toBeVisible();
   });
+
+  test('Open Files button click does not crash the app', async ({ page }) => {
+    const openBtn = page.locator('[data-testid="open-files-btn"]');
+
+    // Click the button — this triggers Tauri's open() dialog which we
+    // cannot control from Playwright. The dialog opens natively and the
+    // test verifies the app doesn't crash.
+    await openBtn.click();
+
+    // Wait briefly for any potential dialog interaction
+    await page.waitForTimeout(1000);
+
+    // App should still be functional after clicking Open Files
+    await expect(page.locator('[data-testid="drop-zone"]')).toBeVisible();
+    await expect(page.locator('[data-testid="open-files-btn"]')).toBeVisible();
+  });
+
+  // NOTE: Full file import via the native Open Files dialog cannot be
+  // automated from Playwright (native OS dialogs are outside the WebView2
+  // sandbox). To test the complete import flow, either:
+  // 1. Expose the Zustand store on `window` for E2E store injection, or
+  // 2. Use OS-level automation (e.g., pyautogui) to interact with the
+  //    native file picker dialog.
+  //
+  // The drag-and-drop path is tested via unit tests (FileBrowser.test.tsx)
+  // since Tauri's drag-drop events also cannot be simulated from Playwright.
 });
