@@ -238,13 +238,13 @@ export function DependencyCheckPanel({
           const Icon = STATUS_ICON[dep.status];
 
           return (
-            <div key={dep.name} data-testid={`dep-row-${dep.manifestKey}`} className="rounded-lg bg-muted/30">
+            <div key={dep.name} data-testid="wizard-dep-row" data-dep-key={dep.manifestKey} className="rounded-lg bg-muted/30">
               <div className="flex items-center gap-3 p-2">
                 <Icon />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{dep.name}</span>
-                    <span className={cn(
+                    <span data-testid="wizard-dep-status" className={cn(
                       'text-xs',
                       dep.status === 'ok' && 'text-green-600',
                       dep.status === 'missing' && 'text-red-600',
