@@ -5,15 +5,13 @@
  * Shown when Python, FFmpeg, or AI models are not detected.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/Button';
 import { Progress } from '@/components/ui/Progress';
-import { InstallProgress } from '@/components/ui/InstallProgress';
-import { useAppStore } from '@/stores/appStore';
-import type { PackageStatus, AvailableInstaller } from '@/lib/types';
+import { DependencyCheckPanel } from '@/components/setup/DependencyCheckPanel';
+import type { PackageStatus } from '@/lib/types';
 import { hasPackageStatusKey, getPackageStatusValue } from '@/lib/types';
-import { Download, Loader2 } from 'lucide-react';
 
 interface DependencyCheck {
   name: string;
@@ -31,7 +29,6 @@ interface FirstRunWizardProps {
 /** Check a PackageStatus discriminated union and return our dependency check status */
 function getDepStatus(pkg: PackageStatus | unknown, successMsg?: string): { status: DependencyCheck['status']; message?: string } {
   if (typeof pkg === 'string') {
-    // String form of PackageStatus (e.g. "available" from Rust unit variant)
     if (pkg === 'available') return { status: 'ok', message: successMsg ?? 'Ready' };
     return { status: 'missing', message: 'Not configured' };
   }
@@ -51,7 +48,7 @@ function getDepStatus(pkg: PackageStatus | unknown, successMsg?: string): { stat
 }
 
 export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
-  const [step, setStep] = useState<'welcome' | 'check' | 'results' | 'models'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'check' | 'results'>('welcome');
   const [dependencies, setDependencies] = useState<DependencyCheck[]>([
     { name: 'FFmpeg', manifestKey: 'ffmpeg', description: 'Audio/video processing — required', status: 'pending' },
     { name: 'Python', manifestKey: 'python', description: 'AI model inference — required', status: 'pending' },
@@ -59,17 +56,6 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
     { name: 'demucs', manifestKey: 'demucs', description: 'AI stem separation model — required', status: 'pending' },
     { name: 'CUDA', manifestKey: 'pytorch', description: 'GPU acceleration — optional', status: 'pending' },
   ]);
-
-  // Install state
-  const [installersMap, setInstallersMap] = useState<Record<string, AvailableInstaller[]>>({});
-  const [installingDep, setInstallingDep] = useState<string | null>(null);
-  const [installLines, setInstallLines] = useState<string[]>([]);
-  const [installResult, setInstallResult] = useState<{ success: boolean; alreadyInstalled: boolean; error?: string } | null>(null);
-
-  const { getAvailableInstallers, installDependency, fetchInstallManifest } = useAppStore();
-
-  // Track whether we've already kicked off installer loading for the results step
-  const loadedInstallersRef = useRef(false);
 
   const updateDependency = (name: string, status: DependencyCheck['status'], message?: string) => {
     setDependencies(prev =>
@@ -112,62 +98,6 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
     setStep('results');
   };
 
-  // Load installers for missing deps when entering results step
-  useEffect(() => {
-    if (step === 'results' && !loadedInstallersRef.current) {
-      loadedInstallersRef.current = true;
-      fetchInstallManifest();
-      const missingDeps = dependencies.filter(d => d.status === 'missing');
-      for (const dep of missingDeps) {
-        if (dep.manifestKey) {
-          getAvailableInstallers(dep.manifestKey).then(installers => {
-            setInstallersMap(prev => ({ ...prev, [dep.manifestKey]: installers }));
-          });
-        }
-      }
-    }
-  }, [step, dependencies, fetchInstallManifest, getAvailableInstallers]);
-
-  const handleInstall = async (manifestKey: string) => {
-    const installers = installersMap[manifestKey];
-    if (!installers || installers.length === 0) return;
-
-    setInstallingDep(manifestKey);
-    setInstallLines([]);
-    setInstallResult(null);
-
-    // Listen for progress events
-    const { listen } = await import('@tauri-apps/api/event');
-    const unlisten = await listen<{ depName: string; line: string }>('install-progress', (event) => {
-      if (event.payload.depName === manifestKey) {
-        setInstallLines(prev => [...prev, event.payload.line]);
-      }
-    });
-
-    try {
-      const result = await installDependency(manifestKey, installers[0].id);
-      setInstallResult(result);
-      if (!result.success) {
-        const dep = dependencies.find(d => d.manifestKey === manifestKey);
-        if (dep) {
-          updateDependency(dep.name, 'warning', result.error || 'Installation failed');
-        }
-      }
-      // Re-check this specific dependency after install
-      await runDependencyCheck();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setInstallResult({ success: false, alreadyInstalled: false, error: errorMessage });
-      const dep = dependencies.find(d => d.manifestKey === manifestKey);
-      if (dep) {
-        updateDependency(dep.name, 'warning', `Install failed: ${errorMessage}`);
-      }
-    } finally {
-      unlisten();
-      setInstallingDep(null);
-    }
-  };
-
   const getStatusIcon = (status: DependencyCheck['status']) => {
     switch (status) {
       case 'ok': return '✅';
@@ -187,9 +117,6 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
       default: return 'text-gray-500';
     }
   };
-
-  const missingCount = dependencies.filter(d => d.status === 'missing').length;
-  const optionalCount = dependencies.filter(d => d.status === 'warning').length;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
@@ -254,110 +181,21 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
             </div>
           )}
 
-          {/* Step: Results */}
+          {/* Step: Results — uses reusable DependencyCheckPanel */}
           {step === 'results' && (
             <div className="space-y-4">
               <h2 className="font-semibold text-slate-800 dark:text-slate-200">Dependency Check Complete</h2>
-
-              <div className="space-y-2">
-                {dependencies.map(dep => {
-                  const installers = installersMap[dep.manifestKey] || [];
-                  const isInstalling = installingDep === dep.manifestKey;
-                  const canInstall = dep.status === 'missing' && installers.length > 0 && dep.manifestKey;
-
-                  return (
-                    <div key={dep.name} data-testid="wizard-dep-row" className="rounded-lg bg-slate-50 dark:bg-slate-700">
-                      <div className="flex items-start gap-3 p-3">
-                        <span className="text-xl mt-0.5">{getStatusIcon(dep.status)}</span>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-medium text-slate-700 dark:text-slate-300">{dep.name}</div>
-                              <div data-testid="wizard-dep-status" className={`text-sm ${getStatusColor(dep.status)}`}>
-                                {dep.message ?? dep.description}
-                              </div>
-                            </div>
-                            {canInstall && !isInstalling && (
-                              <Button
-                                data-testid="wizard-install-btn"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleInstall(dep.manifestKey)}
-                                className="ml-2 h-7 text-xs"
-                              >
-                                <Download className="h-3 w-3 mr-1" />
-                                Install
-                              </Button>
-                            )}
-                            {isInstalling && (
-                              <div className="flex items-center gap-1 text-blue-500 ml-2">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span className="text-xs">Installing...</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      {/* Show install progress inline */}
-                      {isInstalling && installLines.length > 0 && (
-                        <div data-testid="wizard-install-progress" className="px-3 pb-3">
-                          <InstallProgress
-                            lines={installLines}
-                            isRunning={!installResult}
-                            result={installResult}
-                            commandDisplay={installers[0]?.commandDisplay}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Missing deps summary (legacy hint block for manual install) */}
-              {missingCount > 0 && installingDep === null && (
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4">
-                  <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-2">
-                    {missingCount} required dependenc{missingCount > 1 ? 'ies' : 'y'} missing
-                  </h3>
-                  <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
-                    Click "Install" above for one-click installation, or install manually and come back to verify.
-                  </p>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={runDependencyCheck}
-                  >
-                    Re-check Dependencies
-                  </Button>
-                </div>
-              )}
-
-              {missingCount === 0 && optionalCount > 0 && (
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-                  <p className="text-sm text-blue-700 dark:text-blue-300">
-                    All required dependencies are installed. {optionalCount} optional component{optionalCount > 1 ? 's' : ''} could be improved.
-                  </p>
-                </div>
-              )}
-
-              {missingCount === 0 && optionalCount === 0 && (
-                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
-                  <p className="text-sm text-green-700 dark:text-green-300">
-                    Everything is set up correctly! You're ready to start separating stems.
-                  </p>
-                </div>
-              )}
-
+              <DependencyCheckPanel
+                showCheckButton={false}
+                onAllDependenciesOk={onComplete}
+              />
               <div className="flex gap-3 pt-2">
                 <Button data-testid="wizard-complete" onClick={onComplete} className="flex-1">
-                  {missingCount === 0 ? 'Start Using Stemgen' : 'Continue Anyway'}
+                  Continue
                 </Button>
-                {missingCount > 0 && (
-                  <Button variant="outline" onClick={onSkip}>
-                    Skip Setup
-                  </Button>
-                )}
+                <Button variant="outline" onClick={onSkip}>
+                  Skip Setup
+                </Button>
               </div>
             </div>
           )}
