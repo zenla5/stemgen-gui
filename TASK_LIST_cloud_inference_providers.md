@@ -646,7 +646,7 @@ This document drives the implementation of the **Cloud Inference Providers** fea
 
 ### TASK-30 — Merge feature branch after CI green
 
-- [ ] **TASK-30: Open PR, verify CI, and merge `feature/cloud-inference-providers` into `main`**
+- [x] **TASK-30: Open PR, verify CI, and merge `feature/cloud-inference-providers` into `main`**
 - **Description:** Open a pull request from `feature/cloud-inference-providers` targeting `main`. Ensure the PR description references all implemented acceptance criteria from spec §10 (AC-1 through AC-10). Wait for all CI checks to pass (see TASK-28). Request review if team workflow requires it. Once approved and CI is green, merge using a **squash merge** or **merge commit** (follow existing project convention). After merge, verify that the main branch CI pipeline also passes.
 - **Inputs:** Feature branch, CI pipeline.
 - **Outputs / deliverables:** Merged `main` branch; CI green on `main`.
