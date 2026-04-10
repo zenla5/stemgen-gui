@@ -327,6 +327,8 @@ class TestRunDemucsModel:
     @pytest.mark.integration
     def test_sidecar_cli_cpu_exit_zero(self, tmp_path):
         """Full integration: run sidecar CLI with demucs on CPU, expect 4 output WAVs."""
+        pytest.importorskip("torch", reason="demucs/torch not installed")
+        pytest.importorskip("demucs", reason="demucs not installed")
         import subprocess
 
         fixture = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "audio" / "test-short.wav"
