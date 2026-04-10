@@ -417,3 +417,47 @@ class TestCheckDependenciesDetailed:
         lines = [l.strip() for l in captured.out.strip().split("\n") if l.strip()]
         parsed = json.loads(lines[-1])
         assert "pip install" in parsed["error"]
+
+
+# ----------------------------------------------------------------------------------------------
+# Regression test for non-ASCII source file paths (TASK-021)
+# ----------------------------------------------------------------------------------------------
+
+
+class TestNonAsciiPaths:
+    """Tests for handling accented/CJK characters in file paths."""
+
+    @pytest.mark.integration
+    def test_sidecar_handles_accented_path(self, tmp_path):
+        """Sidecar must handle input files in directories with accented characters."""
+        pytest.importorskip("torch", reason="demucs/torch not installed")
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import subprocess
+        import shutil
+
+        fixture = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "audio" / "test-accented-eau.wav"
+        if not fixture.exists():
+            pytest.skip(f"Fixture not found: {fixture}")
+
+        # Create an accented directory path
+        accented_dir = tmp_path / "été"
+        accented_dir.mkdir()
+        input_file = accented_dir / "test-accented-eau.wav"
+        shutil.copy2(fixture, input_file)
+
+        output_dir = tmp_path / "stems"
+        result = subprocess.run(
+            [sys.executable, "stemgen_sidecar.py",
+             "--model", "demucs",
+             "--input", str(input_file),
+             "--output", str(output_dir),
+             "--device", "cpu"],
+            capture_output=True, text=True, timeout=300,
+            env={**__import__("os").environ, "PYTHONUTF8": "1"},
+        )
+        assert result.returncode == 0, (
+            f"Exit code {result.returncode}\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+        wav_files = list(output_dir.glob("*.wav"))
+        assert len(wav_files) == 4, f"Expected 4 WAV files, found {len(wav_files)}: {wav_files}"
