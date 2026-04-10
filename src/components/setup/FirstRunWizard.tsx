@@ -5,7 +5,7 @@
  * Shown when Python, FFmpeg, or AI models are not detected.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/Button';
 import { Progress } from '@/components/ui/Progress';
@@ -68,6 +68,9 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
 
   const { getAvailableInstallers, installDependency, fetchInstallManifest } = useAppStore();
 
+  // Track whether we've already kicked off installer loading for the results step
+  const loadedInstallersRef = useRef(false);
+
   const updateDependency = (name: string, status: DependencyCheck['status'], message?: string) => {
     setDependencies(prev =>
       prev.map(d => d.name === name ? { ...d, status, message } : d)
@@ -111,18 +114,19 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
 
   // Load installers for missing deps when entering results step
   useEffect(() => {
-    if (step === 'results') {
+    if (step === 'results' && !loadedInstallersRef.current) {
+      loadedInstallersRef.current = true;
       fetchInstallManifest();
       const missingDeps = dependencies.filter(d => d.status === 'missing');
       for (const dep of missingDeps) {
-        if (dep.manifestKey && !installersMap[dep.manifestKey]) {
+        if (dep.manifestKey) {
           getAvailableInstallers(dep.manifestKey).then(installers => {
             setInstallersMap(prev => ({ ...prev, [dep.manifestKey]: installers }));
           });
         }
       }
     }
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, dependencies, fetchInstallManifest, getAvailableInstallers]);
 
   const handleInstall = async (manifestKey: string) => {
     const installers = installersMap[manifestKey];
