@@ -669,8 +669,8 @@ pub fn read_installer_dep_marker() -> Result<Option<InstallerDepMarker>, String>
     let content = std::fs::read_to_string(&marker_path)
         .map_err(|e| format!("Failed to read marker file: {e}"))?;
 
-    let marker: InstallerDepMarker = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse marker file: {e}"))?;
+    let marker: InstallerDepMarker =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse marker file: {e}"))?;
 
     Ok(Some(marker))
 }
