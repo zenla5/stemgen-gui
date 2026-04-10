@@ -177,3 +177,171 @@ class TestCloudCliValidation:
         captured = capsys.readouterr()
         parsed = json.loads(captured.out.strip())
         assert "No Replicate version" in parsed["error"]
+
+
+# ----------------------------------------------------------------------------------------------
+# Tests for _run_demucs_model audio-loading path (guards against bugs A–E, F)
+# ----------------------------------------------------------------------------------------------
+
+
+class TestRunDemucsModel:
+    """Tests for the demucs audio-loading and stem-saving logic.
+
+    The demucs imports (AudioFile, apply_model, get_model, torchaudio) are
+    function-local inside _run_demucs_model, so we mock them via sys.modules
+    before calling the function.
+    """
+
+    @staticmethod
+    def _make_mocks(torch):
+        """Build fake demucs modules and a fake model for patching."""
+        from unittest.mock import MagicMock
+        import types
+
+        fake_model = MagicMock()
+        fake_model.samplerate = 44100
+        fake_model.audio_channels = 2
+        fake_model.sources = ["drums", "bass", "other", "vocals"]
+
+        fake_wav = torch.zeros(2, 44100)
+        num_sources = len(fake_model.sources)
+
+        # demucs.audio.AudioFile(path).read(...) -> fake_wav
+        mock_audio_instance = MagicMock()
+        mock_audio_instance.read.return_value = fake_wav
+        mock_audio_file_cls = MagicMock(return_value=mock_audio_instance)
+
+        # demucs.apply.apply_model(model, wav, ...) -> list of source tensors
+        mock_apply = MagicMock(return_value=[torch.zeros(num_sources, 2, 44100)])
+
+        # demucs.pretrained.get_model(name, device=...) -> fake_model
+        mock_get_model = MagicMock(return_value=fake_model)
+
+        # torchaudio.save — just a no-op
+        mock_ta_save = MagicMock()
+
+        # Build fake demucs module tree
+        demucs_audio_mod = types.ModuleType("demucs.audio")
+        demucs_audio_mod.AudioFile = mock_audio_file_cls
+
+        demucs_apply_mod = types.ModuleType("demucs.apply")
+        demucs_apply_mod.apply_model = mock_apply
+
+        demucs_pretrained_mod = types.ModuleType("demucs.pretrained")
+        demucs_pretrained_mod.get_model = mock_get_model
+
+        demucs_mod = types.ModuleType("demucs")
+        demucs_mod.audio = demucs_audio_mod
+        demucs_mod.apply = demucs_apply_mod
+        demucs_mod.pretrained = demucs_pretrained_mod
+
+        fake_torchaudio = MagicMock()
+        fake_torchaudio.save = mock_ta_save
+
+        modules_patch = {
+            "demucs": demucs_mod,
+            "demucs.audio": demucs_audio_mod,
+            "demucs.apply": demucs_apply_mod,
+            "demucs.pretrained": demucs_pretrained_mod,
+            "torchaudio": fake_torchaudio,
+        }
+
+        return modules_patch, fake_model, mock_apply
+
+    def test_audio_file_read_returns_tensor(self, tmp_path):
+        """After the loading block, wav must still be a torch.Tensor (guards Bug D)."""
+        torch = pytest.importorskip("torch")
+        from unittest.mock import patch
+        import stemgen_sidecar
+
+        modules_patch, fake_model, mock_apply = self._make_mocks(torch)
+
+        with patch.dict(sys.modules, modules_patch):
+            input_path = tmp_path / "test.wav"
+            input_path.write_bytes(b"fake")
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
+
+            stems = stemgen_sidecar._run_demucs_model(
+                input_path, output_dir, device="cpu", model_name="htdemucs"
+            )
+            assert isinstance(stems, dict)
+            assert len(stems) == len(fake_model.sources)
+
+    def test_mix_shape_is_batch_channels_samples(self, tmp_path):
+        """The tensor passed to apply_model must have ndim==3 and shape[1]==channels (guards Bugs B, C, E)."""
+        torch = pytest.importorskip("torch")
+        from unittest.mock import patch
+        import stemgen_sidecar
+
+        modules_patch, fake_model, mock_apply = self._make_mocks(torch)
+
+        with patch.dict(sys.modules, modules_patch):
+            input_path = tmp_path / "test.wav"
+            input_path.write_bytes(b"fake")
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
+
+            stemgen_sidecar._run_demucs_model(
+                input_path, output_dir, device="cpu", model_name="htdemucs"
+            )
+
+            # apply_model was called — inspect the audio tensor argument
+            assert mock_apply.called
+            audio_arg = mock_apply.call_args[0][1]  # second positional arg
+            assert audio_arg.ndim == 3, f"Expected 3-D (batch, channels, samples), got {audio_arg.ndim}-D shape {audio_arg.shape}"
+            assert audio_arg.shape[1] == 2, f"Expected 2 channels at dim 1, got {audio_arg.shape[1]}"
+
+    def test_stem_names_match_model_sources(self, tmp_path):
+        """The returned stems dict keys must match model.sources exactly (guards Bug F)."""
+        torch = pytest.importorskip("torch")
+        from unittest.mock import patch, MagicMock
+        import stemgen_sidecar
+
+        custom_sources = ["vocals", "drums", "bass"]
+        modules_patch, _, _ = self._make_mocks(torch)
+
+        # Override model sources
+        fake_model = MagicMock()
+        fake_model.samplerate = 44100
+        fake_model.audio_channels = 2
+        fake_model.sources = custom_sources
+
+        modules_patch["demucs.pretrained"].get_model = MagicMock(return_value=fake_model)
+        modules_patch["demucs.apply"].apply_model = MagicMock(
+            return_value=[torch.zeros(len(custom_sources), 2, 44100)]
+        )
+
+        with patch.dict(sys.modules, modules_patch):
+            input_path = tmp_path / "test.wav"
+            input_path.write_bytes(b"fake")
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
+
+            stems = stemgen_sidecar._run_demucs_model(
+                input_path, output_dir, device="cpu", model_name="htdemucs"
+            )
+
+            assert set(stems.keys()) == set(custom_sources)
+
+    @pytest.mark.integration
+    def test_sidecar_cli_cpu_exit_zero(self, tmp_path):
+        """Full integration: run sidecar CLI with demucs on CPU, expect 4 output WAVs."""
+        import subprocess
+
+        fixture = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "audio" / "test-short.wav"
+        if not fixture.exists():
+            pytest.skip(f"Fixture not found: {fixture}")
+
+        output_dir = tmp_path / "stems"
+        result = subprocess.run(
+            [sys.executable, "stemgen_sidecar.py",
+             "--model", "demucs",
+             "--input", str(fixture),
+             "--output", str(output_dir),
+             "--device", "cpu"],
+            capture_output=True, text=True, timeout=300,
+        )
+        assert result.returncode == 0, f"Exit code {result.returncode}\nstderr:\n{result.stderr}"
+        wav_files = list(output_dir.glob("*.wav"))
+        assert len(wav_files) == 4, f"Expected 4 WAV files, found {len(wav_files)}: {wav_files}"
