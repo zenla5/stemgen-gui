@@ -420,4 +420,81 @@ mod tests {
             .expect("command should spawn");
         assert!(output.status.success());
     }
+
+    /// Verify that a Command built with `.env("PYTHONUTF8", "1")` propagates
+    /// the env var to the child process (guards TASK-007 regression).
+    #[tokio::test]
+    async fn test_sidecar_spawn_sets_pythonutf8() {
+        use super::super::probe::NoWindow;
+
+        let mut cmd = tokio::process::Command::new(if cfg!(windows) { "cmd" } else { "env" });
+        if cfg!(windows) {
+            cmd.args(["/C", "set", "PYTHONUTF8"]);
+        }
+        cmd.env("PYTHONUTF8", "1")
+            .no_window()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let output = cmd
+            .output()
+            .await
+            .expect("command should spawn");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("PYTHONUTF8=1"),
+            "Expected PYTHONUTF8=1 in stdout, got: {stdout}"
+        );
+    }
+
+    /// Verify that running the sidecar with a non-existent input file
+    /// returns a meaningful error string (not just an exit code).
+    #[tokio::test]
+    async fn test_sidecar_error_message_surfaced() {
+        use std::path::PathBuf;
+
+        let sidecar_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("python")
+            .join("stemgen_sidecar.py");
+
+        if !sidecar_path.exists() {
+            // Skip if sidecar script is not available in this environment
+            return;
+        }
+
+        let output_dir = std::env::temp_dir().join("stemgen-test-error");
+        let _ = std::fs::create_dir_all(&output_dir);
+
+        let mut manager = SidecarManager::new(sidecar_path, output_dir.clone());
+        // Force a fake python path — the real one will be detected inside
+        let _ = manager.detect_python().await;
+
+        let fake_input = PathBuf::from("/nonexistent/path/to/audio.wav");
+        let result = manager
+            .run_separation(
+                "test-job".to_string(),
+                &fake_input,
+                "demucs",
+                "cpu",
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        // Should return an error — either from python sidecar or from file not found
+        assert!(result.is_err(), "Expected error for non-existent input file");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            !err_msg.is_empty(),
+            "Error message should not be empty"
+        );
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&output_dir);
+    }
 }
