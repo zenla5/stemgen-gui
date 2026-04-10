@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, type KeyboardEvent } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
-import { listen } from '@tauri-apps/api/event';
+import { listen, type Event } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { FolderOpen, Upload, Music, X } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
@@ -31,9 +31,9 @@ export function FileBrowser() {
 
     // Fire all registrations concurrently so none blocks the others.
     Promise.all([
-      register('tauri://drag-drop', async (event: DragDropPayload) => {
+      register('tauri://drag-drop', async (event: Event<DragDropPayload>) => {
         setIsDraggingOver(false);
-        const paths = event.paths;
+        const paths = event.payload.paths;
 
         if (paths && paths.length > 0) {
           const newFiles: AudioFileMetadata[] = [];
