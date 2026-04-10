@@ -437,7 +437,7 @@ The goal is to add a **dependency-check page** to the Windows NSIS installer tha
 
 ---
 
-- [ ] **TASK-016 — Research and document NSIS custom-page approach for Tauri**
+- [x] **TASK-016 — Research and document NSIS custom-page approach for Tauri**
 
   **Description**: Before writing NSIS script code, the agent must:
 
@@ -460,7 +460,7 @@ The goal is to add a **dependency-check page** to the Windows NSIS installer tha
 
 ---
 
-- [ ] **TASK-017 — Implement NSIS dependency-check page or post-install launcher**
+- [x] **TASK-017 — Implement NSIS dependency-check page or post-install launcher**
 
   **Description**: Based on the approved approach from TASK-016, implement the dependency-check mechanism. The canonical implementation (assuming Tauri's NSIS hook support or a post-build script) must:
 
@@ -491,7 +491,7 @@ The goal is to add a **dependency-check page** to the Windows NSIS installer tha
 
 ---
 
-- [ ] **TASK-018 — Expose dependency-install status to the in-app FirstRunWizard**
+- [x] **TASK-018 — Expose dependency-install status to the in-app FirstRunWizard**
 
   **Description**: When the installer has already installed dependencies (TASK-017), the `FirstRunWizard` shown on first app launch should reflect that — it should not re-prompt for dependencies that were installed at setup time.
 
@@ -515,7 +515,7 @@ The goal is to add a **dependency-check page** to the Windows NSIS installer tha
 
 ---
 
-- [ ] **TASK-019 — Add unit tests for FirstRunWizard installer-marker path**
+- [x] **TASK-019 — Add unit tests for FirstRunWizard installer-marker path**
 
   **Description**: In `src/components/setup/__tests__/FirstRunWizard.test.tsx`:
 
@@ -541,7 +541,7 @@ The goal is to add a **dependency-check page** to the Windows NSIS installer tha
 
 ---
 
-- [ ] **TASK-020 — Fix TypeScript strict-mode gaps identified during audit**
+- [x] **TASK-020 — Fix TypeScript strict-mode gaps identified during audit**
 
   **Description**: Run `npx tsc --noEmit --strict` and fix all newly surfaced type errors introduced by the changes in TASK-002 through TASK-019 (e.g. incorrect event types, optional fields accessed without null guards). Do not introduce new `// @ts-ignore` suppressions. Existing pre-audit suppressions may remain unchanged.
 
@@ -559,7 +559,7 @@ The goal is to add a **dependency-check page** to the Windows NSIS installer tha
 
 ---
 
-- [ ] **TASK-021 — Add regression test for non-ASCII source file paths**
+- [x] **TASK-021 — Add regression test for non-ASCII source file paths**
 
   **Description**: In `python/tests/test_sidecar_cli.py`, add a test `test_sidecar_handles_accented_path` that:
 

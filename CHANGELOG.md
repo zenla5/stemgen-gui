@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.2] — 2026-04-10 — Bug Fixes, Quality Improvements & Installer Enhancement
+
+### Fixed
+- **[FIX-DRAG-DROP]** Drag-and-drop file import broken due to incorrect Tauri v2 event payload access. Handler now reads `event.payload.paths` instead of `event.paths`.
+- **[FIX-SEPARATION]** Stem separation always exiting with code 1. Five bugs in `_run_demucs_model` audio-loading code fixed: incorrect `AudioFile.read()` API usage, wrong tensor indexing, redundant numpy conversion, and incorrect batch dimension shape.
+- **[FIX-STEM-NAMES]** Stem output filenames now use `model.sources` instead of hardcoded list, fixing wrong results for models with non-standard source ordering.
+- **[FIX-UTF8]** Non-ASCII file paths causing `UnicodeDecodeError` in the Python sidecar on Windows. `PYTHONUTF8=1` is now set on the sidecar spawn command.
+- **[FIX-ERROR-MSG]** Separation error messages now include Python stderr tail instead of just exit code, making failures debuggable.
+- **[FIX-INSTALLER]** Windows NSIS installer now runs a post-install dependency check via PowerShell, detecting missing Python and FFmpeg and offering one-click install via winget/choco.
+
+### Added
+- **[DEP-MARKER]** FirstRunWizard now reads installer dependency-check results to skip redundant checks on first app launch.
+- **[TEST-DND]** Unit tests for drag-and-drop event handling in FileBrowser component.
+- **[TEST-SEPARATION]** Python sidecar unit tests for demucs audio-loading path (guards against bugs A–F).
+- **[TEST-STORE]** Error-display tests for separation failure in appStore.
+- **[TEST-QUEUE]** ProcessingQueue component tests for error state display.
+- **[TEST-RUST]** Rust unit tests for `PYTHONUTF8` env var, `collect_stems` edge cases, and sidecar error message surfacing.
+- **[TEST-PYTHON-CI]** CI pipeline now runs Python sidecar tests in a dedicated `python-tests` job.
+- **[TEST-I18N]** Regression test for non-ASCII source file paths.
+- **[TEST-WIZARD]** FirstRunWizard tests for installer marker present/absent/partial paths.
+
+### Internal
+- **[CI-PYTHON]** New `python-tests` job in CI pipeline runs `pytest python/tests/ -m "not integration"` on ubuntu-latest.
+- **[DESIGN]** Design note `docs/INSTALLER_DEPENDENCY_CHECK.md` documenting the NSIS hook and PowerShell post-install approach.
+
 ## [1.4.0] — 2026-04-10 — Cloud Inference Providers
 
 ### Added
