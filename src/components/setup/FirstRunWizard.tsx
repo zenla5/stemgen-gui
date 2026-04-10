@@ -5,7 +5,7 @@
  * Shown when Python, FFmpeg, or AI models are not detected.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/Button';
 import { Progress } from '@/components/ui/Progress';
@@ -24,6 +24,16 @@ interface DependencyCheck {
 interface FirstRunWizardProps {
   onComplete?: () => void;
   onSkip?: () => void;
+}
+
+/** Marker file written by the NSIS post-install dependency check script. */
+interface InstallerDepMarker {
+  python: boolean;
+  ffmpeg: boolean;
+  pytorch: boolean;
+  demucs: boolean;
+  timestamp?: string;
+  installerVersion?: string;
 }
 
 /** Check a PackageStatus discriminated union and return our dependency check status */
@@ -62,6 +72,55 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
       prev.map(d => d.name === name ? { ...d, status, message } : d)
     );
   };
+
+  // Check for installer dep marker on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const marker = await invoke<InstallerDepMarker | null>('read_installer_dep_marker');
+        if (cancelled || !marker) return;
+
+        // Pre-populate statuses from installer marker
+        const updates: Array<{ name: string; status: DependencyCheck['status']; message?: string }> = [];
+
+        if (marker.ffmpeg) {
+          updates.push({ name: 'FFmpeg', status: 'ok', message: 'Installed at setup' });
+        } else {
+          updates.push({ name: 'FFmpeg', status: 'warning', message: 'Could not install at setup' });
+        }
+
+        if (marker.python) {
+          updates.push({ name: 'Python', status: 'ok', message: 'Installed at setup' });
+        } else {
+          updates.push({ name: 'Python', status: 'warning', message: 'Could not install at setup' });
+        }
+
+        // PyTorch and demucs are deferred to first-run
+        updates.push({ name: 'PyTorch', status: 'pending' });
+        updates.push({ name: 'demucs', status: 'pending' });
+
+        setDependencies(prev =>
+          prev.map(d => {
+            const update = updates.find(u => u.name === d.name);
+            return update ? { ...d, ...update } : d;
+          })
+        );
+
+        // If installer-time deps (python, ffmpeg) are both ok,
+        // advance to the check step so the wizard can verify PyTorch/demucs
+        if (marker.python && marker.ffmpeg) {
+          setStep('check');
+          // Auto-run the dependency check for the deferred packages
+          setTimeout(() => runDependencyCheck(), 100);
+        }
+      } catch {
+        // Marker not found — fall through to normal flow
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const runDependencyCheck = async () => {
     setStep('check');

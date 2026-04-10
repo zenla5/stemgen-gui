@@ -329,6 +329,7 @@ pub fn run() {
             commands::validate_environment,
             commands::get_sidecar_status,
             commands::deploy_sidecar,
+            commands::read_installer_dep_marker,
             // Dependency installation
             commands::install_executor::get_install_manifest,
             commands::install_executor::get_available_installers,

@@ -632,3 +632,45 @@ fn calculate_dir_size(path: &std::path::Path) -> std::io::Result<u64> {
     }
     Ok(size)
 }
+
+// ============================================================================
+// Installer dependency marker
+// ============================================================================
+
+/// Marker file written by the NSIS post-install dependency check script.
+/// Read by FirstRunWizard.tsx to skip redundant dependency checks.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallerDepMarker {
+    pub python: bool,
+    pub ffmpeg: bool,
+    pub pytorch: bool,
+    pub demucs: bool,
+    pub timestamp: Option<String>,
+    pub installer_version: Option<String>,
+}
+
+/// Read the installer dependency-check marker file.
+///
+/// Returns `None` if the marker does not exist (installer did not run dep check).
+/// This is not an error — it simply means the FirstRunWizard should run its
+/// normal dependency-check flow.
+#[tauri::command]
+pub fn read_installer_dep_marker() -> Result<Option<InstallerDepMarker>, String> {
+    let data_dir = get_data_dir();
+    let marker_path = data_dir.join("installer_deps_checked.json");
+
+    if !marker_path.exists() {
+        info!("Installer dep marker not found at {:?}", marker_path);
+        return Ok(None);
+    }
+
+    info!("Reading installer dep marker from {:?}", marker_path);
+    let content = std::fs::read_to_string(&marker_path)
+        .map_err(|e| format!("Failed to read marker file: {e}"))?;
+
+    let marker: InstallerDepMarker = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse marker file: {e}"))?;
+
+    Ok(Some(marker))
+}
