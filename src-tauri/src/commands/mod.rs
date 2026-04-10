@@ -520,6 +520,11 @@ pub struct ModelAvailability {
 }
 
 /// Package validation status
+///
+/// Serializes as: `"available"`, `{"unavailable": "msg"}`, `{"warning": "msg"}`,
+/// or `{"missing": "msg"}`. The `Available` unit variant uses
+/// `#[serde(rename = "available")]` to emit a bare string that the TypeScript
+/// `hasPackageStatusKey` guard already handles.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PackageStatus {
@@ -527,6 +532,51 @@ pub enum PackageStatus {
     Unavailable(String),
     Warning(String),
     Missing(String),
+}
+
+#[cfg(test)]
+mod package_status_tests {
+    use super::*;
+
+    #[test]
+    fn test_available_serializes_as_string() {
+        let val = PackageStatus::Available;
+        let json = serde_json::to_string(&val).unwrap();
+        assert_eq!(json, "\"available\"");
+    }
+
+    #[test]
+    fn test_missing_serializes_as_object() {
+        let val = PackageStatus::Missing("not found".into());
+        let json = serde_json::to_string(&val).unwrap();
+        assert_eq!(json, r#"{"missing":"not found"}"#);
+    }
+
+    #[test]
+    fn test_warning_serializes_as_object() {
+        let val = PackageStatus::Warning("no GPU".into());
+        let json = serde_json::to_string(&val).unwrap();
+        assert_eq!(json, r#"{"warning":"no GPU"}"#);
+    }
+
+    #[test]
+    fn test_unavailable_serializes_as_object() {
+        let val = PackageStatus::Unavailable("CUDA not found".into());
+        let json = serde_json::to_string(&val).unwrap();
+        assert_eq!(json, r#"{"unavailable":"CUDA not found"}"#);
+    }
+
+    #[test]
+    fn test_available_deserializes_from_string() {
+        let val: PackageStatus = serde_json::from_str("\"available\"").unwrap();
+        assert!(matches!(val, PackageStatus::Available));
+    }
+
+    #[test]
+    fn test_missing_deserializes_from_object() {
+        let val: PackageStatus = serde_json::from_str(r#"{"missing":"gone"}"#).unwrap();
+        assert!(matches!(val, PackageStatus::Missing(s) if s == "gone"));
+    }
 }
 
 impl std::fmt::Display for PackageStatus {

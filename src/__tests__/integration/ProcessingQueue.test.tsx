@@ -128,10 +128,11 @@ describe('ProcessingQueue', () => {
     expect(btn).toBeDisabled();
   });
 
-  it('Start Processing button is enabled when files are present', async () => {
+  it('Start Processing button is enabled when pending jobs exist', async () => {
     await act(async () => {
       useAppStore.setState({
         audioFiles: [{ path: '/fake/test.mp3', name: 'test.mp3', size: 1000, duration: 60, sample_rate: 44100, bit_depth: 16, channels: 2, format: 'mp3', metadata: {} }],
+        jobs: [makeJob({ status: 'pending' })],
       });
     });
 

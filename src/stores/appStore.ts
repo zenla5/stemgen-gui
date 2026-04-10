@@ -56,6 +56,7 @@ function validateEnvironmentResponse(data: unknown): EnvironmentValidation {
   return record as unknown as EnvironmentValidation;
 }
 import { DEFAULT_PROCESSING_SETTINGS, STEM_COLORS, STEM_DEFAULT_NAMES } from '@/lib/constants';
+import { formatJobError } from '@/lib/errorHints';
 
 // Helper to generate unique IDs
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -272,14 +273,15 @@ async function processJob(
     });
     return true;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = formatJobError(rawMessage);
     // Job failed
     updateJob(job.id, {
       status: 'failed',
       error: errorMessage,
     });
 
-    // Handle cloud fallback_hint: if cloud provider failed, offer switch to local
+    // Show a persistent toast so the user cannot miss the failure
     const activeProvider = useSettingsStore.getState().activeProvider;
     if (activeProvider !== 'local') {
       toast.error('Cloud inference failed', {
@@ -290,6 +292,10 @@ async function processJob(
             useSettingsStore.getState().setActiveProvider('local');
           },
         },
+      });
+    } else {
+      toast.error('Processing failed', {
+        description: errorMessage,
       });
     }
     return false;
@@ -333,10 +339,29 @@ export const useAppStore = create<AppState>()(
       // File actions
       addFiles: (files) => {
         const currentFiles = get().audioFiles;
+        const existingJobs = get().jobs;
+        const settings = get().settings;
         const newFiles = files.filter(
           (f) => !currentFiles.some((cf) => cf.path === f.path)
         );
-        set({ audioFiles: [...currentFiles, ...newFiles] });
+        // Create a pending ProcessingJob for each new file so the queue
+        // tab shows items immediately on drop.
+        const newJobs: ProcessingJob[] = newFiles
+          .filter((f) => !existingJobs.some((j) => j.input_path === f.path))
+          .map((file) => ({
+            id: generateId(),
+            input_path: file.path,
+            output_path: file.path.replace(/\.[^.]+$/, '.stem.mp4'),
+            status: 'pending' as const,
+            progress: 0,
+            model: settings.model,
+            dj_software: settings.djPreset,
+            started_at: new Date().toISOString(),
+          }));
+        set({
+          audioFiles: [...currentFiles, ...newFiles],
+          jobs: [...existingJobs, ...newJobs],
+        });
       },
       
       removeFile: (path) => {
@@ -379,13 +404,35 @@ export const useAppStore = create<AppState>()(
       // Batch processing (Phase 5) - parallel job execution
       startProcessing: async (files: AudioFileMetadata[]) => {
         const { settings, setCurrentJob, setIsProcessing, setActiveView, updateJob, setCurrentStems } = get();
-        
-        if (files.length === 0) return;
-        
+
+        // Re-entrancy guard: prevent duplicate scheduling when already processing
+        if (get().isProcessing) return;
+
+        // Pending jobs are created in addFiles on drop — find them instead of
+        // creating duplicate jobs.
+        const currentJobs = get().jobs;
+        const pendingJobPaths = new Set(
+          currentJobs.filter(j => j.status === 'pending').map(j => j.input_path)
+        );
+
+        // Derive pending files from existing pending jobs (preferred) or
+        // fall back to the files argument for backward compat.
+        const pendingFiles = files.length > 0
+          ? files.filter(f => pendingJobPaths.has(f.path) || !currentJobs.some(j => j.input_path === f.path))
+          : [];
+
+        // If no files came in via argument, pull from existing pending jobs
+        if (pendingFiles.length === 0 && pendingJobPaths.size > 0) {
+          pendingFiles.push(...get().audioFiles.filter(f => pendingJobPaths.has(f.path)));
+        }
+
+        if (pendingFiles.length === 0) return;
+
         setIsProcessing(true);
-        
-        // Create jobs for all files
-        const newJobs: ProcessingJob[] = files.map((file) => ({
+
+        // Only create jobs for files that don't already have a pending job
+        const newFiles = pendingFiles.filter(f => !pendingJobPaths.has(f.path));
+        const newJobs: ProcessingJob[] = newFiles.map((file) => ({
           id: generateId(),
           input_path: file.path,
           output_path: file.path.replace(/\.[^.]+$/, '.stem.mp4'),
@@ -395,62 +442,61 @@ export const useAppStore = create<AppState>()(
           dj_software: settings.djPreset,
           started_at: new Date().toISOString(),
         }));
+
+        if (newJobs.length > 0) {
+          set((state) => ({
+            jobs: [...state.jobs, ...newJobs],
+          }));
+        }
+
+        set({ pendingFiles });
         
-        // Add all jobs to queue
-        set((state) => ({
-          jobs: [...state.jobs, ...newJobs],
-          pendingFiles: files,
-        }));
-        
-        // Process jobs in parallel (up to maxParallelJobs at a time)
+        // Process jobs — single-pass scheduler that reads fresh state each call.
+        // Capacity is filled recursively via .finally() → processNextBatch(), so
+        // activeJobCount and pendingFiles are never read from a stale snapshot.
         const processNextBatch = async () => {
-          const currentState = get();
-          if (!currentState.isProcessing) return;
-          
-          const pending = currentState.pendingFiles;
-          const active = currentState.activeJobCount;
-          
-          if (pending.length === 0 && active === 0) {
-            // All done
+          const fresh = get();
+          if (!fresh.isProcessing) return;
+
+          // Check if all jobs are done
+          if (fresh.pendingFiles.length === 0 && fresh.activeJobCount === 0) {
             setIsProcessing(false);
             return;
           }
-          
-          // Start new jobs if we have capacity
-          // For cloud providers, respect the batchParallel setting:
-          // - false (sequential): process one cloud job at a time
-          // - true (parallel): submit all pending cloud jobs simultaneously
+
+          // Determine effective max concurrent jobs
           const cloudProvider = useSettingsStore.getState().activeProvider;
           const batchParallel = useSettingsStore.getState().batchParallel;
           const effectiveMaxJobs = cloudProvider !== 'local'
-            ? (batchParallel ? currentState.pendingFiles.length : 1)
-            : currentState.maxParallelJobs;
+            ? (batchParallel ? fresh.pendingFiles.length : 1)
+            : fresh.maxParallelJobs;
 
-          while (currentState.pendingFiles.length > 0 && currentState.activeJobCount < effectiveMaxJobs) {
-            const file = currentState.pendingFiles[0];
-            const job = currentState.jobs.find(j => j.input_path === file.path && j.status === 'pending');
-            
+          // Single-pass: start at most one new job if capacity is available
+          if (fresh.pendingFiles.length > 0 && fresh.activeJobCount < effectiveMaxJobs) {
+            const file = fresh.pendingFiles[0];
+            const job = fresh.jobs.find(j => j.input_path === file.path && j.status === 'pending');
+
             if (!job) {
-              // Job not found, skip this file
+              // Job not found, skip this file and re-check
               set((state) => ({ pendingFiles: state.pendingFiles.slice(1) }));
-              continue;
+              processNextBatch();
+              return;
             }
-            
-            // Remove from pending, increment active count
+
+            // Pop file from pending, increment active count
             set((state) => ({
               pendingFiles: state.pendingFiles.slice(1),
               activeJobCount: state.activeJobCount + 1,
             }));
-            
+
             setCurrentJob(job.id);
-            
-            // Process job in background
+
+            // Process job in background, then schedule next
             processJob(file, job, settings, updateJob, setCurrentStems, setActiveView)
               .finally(() => {
                 set((state) => ({
                   activeJobCount: Math.max(0, state.activeJobCount - 1),
                 }));
-                // Process next batch
                 processNextBatch();
               });
           }
