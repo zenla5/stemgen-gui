@@ -436,10 +436,7 @@ mod tests {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let output = cmd
-            .output()
-            .await
-            .expect("command should spawn");
+        let output = cmd.output().await.expect("command should spawn");
 
         assert!(output.status.success());
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -487,12 +484,12 @@ mod tests {
             .await;
 
         // Should return an error — either from python sidecar or from file not found
-        assert!(result.is_err(), "Expected error for non-existent input file");
-        let err_msg = result.unwrap_err().to_string();
         assert!(
-            !err_msg.is_empty(),
-            "Error message should not be empty"
+            result.is_err(),
+            "Expected error for non-existent input file"
         );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(!err_msg.is_empty(), "Error message should not be empty");
 
         // Cleanup
         let _ = std::fs::remove_dir_all(&output_dir);
