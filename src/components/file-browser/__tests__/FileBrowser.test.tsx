@@ -7,7 +7,7 @@ import { useAppStore } from '@/stores/appStore';
 
 const mockListen = vi.hoisted(() => vi.fn());
 const mockInvoke = vi.hoisted(() => vi.fn());
-const capturedHandlers: Record<string, (...args: unknown[]) => void> = {};
+const capturedHandlers: Record<string, (...args: unknown[]) => unknown> = {};
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: mockListen,
@@ -38,7 +38,9 @@ const fakeMetadata = (path: string) => ({
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function setupMocks() {
-  capturedHandlers.length = 0;
+  for (const key of Object.keys(capturedHandlers)) {
+    delete capturedHandlers[key];
+  }
   // listen() captures handlers keyed by event name
   mockListen.mockImplementation(async (eventName: string, handler: (...args: unknown[]) => void) => {
     capturedHandlers[eventName] = handler;
@@ -93,7 +95,7 @@ describe('FileBrowser drag-and-drop', () => {
     // Simulate old broken shape — event has paths directly, not event.payload.paths
     // This will throw internally (event.payload is undefined) but must NOT add a file.
     // Suppress the expected unhandled rejection from the async handler.
-    const handler = capturedHandlers['tauri://drag-drop'];
+    const handler = capturedHandlers['tauri://drag-drop'] as (...args: unknown[]) => Promise<void>;
     const promise = handler({ paths: ['/tmp/test.wav'] }).catch(() => {});
 
     await promise;
