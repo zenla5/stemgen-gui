@@ -402,55 +402,52 @@ export const useAppStore = create<AppState>()(
           pendingFiles: files,
         }));
         
-        // Process jobs in parallel (up to maxParallelJobs at a time)
+        // Process jobs — single-pass scheduler that reads fresh state each call.
+        // Capacity is filled recursively via .finally() → processNextBatch(), so
+        // activeJobCount and pendingFiles are never read from a stale snapshot.
         const processNextBatch = async () => {
-          const currentState = get();
-          if (!currentState.isProcessing) return;
-          
-          const pending = currentState.pendingFiles;
-          const active = currentState.activeJobCount;
-          
-          if (pending.length === 0 && active === 0) {
-            // All done
+          const fresh = get();
+          if (!fresh.isProcessing) return;
+
+          // Check if all jobs are done
+          if (fresh.pendingFiles.length === 0 && fresh.activeJobCount === 0) {
             setIsProcessing(false);
             return;
           }
-          
-          // Start new jobs if we have capacity
-          // For cloud providers, respect the batchParallel setting:
-          // - false (sequential): process one cloud job at a time
-          // - true (parallel): submit all pending cloud jobs simultaneously
+
+          // Determine effective max concurrent jobs
           const cloudProvider = useSettingsStore.getState().activeProvider;
           const batchParallel = useSettingsStore.getState().batchParallel;
           const effectiveMaxJobs = cloudProvider !== 'local'
-            ? (batchParallel ? currentState.pendingFiles.length : 1)
-            : currentState.maxParallelJobs;
+            ? (batchParallel ? fresh.pendingFiles.length : 1)
+            : fresh.maxParallelJobs;
 
-          while (currentState.pendingFiles.length > 0 && currentState.activeJobCount < effectiveMaxJobs) {
-            const file = currentState.pendingFiles[0];
-            const job = currentState.jobs.find(j => j.input_path === file.path && j.status === 'pending');
-            
+          // Single-pass: start at most one new job if capacity is available
+          if (fresh.pendingFiles.length > 0 && fresh.activeJobCount < effectiveMaxJobs) {
+            const file = fresh.pendingFiles[0];
+            const job = fresh.jobs.find(j => j.input_path === file.path && j.status === 'pending');
+
             if (!job) {
-              // Job not found, skip this file
+              // Job not found, skip this file and re-check
               set((state) => ({ pendingFiles: state.pendingFiles.slice(1) }));
-              continue;
+              processNextBatch();
+              return;
             }
-            
-            // Remove from pending, increment active count
+
+            // Pop file from pending, increment active count
             set((state) => ({
               pendingFiles: state.pendingFiles.slice(1),
               activeJobCount: state.activeJobCount + 1,
             }));
-            
+
             setCurrentJob(job.id);
-            
-            // Process job in background
+
+            // Process job in background, then schedule next
             processJob(file, job, settings, updateJob, setCurrentStems, setActiveView)
               .finally(() => {
                 set((state) => ({
                   activeJobCount: Math.max(0, state.activeJobCount - 1),
                 }));
-                // Process next batch
                 processNextBatch();
               });
           }
