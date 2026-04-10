@@ -50,6 +50,73 @@ class TestRunSeparationDispatch:
             )
 
 
+class TestInvalidModelExit:
+    """Tests for sidecar exit behaviour with invalid model names."""
+
+    def test_invalid_model_exits_non_zero(self, monkeypatch, tmp_path):
+        """Running with a non-existent model name must exit with non-zero code."""
+        import stemgen_sidecar
+
+        input_file = tmp_path / "test.wav"
+        input_file.write_bytes(b"fake")
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["stemgen_sidecar", "--model", "nonexistent_model_xyz",
+             "--input", str(input_file), "--output", str(tmp_path),
+             "--device", "cpu"],
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+        assert exc_info.value.code != 0
+
+    def test_invalid_model_emits_error_json(self, capsys, monkeypatch, tmp_path):
+        """The final stdout line must be valid JSON with status=error and non-empty error field."""
+        import stemgen_sidecar
+
+        input_file = tmp_path / "test.wav"
+        input_file.write_bytes(b"fake")
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["stemgen_sidecar", "--model", "nonexistent_model_xyz",
+             "--input", str(input_file), "--output", str(tmp_path),
+             "--device", "cpu"],
+        )
+        with pytest.raises(SystemExit):
+            stemgen_sidecar.main()
+
+        captured = capsys.readouterr()
+        lines = [l.strip() for l in captured.out.strip().split('\n') if l.strip()]
+        assert len(lines) > 0, "Expected at least one line of JSON output"
+        parsed = json.loads(lines[-1])
+        assert parsed.get("status") == "error"
+        assert parsed.get("error"), "Error message should be non-empty"
+
+    def test_invalid_model_leaves_no_partial_output(self, monkeypatch, tmp_path):
+        """No partial stem output files should remain after a failed run."""
+        import stemgen_sidecar
+
+        input_file = tmp_path / "test.wav"
+        input_file.write_bytes(b"fake")
+
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["stemgen_sidecar", "--model", "nonexistent_model_xyz",
+             "--input", str(input_file), "--output", str(output_dir),
+             "--device", "cpu"],
+        )
+        with pytest.raises(SystemExit):
+            stemgen_sidecar.main()
+
+        # Output directory should be empty (no partial wav/mp3 files)
+        remaining = list(output_dir.iterdir())
+        assert len(remaining) == 0, f"Expected empty output dir, found: {remaining}"
+
+
 class TestCloudCliValidation:
     """Tests for --device cloud validation in main()."""
 
