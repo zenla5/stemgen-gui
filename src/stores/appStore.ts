@@ -379,7 +379,10 @@ export const useAppStore = create<AppState>()(
       // Batch processing (Phase 5) - parallel job execution
       startProcessing: async (files: AudioFileMetadata[]) => {
         const { settings, setCurrentJob, setIsProcessing, setActiveView, updateJob, setCurrentStems } = get();
-        
+
+        // Re-entrancy guard: prevent duplicate scheduling when already processing
+        if (get().isProcessing) return;
+
         if (files.length === 0) return;
         
         setIsProcessing(true);
