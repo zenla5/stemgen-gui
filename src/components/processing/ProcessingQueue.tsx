@@ -210,12 +210,12 @@ function JobItem({
           )}>
             {getStatusText(job.status)}
           </span>
-          {job.status === 'failed' && job.error && (
-            <span className="truncate text-red-400" title={job.error}>
-              • {job.error.substring(0, 30)}...
-            </span>
-          )}
         </div>
+        {job.status === 'failed' && job.error && (
+          <div className="mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+            {job.error}
+          </div>
+        )}
       </div>
 
       {job.status === 'processing' && (() => {

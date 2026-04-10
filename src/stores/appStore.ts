@@ -56,6 +56,7 @@ function validateEnvironmentResponse(data: unknown): EnvironmentValidation {
   return record as unknown as EnvironmentValidation;
 }
 import { DEFAULT_PROCESSING_SETTINGS, STEM_COLORS, STEM_DEFAULT_NAMES } from '@/lib/constants';
+import { formatJobError } from '@/lib/errorHints';
 
 // Helper to generate unique IDs
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -272,14 +273,15 @@ async function processJob(
     });
     return true;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = formatJobError(rawMessage);
     // Job failed
     updateJob(job.id, {
       status: 'failed',
       error: errorMessage,
     });
 
-    // Handle cloud fallback_hint: if cloud provider failed, offer switch to local
+    // Show a persistent toast so the user cannot miss the failure
     const activeProvider = useSettingsStore.getState().activeProvider;
     if (activeProvider !== 'local') {
       toast.error('Cloud inference failed', {
@@ -290,6 +292,10 @@ async function processJob(
             useSettingsStore.getState().setActiveProvider('local');
           },
         },
+      });
+    } else {
+      toast.error('Processing failed', {
+        description: errorMessage,
       });
     }
     return false;
