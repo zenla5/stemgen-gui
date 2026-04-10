@@ -12,7 +12,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use super::probe::is_windows_store_stub;
+use super::probe::{is_windows_store_stub, NoWindow};
 
 /// Represents a running separation process
 pub struct SeparationProcess {
@@ -181,6 +181,7 @@ impl SidecarManager {
         }
 
         let mut child = cmd
+            .no_window()
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
