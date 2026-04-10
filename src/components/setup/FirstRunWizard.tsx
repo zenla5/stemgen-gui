@@ -125,13 +125,17 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
   const runDependencyCheck = async () => {
     setStep('check');
 
+    // Mark all as checking with staggered animation
     for (const dep of dependencies) {
       updateDependency(dep.name, 'checking');
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 200));
+    }
 
-      try {
-        const env = await invoke<Record<string, PackageStatus | unknown>>('validate_environment');
+    // Call validate_environment once and process all results
+    try {
+      const env = await invoke<Record<string, PackageStatus | unknown>>('validate_environment');
 
+      for (const dep of dependencies) {
         if (dep.name === 'FFmpeg') {
           const { status, message } = getDepStatus(env.ffmpeg as PackageStatus | undefined, 'Found and ready');
           updateDependency(dep.name, status, message);
@@ -149,7 +153,9 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
           const { status, message } = getDepStatus(env.cuda as PackageStatus | undefined, gpuName);
           updateDependency(dep.name, status, message || 'CPU mode — GPU recommended');
         }
-      } catch {
+      }
+    } catch {
+      for (const dep of dependencies) {
         updateDependency(dep.name, 'warning', 'Could not check dependency');
       }
     }
