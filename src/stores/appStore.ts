@@ -339,10 +339,29 @@ export const useAppStore = create<AppState>()(
       // File actions
       addFiles: (files) => {
         const currentFiles = get().audioFiles;
+        const existingJobs = get().jobs;
+        const settings = get().settings;
         const newFiles = files.filter(
           (f) => !currentFiles.some((cf) => cf.path === f.path)
         );
-        set({ audioFiles: [...currentFiles, ...newFiles] });
+        // Create a pending ProcessingJob for each new file so the queue
+        // tab shows items immediately on drop.
+        const newJobs: ProcessingJob[] = newFiles
+          .filter((f) => !existingJobs.some((j) => j.input_path === f.path))
+          .map((file) => ({
+            id: generateId(),
+            input_path: file.path,
+            output_path: file.path.replace(/\.[^.]+$/, '.stem.mp4'),
+            status: 'pending' as const,
+            progress: 0,
+            model: settings.model,
+            dj_software: settings.djPreset,
+            started_at: new Date().toISOString(),
+          }));
+        set({
+          audioFiles: [...currentFiles, ...newFiles],
+          jobs: [...existingJobs, ...newJobs],
+        });
       },
       
       removeFile: (path) => {
@@ -389,12 +408,31 @@ export const useAppStore = create<AppState>()(
         // Re-entrancy guard: prevent duplicate scheduling when already processing
         if (get().isProcessing) return;
 
-        if (files.length === 0) return;
-        
+        // Pending jobs are created in addFiles on drop — find them instead of
+        // creating duplicate jobs.
+        const currentJobs = get().jobs;
+        const pendingJobPaths = new Set(
+          currentJobs.filter(j => j.status === 'pending').map(j => j.input_path)
+        );
+
+        // Derive pending files from existing pending jobs (preferred) or
+        // fall back to the files argument for backward compat.
+        const pendingFiles = files.length > 0
+          ? files.filter(f => pendingJobPaths.has(f.path) || !currentJobs.some(j => j.input_path === f.path))
+          : [];
+
+        // If no files came in via argument, pull from existing pending jobs
+        if (pendingFiles.length === 0 && pendingJobPaths.size > 0) {
+          pendingFiles.push(...get().audioFiles.filter(f => pendingJobPaths.has(f.path)));
+        }
+
+        if (pendingFiles.length === 0) return;
+
         setIsProcessing(true);
-        
-        // Create jobs for all files
-        const newJobs: ProcessingJob[] = files.map((file) => ({
+
+        // Only create jobs for files that don't already have a pending job
+        const newFiles = pendingFiles.filter(f => !pendingJobPaths.has(f.path));
+        const newJobs: ProcessingJob[] = newFiles.map((file) => ({
           id: generateId(),
           input_path: file.path,
           output_path: file.path.replace(/\.[^.]+$/, '.stem.mp4'),
@@ -404,12 +442,14 @@ export const useAppStore = create<AppState>()(
           dj_software: settings.djPreset,
           started_at: new Date().toISOString(),
         }));
-        
-        // Add all jobs to queue
-        set((state) => ({
-          jobs: [...state.jobs, ...newJobs],
-          pendingFiles: files,
-        }));
+
+        if (newJobs.length > 0) {
+          set((state) => ({
+            jobs: [...state.jobs, ...newJobs],
+          }));
+        }
+
+        set({ pendingFiles });
         
         // Process jobs — single-pass scheduler that reads fresh state each call.
         // Capacity is filled recursively via .finally() → processNextBatch(), so

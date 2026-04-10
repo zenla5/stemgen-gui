@@ -19,9 +19,7 @@ export function ProcessingQueue() {
   } = useAppStore();
 
   const handleStartProcessing = () => {
-    if (audioFiles.length > 0) {
-      startProcessing(audioFiles);
-    }
+    startProcessing(audioFiles);
   };
 
   const handleCancelAll = () => {
@@ -29,7 +27,6 @@ export function ProcessingQueue() {
   };
 
   const hasJobs = jobs.length > 0;
-  const hasFiles = audioFiles.length > 0;
   const processingJobs = jobs.filter((j) => j.status === 'processing');
   const pendingJobs = jobs.filter((j) => j.status === 'pending');
   const completedJobs = jobs.filter((j) => j.status === 'completed');
@@ -139,14 +136,14 @@ export function ProcessingQueue() {
           <button
             data-testid="start-processing-btn"
             onClick={handleStartProcessing}
-            disabled={!hasFiles}
+            disabled={pendingJobs.length === 0}
             className={cn(
               'flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 font-medium text-primary-foreground hover:bg-primary/90',
-              !hasFiles && 'cursor-not-allowed opacity-50'
+              pendingJobs.length === 0 && 'cursor-not-allowed opacity-50'
             )}
           >
             <Play className="h-5 w-5" />
-            Start Processing {hasFiles && `(${audioFiles.length} file${audioFiles.length !== 1 ? 's' : ''})`}
+            Start Processing {pendingJobs.length > 0 && `(${pendingJobs.length} file${pendingJobs.length !== 1 ? 's' : ''})`}
           </button>
         )}
       </div>
