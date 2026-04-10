@@ -1,21 +1,33 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { act } from '@testing-library/react';
+import { useAppStore } from '@/stores/appStore';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
+}));
 
 /**
  * Regression Tests for Known Bugs
- * 
+ *
  * These tests explicitly guard against regressions of previously reported bugs:
- * 
+ *
  * Bug: J1 - DEFAULT_PROCESSING_SETTINGS.device was 'cuda' causing crashes on non-GPU machines
  * Fix: Changed to 'cpu' as safer default
- * 
+ *
  * Bug: G1 - APP_VERSION was '0.1.0' instead of matching release version
  * Fix: Version bumped to match package.json
- * 
+ *
  * Bug: J2 - Integration test for SettingsPanel failed due to missing ModelManager mock
  * Fix: Added proper mock import
- * 
+ *
  * Bug: G13 - src-tauri/Cargo.toml version inconsistency with git tag
  * Fix: Explicit version = "1.0.x" in Cargo.toml
+ *
+ * Bug: Root Cause E - Queue shows "No jobs" while button says "1 file"
+ * Fix: addFiles now creates pending jobs immediately on drop (TASK-005)
+ *
+ * Bug: Root Cause C - Double-clicking Start Processing spawns duplicate jobs
+ * Fix: isProcessing guard in startProcessing (TASK-003)
  */
 
 import { DEFAULT_PROCESSING_SETTINGS, APP_VERSION, DJ_SOFTWARE_PRESETS, AI_MODELS, DEVICE_OPTIONS, QUALITY_PRESETS } from '@/lib/constants';
@@ -333,5 +345,91 @@ describe('Regression: PackageStatus type guard (v1.1.5)', () => {
 
     // Valid field still works
     expect(hasPackageStatusKey(env.python, 'available')).toBe(true);
+  });
+});
+
+// ============================================================
+// Regression: Root Cause E — Queue/files state mismatch
+// ============================================================
+describe('Regression: Queue/Files State Mismatch (Root Cause E)', () => {
+  beforeEach(() => {
+    act(() => {
+      useAppStore.setState({
+        audioFiles: [],
+        jobs: [],
+        isProcessing: false,
+        activeJobCount: 0,
+        pendingFiles: [],
+      });
+    });
+  });
+
+  it('dropping a file creates a pending job immediately (queue is no longer empty)', async () => {
+    // Simulate dropping a file via the store
+    await act(async () => {
+      useAppStore.getState().addFiles([
+        { path: '/music/song.mp3', name: 'song.mp3', size: 1000, duration: 60, sample_rate: 44100, bit_depth: 16, channels: 2, format: 'mp3', metadata: {} },
+      ]);
+    });
+
+    // Queue should now show a pending job
+    const jobs = useAppStore.getState().jobs;
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].status).toBe('pending');
+    expect(jobs[0].input_path).toBe('/music/song.mp3');
+  });
+
+  it('pending job count matches the number of dropped files', async () => {
+    await act(async () => {
+      useAppStore.getState().addFiles([
+        { path: '/music/song1.mp3', name: 'song1.mp3', size: 1000, duration: 60, sample_rate: 44100, bit_depth: 16, channels: 2, format: 'mp3', metadata: {} },
+        { path: '/music/song2.mp3', name: 'song2.mp3', size: 2000, duration: 120, sample_rate: 44100, bit_depth: 16, channels: 2, format: 'mp3', metadata: {} },
+      ]);
+    });
+
+    const state = useAppStore.getState();
+    const pendingJobs = state.jobs.filter(j => j.status === 'pending');
+    expect(pendingJobs).toHaveLength(2);
+    expect(state.audioFiles).toHaveLength(2);
+  });
+
+  it('isProcessing guard prevents duplicate startProcessing calls', async () => {
+    // Drop files first
+    await act(async () => {
+      useAppStore.getState().addFiles([
+        { path: '/music/song.mp3', name: 'song.mp3', size: 1000, duration: 60, sample_rate: 44100, bit_depth: 16, channels: 2, format: 'mp3', metadata: {} },
+      ]);
+    });
+
+    // Set isProcessing to true (simulating active processing)
+    await act(async () => {
+      useAppStore.setState({ isProcessing: true, activeJobCount: 1 });
+    });
+
+    // Try to start processing again — should be blocked by re-entrancy guard
+    await act(async () => {
+      await useAppStore.getState().startProcessing(useAppStore.getState().audioFiles);
+    });
+
+    // Should still have only the original job, no duplicates
+    const state = useAppStore.getState();
+    expect(state.jobs).toHaveLength(1);
+    expect(state.jobs[0].input_path).toBe('/music/song.mp3');
+  });
+
+  it('dropping the same file twice does not create duplicate jobs', async () => {
+    const file = { path: '/music/song.mp3', name: 'song.mp3', size: 1000, duration: 60, sample_rate: 44100, bit_depth: 16, channels: 2, format: 'mp3', metadata: {} };
+
+    await act(async () => {
+      useAppStore.getState().addFiles([file]);
+    });
+    await act(async () => {
+      useAppStore.getState().addFiles([file]); // same file again
+    });
+
+    const state = useAppStore.getState();
+    // Should not duplicate files or jobs
+    expect(state.audioFiles).toHaveLength(1);
+    expect(state.jobs).toHaveLength(1);
   });
 });
