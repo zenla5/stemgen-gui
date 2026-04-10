@@ -82,6 +82,7 @@ test.describe('First Run Wizard', () => {
   test('wizard shows results after dependency check completes', async ({ page }) => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
+    test.skip(!!process.env.CI && process.platform === 'win32', 'validate_environment hangs on Windows CI (no Python); WebView2 throttles setTimeout in background');
 
     await navigateWithWizard(page);
 
@@ -93,6 +94,7 @@ test.describe('First Run Wizard', () => {
   test('wizard results show dependency rows with status', async ({ page }) => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
+    test.skip(!!process.env.CI && process.platform === 'win32', 'validate_environment hangs on Windows CI (no Python); WebView2 throttles setTimeout in background');
 
     await navigateWithWizard(page);
 

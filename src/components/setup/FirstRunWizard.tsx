@@ -131,32 +131,57 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
       await new Promise(r => setTimeout(r, 200));
     }
 
-    // Call validate_environment once and process all results
-    try {
-      const env = await invoke<Record<string, PackageStatus | unknown>>('validate_environment');
+    // Call validate_environment once with a timeout, then process all results.
+    // NOTE: We use a polling-based timeout instead of Promise.race + setTimeout
+    // because WebView2 on Windows throttles setTimeout callbacks when the window
+    // is backgrounded (e.g., CI runners), which can cause the timeout to never fire.
+    const VALIDATION_TIMEOUT_MS = 25_000;
+    let env: Record<string, PackageStatus | unknown> | null = null;
+    const POLL_INTERVAL_MS = 250;
+    const deadline = Date.now() + VALIDATION_TIMEOUT_MS;
+    const invocation = invoke<Record<string, PackageStatus | unknown>>('validate_environment');
+    const pollAndRace = (): Promise<typeof env> =>
+      new Promise((resolve) => {
+        let interval: ReturnType<typeof setInterval>;
+        interval = setInterval(() => {
+          if (Date.now() > deadline) {
+            clearInterval(interval);
+            resolve(null);
+          }
+        }, POLL_INTERVAL_MS);
+        invocation
+          .then((result) => {
+            clearInterval(interval);
+            resolve(result);
+          })
+          .catch(() => {
+            clearInterval(interval);
+            resolve(null);
+          });
+      });
+    env = await pollAndRace();
 
-      for (const dep of dependencies) {
-        if (dep.name === 'FFmpeg') {
-          const { status, message } = getDepStatus(env.ffmpeg as PackageStatus | undefined, 'Found and ready');
-          updateDependency(dep.name, status, message);
-        } else if (dep.name === 'Python') {
-          const { status, message } = getDepStatus(env.python as PackageStatus | undefined, `v${(env as Record<string, unknown>).pythonVersion ?? 'unknown'}`);
-          updateDependency(dep.name, status, message || 'Python not found');
-        } else if (dep.name === 'PyTorch') {
-          const { status, message } = getDepStatus(env.pytorch as PackageStatus | undefined, `v${(env as Record<string, unknown>).pytorchVersion ?? 'unknown'}`);
-          updateDependency(dep.name, status, message || 'PyTorch not installed');
-        } else if (dep.name === 'demucs') {
-          const { status, message } = getDepStatus(env.demucs as PackageStatus | undefined, 'Ready');
-          updateDependency(dep.name, status, message || 'demucs not installed');
-        } else if (dep.name === 'CUDA') {
-          const gpuName = String((env as Record<string, unknown>).gpuName ?? 'GPU available');
-          const { status, message } = getDepStatus(env.cuda as PackageStatus | undefined, gpuName);
-          updateDependency(dep.name, status, message || 'CPU mode — GPU recommended');
-        }
+    for (const dep of dependencies) {
+      if (!env) {
+        updateDependency(dep.name, 'warning', 'Check timed out — try again');
+        continue;
       }
-    } catch {
-      for (const dep of dependencies) {
-        updateDependency(dep.name, 'warning', 'Could not check dependency');
+      if (dep.name === 'FFmpeg') {
+        const { status, message } = getDepStatus(env.ffmpeg as PackageStatus | undefined, 'Found and ready');
+        updateDependency(dep.name, status, message);
+      } else if (dep.name === 'Python') {
+        const { status, message } = getDepStatus(env.python as PackageStatus | undefined, `v${(env as Record<string, unknown>).pythonVersion ?? 'unknown'}`);
+        updateDependency(dep.name, status, message || 'Python not found');
+      } else if (dep.name === 'PyTorch') {
+        const { status, message } = getDepStatus(env.pytorch as PackageStatus | undefined, `v${(env as Record<string, unknown>).pytorchVersion ?? 'unknown'}`);
+        updateDependency(dep.name, status, message || 'PyTorch not installed');
+      } else if (dep.name === 'demucs') {
+        const { status, message } = getDepStatus(env.demucs as PackageStatus | undefined, 'Ready');
+        updateDependency(dep.name, status, message || 'demucs not installed');
+      } else if (dep.name === 'CUDA') {
+        const gpuName = String((env as Record<string, unknown>).gpuName ?? 'GPU available');
+        const { status, message } = getDepStatus(env.cuda as PackageStatus | undefined, gpuName);
+        updateDependency(dep.name, status, message || 'CPU mode — GPU recommended');
       }
     }
 
