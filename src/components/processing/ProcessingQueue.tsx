@@ -1,5 +1,6 @@
-import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle, Layers } from 'lucide-react';
+import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle, Layers, Cloud } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { cn } from '@/lib/utils';
 import type { ProcessingJob, ProcessingStatus } from '@/lib/types';
 
@@ -217,19 +218,26 @@ function JobItem({
         </div>
       </div>
 
-      {job.status === 'processing' && (
+      {job.status === 'processing' && (() => {
+        const isCloud = useSettingsStore.getState().activeProvider !== 'local';
+        return (
         <div className="w-24">
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full bg-primary transition-all duration-200"
-              style={{ width: `${job.progress * 100}%` }}
+              className={cn(
+                'h-full bg-primary transition-all duration-200',
+                isCloud && 'animate-pulse'
+              )}
+              style={{ width: isCloud ? '100%' : `${job.progress * 100}%` }}
             />
           </div>
-          <p className="mt-0.5 text-center text-xs text-muted-foreground">
-            {Math.round(job.progress * 100)}%
-          </p>
+          <div className="mt-0.5 flex items-center justify-center gap-1 text-xs text-muted-foreground">
+            {isCloud && <Cloud className="h-2.5 w-2.5" />}
+            {isCloud ? 'Cloud' : `${Math.round(job.progress * 100)}%`}
+          </div>
         </div>
-      )}
+        );
+      })()}
 
       {(job.status === 'processing' || job.status === 'pending') && (
         <button

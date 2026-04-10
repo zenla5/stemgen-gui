@@ -124,7 +124,7 @@ export interface ModelInfo {
 }
 
 // Inference Provider
-export type InferenceProvider = 'local' | 'replicate' | 'magnetic' | 'argilla';
+export type InferenceProvider = 'local' | 'fal' | 'replicate';
 
 // Processing types
 export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';

@@ -4,6 +4,7 @@
 
 pub mod audio;
 pub mod commands;
+pub mod inference_provider;
 pub mod stems;
 
 use std::sync::Mutex as StdMutex;
@@ -333,6 +334,13 @@ pub fn run() {
             commands::install_executor::get_available_installers,
             commands::install_executor::install_dependency,
             commands::install_executor::cancel_install,
+            // Inference provider configuration
+            commands::provider::get_inference_provider_config,
+            commands::provider::set_inference_provider,
+            commands::provider::set_provider_api_key,
+            commands::provider::clear_provider_api_key,
+            commands::provider::test_provider_connection,
+            commands::provider::fetch_replicate_versions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

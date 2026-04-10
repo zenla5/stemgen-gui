@@ -66,6 +66,26 @@ jobs:
           echo "Thresholds: lines 32%, functions 60%, branches 63%, statements 32%"
           echo "If thresholds are not met, CI will fail here."
 
+  # Python sidecar tests
+  python:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11'
+
+      - name: Install Python test dependencies
+        run: pip install -r python/requirements-dev.txt
+
+      - name: Run Python tests
+        run: cd python && pytest tests/ --tb=short -v
+
   # Frontend integration tests (React component tests)
   integration:
     name: Integration Tests
@@ -156,6 +176,8 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+        env:
+          VITE_BUILD_DATE: ${{ github.event.repository.updated_at }}
 
       - name: Copy sidecar resource
         run: npm run copy-sidecar
@@ -335,7 +357,7 @@ jobs:
     name: All Checks Passed
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, e2e-binary, security]
+    needs: [frontend, integration, backend, e2e, e2e-binary, security, python]
     if: always()
 
     steps:
@@ -385,6 +407,14 @@ jobs:
             echo "Binary E2E tests were skipped — this should not happen on CI"
             exit 1
           fi
+          if [[ "${{ needs.python.result }}" == "failure" ]]; then
+            echo "Python tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.python.result }}" == "cancelled" ]]; then
+            echo "Python tests were cancelled"
+            exit 1
+          fi
           echo "All critical checks passed!"
 
   # Failure notification via Telegram
@@ -392,7 +422,7 @@ jobs:
     name: Notify on Failure
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, e2e-binary, check]
+    needs: [frontend, integration, backend, e2e, e2e-binary, python, check]
     if: failure()
     steps:
       - name: Send Telegram notification

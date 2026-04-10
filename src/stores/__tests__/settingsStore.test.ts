@@ -1,6 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as tauriCore from '@tauri-apps/api/core';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { AIModel, DJSoftware } from '@/lib/types';
+
+// Mock invoke separately for this test file (the global mock doesn't cover @tauri-apps/api/core)
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
+const invokeMock = vi.mocked(tauriCore.invoke);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -15,6 +22,14 @@ const getDefaults = () => ({
   gpuEnabled: true,
   maxParallelJobs: 1,
   exportPresets: [],
+  activeProvider: 'local' as const,
+  falConfigured: false,
+  replicateConfigured: false,
+  replicateVersionHash: null as string | null,
+  batchParallel: false,
+  cloudDurationWarnMinutes: 15 as number | null,
+  cloudDurationHardCapMinutes: null as number | null,
+  privacyNoticeShown: false,
 });
 
 function resetStore() {
@@ -177,5 +192,107 @@ describe('useSettingsStore — reset', () => {
     expect(state.defaultModel).toBe('bs_roformer');
     expect(state.cpuThreads).toBe(4);
     expect(state.gpuEnabled).toBe(true);
+  });
+});
+
+// ─── Inference Provider Tests ─────────────────────────────────────────────
+
+describe('useSettingsStore — inference provider', () => {
+  beforeEach(() => {
+    resetStore();
+    invokeMock.mockReset();
+  });
+
+  it('starts with local as active provider', () => {
+    expect(useSettingsStore.getState().activeProvider).toBe('local');
+  });
+
+  it('default configured flags are false', () => {
+    expect(useSettingsStore.getState().falConfigured).toBe(false);
+    expect(useSettingsStore.getState().replicateConfigured).toBe(false);
+  });
+
+  it('default cloudDurationWarnMinutes is 15', () => {
+    expect(useSettingsStore.getState().cloudDurationWarnMinutes).toBe(15);
+  });
+
+  it('default cloudDurationHardCapMinutes is null', () => {
+    expect(useSettingsStore.getState().cloudDurationHardCapMinutes).toBe(null);
+  });
+
+  it('default privacyNoticeShown is false', () => {
+    expect(useSettingsStore.getState().privacyNoticeShown).toBe(false);
+  });
+
+  it('setActiveProvider calls invoke and updates state', async () => {
+    invokeMock.mockResolvedValue(undefined);
+    await useSettingsStore.getState().setActiveProvider('fal');
+    expect(invokeMock).toHaveBeenCalledWith('set_inference_provider', { provider: 'fal' });
+    expect(useSettingsStore.getState().activeProvider).toBe('fal');
+  });
+
+  it('setReplicateVersionHash updates state', () => {
+    useSettingsStore.getState().setReplicateVersionHash('abc123');
+    expect(useSettingsStore.getState().replicateVersionHash).toBe('abc123');
+  });
+
+  it('setReplicateVersionHash accepts null', () => {
+    useSettingsStore.getState().setReplicateVersionHash('abc123');
+    useSettingsStore.getState().setReplicateVersionHash(null);
+    expect(useSettingsStore.getState().replicateVersionHash).toBe(null);
+  });
+
+  it('setBatchParallel updates state', () => {
+    useSettingsStore.getState().setBatchParallel(true);
+    expect(useSettingsStore.getState().batchParallel).toBe(true);
+  });
+
+  it('setCloudDurationWarnMinutes updates state', () => {
+    useSettingsStore.getState().setCloudDurationWarnMinutes(30);
+    expect(useSettingsStore.getState().cloudDurationWarnMinutes).toBe(30);
+  });
+
+  it('setCloudDurationHardCapMinutes updates state', () => {
+    useSettingsStore.getState().setCloudDurationHardCapMinutes(60);
+    expect(useSettingsStore.getState().cloudDurationHardCapMinutes).toBe(60);
+  });
+
+  it('markPrivacyNoticeShown calls invoke and updates state', async () => {
+    invokeMock.mockResolvedValue(undefined);
+    await useSettingsStore.getState().markPrivacyNoticeShown();
+    expect(useSettingsStore.getState().privacyNoticeShown).toBe(true);
+  });
+
+  it('loadProviderConfig hydrates state from Tauri', async () => {
+    invokeMock.mockResolvedValue({
+      active_provider: 'replicate',
+      replicate_version_hash: 'v2hash',
+      batch_parallel: true,
+      cloud_duration_warn_minutes: 20,
+      cloud_duration_hard_cap_minutes: 45,
+      privacy_notice_shown: true,
+    });
+    await useSettingsStore.getState().loadProviderConfig();
+    const state = useSettingsStore.getState();
+    expect(state.activeProvider).toBe('replicate');
+    expect(state.replicateVersionHash).toBe('v2hash');
+    expect(state.batchParallel).toBe(true);
+    expect(state.cloudDurationWarnMinutes).toBe(20);
+    expect(state.cloudDurationHardCapMinutes).toBe(45);
+    expect(state.privacyNoticeShown).toBe(true);
+  });
+
+  it('loadProviderConfig falls back to defaults on error', async () => {
+    invokeMock.mockRejectedValue(new Error('no config'));
+    await useSettingsStore.getState().loadProviderConfig();
+    expect(useSettingsStore.getState().activeProvider).toBe('local');
+  });
+
+  it('API key values are never in store state', () => {
+    const state = useSettingsStore.getState();
+    const stateStr = JSON.stringify(state);
+    expect(stateStr).not.toContain('key');
+    expect(stateStr).not.toContain('token');
+    expect(stateStr).not.toContain('secret');
   });
 });

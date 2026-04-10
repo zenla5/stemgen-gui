@@ -2,6 +2,7 @@ use crate::audio::waveform::WaveformPoint;
 use crate::audio::{hash_file, AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
 use crate::commands::models::{get_available_models, ModelInfo};
 use crate::commands::sidecar::SidecarManager;
+use crate::inference_provider;
 use crate::stems::provenance::StemProvenance;
 use crate::stems::{DJSoftware, OutputFormat, StemPacker, StemType};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,12 @@ pub struct SeparationSettings {
     pub output_format: String,
     pub quality_preset: String,
     pub dj_preset: String,
+    /// Cloud provider name ("fal" or "replicate") — optional for backward compat
+    #[serde(default)]
+    pub provider: Option<String>,
+    /// Replicate model version hash — optional
+    #[serde(default)]
+    pub replicate_version_hash: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -145,6 +152,43 @@ pub async fn start_separation(
         source_path, settings.model, settings.device
     );
 
+    // Read inference provider config from DB
+    let provider_config = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        inference_provider::get_config(&conn)?
+    };
+
+    // Determine cloud provider and load API key if needed
+    let (device, provider, api_key, version_hash) =
+        if provider_config.active_provider != inference_provider::InferenceProvider::Local {
+            let provider_name = match provider_config.active_provider {
+                inference_provider::InferenceProvider::Fal => "fal",
+                inference_provider::InferenceProvider::Replicate => "replicate",
+                _ => unreachable!(),
+            };
+
+            // Load API key from keychain — never log the key value
+            let key = inference_provider::load_api_key(provider_name)?.ok_or_else(|| {
+                "No API key configured for this provider — go to Settings → Inference".to_string()
+            })?;
+
+            info!("Using cloud provider: {}", provider_name);
+
+            (
+                "cloud".to_string(),
+                Some(provider_name.to_string()),
+                Some(key),
+                provider_config.replicate_version_hash.clone(),
+            )
+        } else {
+            (
+                settings.device.clone(),
+                settings.provider.clone(),
+                None,
+                settings.replicate_version_hash.clone(),
+            )
+        };
+
     // Get or create sidecar manager
     let mut sidecar_guard = state.sidecar.lock().await;
 
@@ -165,7 +209,15 @@ pub async fn start_separation(
     );
 
     let result = sidecar
-        .run_separation(job_id, source, &settings.model, &settings.device)
+        .run_separation(
+            job_id,
+            source,
+            &settings.model,
+            &device,
+            provider.as_deref(),
+            api_key.as_deref(),
+            version_hash.as_deref(),
+        )
         .await;
 
     match result {
@@ -577,6 +629,8 @@ mod tests {
             output_format: "alac".to_string(),
             quality_preset: "standard".to_string(),
             dj_preset: "traktor".to_string(),
+            provider: None,
+            replicate_version_hash: None,
         };
 
         let json = serde_json::to_string(&settings).unwrap();

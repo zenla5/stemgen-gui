@@ -57,6 +57,13 @@ coverage.lcov
 # Python scripts (may contain secrets - do not commit)
 *.py
 !scripts/
+!python/
+!python/**/*.py
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
 
 # Claude
 .claude/*

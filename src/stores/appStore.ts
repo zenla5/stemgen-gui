@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { toast } from 'sonner';
+import { useSettingsStore } from './settingsStore';
 import type {
   AudioFileMetadata,
   ProcessingJob,
@@ -170,6 +172,31 @@ async function processJob(
   updateJob(job.id, { status: 'processing' });
 
   try {
+    // Cloud duration warning check
+    const settingsStore = useSettingsStore.getState();
+    if (settingsStore.activeProvider !== 'local') {
+      const durationMinutes = (file.duration || 0) / 60;
+      const warnMinutes = settingsStore.cloudDurationWarnMinutes;
+      const hardCapMinutes = settingsStore.cloudDurationHardCapMinutes;
+
+      if (hardCapMinutes !== null && durationMinutes > hardCapMinutes) {
+        toast.warning('File too long for cloud processing', {
+          description: `This file is ${Math.ceil(durationMinutes)} min long, exceeding the ${hardCapMinutes} min cap. Switching to local.`,
+        });
+        updateJob(job.id, {
+          status: 'failed',
+          error: `File duration (${Math.ceil(durationMinutes)} min) exceeds cloud hard cap (${hardCapMinutes} min)`,
+        });
+        return false;
+      }
+
+      if (warnMinutes !== null && durationMinutes > warnMinutes) {
+        toast.warning('Long file for cloud processing', {
+          description: `This file is ${Math.ceil(durationMinutes)} min long — cloud processing by ${settingsStore.activeProvider} may take a while.`,
+        });
+      }
+    }
+
     // Call the Tauri backend for stem separation
     const stems = await invoke<StemInfo[]>('start_separation', {
       sourcePath: file.path,
@@ -245,11 +272,26 @@ async function processJob(
     });
     return true;
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     // Job failed
     updateJob(job.id, {
       status: 'failed',
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
     });
+
+    // Handle cloud fallback_hint: if cloud provider failed, offer switch to local
+    const activeProvider = useSettingsStore.getState().activeProvider;
+    if (activeProvider !== 'local') {
+      toast.error('Cloud inference failed', {
+        description: errorMessage,
+        action: {
+          label: 'Switch to Local',
+          onClick: () => {
+            useSettingsStore.getState().setActiveProvider('local');
+          },
+        },
+      });
+    }
     return false;
   }
 }
@@ -375,7 +417,16 @@ export const useAppStore = create<AppState>()(
           }
           
           // Start new jobs if we have capacity
-          while (currentState.pendingFiles.length > 0 && currentState.activeJobCount < currentState.maxParallelJobs) {
+          // For cloud providers, respect the batchParallel setting:
+          // - false (sequential): process one cloud job at a time
+          // - true (parallel): submit all pending cloud jobs simultaneously
+          const cloudProvider = useSettingsStore.getState().activeProvider;
+          const batchParallel = useSettingsStore.getState().batchParallel;
+          const effectiveMaxJobs = cloudProvider !== 'local'
+            ? (batchParallel ? currentState.pendingFiles.length : 1)
+            : currentState.maxParallelJobs;
+
+          while (currentState.pendingFiles.length > 0 && currentState.activeJobCount < effectiveMaxJobs) {
             const file = currentState.pendingFiles[0];
             const job = currentState.jobs.find(j => j.input_path === file.path && j.status === 'pending');
             
