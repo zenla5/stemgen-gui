@@ -325,6 +325,32 @@ mod tests {
     }
 
     #[test]
+    fn test_is_windows_store_stub_with_mixed_case() {
+        // The function does .to_lowercase() so "WindowsApps" (mixed case) is detected
+        let mixed = PathBuf::from(r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\python.exe");
+        #[cfg(target_os = "windows")]
+        assert!(is_windows_store_stub(&mixed));
+        #[cfg(not(target_os = "windows"))]
+        assert!(!is_windows_store_stub(&mixed));
+    }
+
+    #[test]
+    fn test_is_windows_store_stub_with_root_level_windowsapps() {
+        let root = PathBuf::from(r"C:\WindowsApps\python3.exe");
+        #[cfg(target_os = "windows")]
+        assert!(is_windows_store_stub(&root));
+        #[cfg(not(target_os = "windows"))]
+        assert!(!is_windows_store_stub(&root));
+    }
+
+    #[test]
+    fn test_is_windows_store_stub_with_python_path_no_windowsapps() {
+        // A path containing "python" but not "windowsapps" should NOT be detected as a stub
+        let path = PathBuf::from(r"C:\Users\test\python\python.exe");
+        assert!(!is_windows_store_stub(&path));
+    }
+
+    #[test]
     fn test_no_window_probe_runs_without_hanging() {
         // If CREATE_NO_WINDOW is mis-applied (e.g. wrong flag) the process
         // will still spawn; we just verify it exits normally.
