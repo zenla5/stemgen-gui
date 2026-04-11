@@ -644,7 +644,15 @@ Use semantic versioning: since these are bug fixes, increment the patch version 
 
 ---
 
-### 23. [ ] **TASK-023 — Merge the PR and tag the release**
+### 23. [ ] **TASK-023 — Merge the PR and tag the release** ⏳ WAITING FOR CI
+
+**Status**: PR #5 is OPEN. CI checks have not yet reported. This task requires:
+1. CI to pass on all platforms
+2. PR to be reviewed and approved
+3. Manual merge by a maintainer
+4. Tag creation and release
+
+**PR URL**: https://github.com/zenla5/stemgen-gui/pull/5
 
 **Description**: Once CI is green and the PR is approved, merge `fix/wizard-models-bugs` into `main` using a merge commit (not squash, to preserve individual task commit history). Then:
 1. Create an annotated Git tag `v1.4.4` (or whatever the bumped version is) on `main`.
