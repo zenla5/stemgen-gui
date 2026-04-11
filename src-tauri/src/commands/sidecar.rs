@@ -296,8 +296,8 @@ impl SidecarManager {
                 .unwrap_or_default();
 
             // Try to extract a structured JSON error from stderr
-            let error_message = extract_structured_error(&stderr_tail)
-                .unwrap_or_else(|| stderr_tail.clone());
+            let error_message =
+                extract_structured_error(&stderr_tail).unwrap_or_else(|| stderr_tail.clone());
 
             let exit_code = status.code();
             if error_message.is_empty() {
@@ -331,8 +331,9 @@ impl SidecarManager {
         let prefix = format!("{}_", source_stem);
 
         // Scan output directory for all .wav files matching the stem pattern
-        let entries = std::fs::read_dir(output_dir)
-            .with_context(|| format!("Failed to read output directory: {}", output_dir.display()))?;
+        let entries = std::fs::read_dir(output_dir).with_context(|| {
+            format!("Failed to read output directory: {}", output_dir.display())
+        })?;
 
         for entry in entries {
             let entry = entry?;
@@ -349,7 +350,10 @@ impl SidecarManager {
                 .unwrap_or_default();
 
             // Check if filename matches the pattern {source_stem}_{stem_name}.wav
-            if let Some(stem_name) = filename.strip_prefix(&prefix).and_then(|s| s.strip_suffix(".wav")) {
+            if let Some(stem_name) = filename
+                .strip_prefix(&prefix)
+                .and_then(|s| s.strip_suffix(".wav"))
+            {
                 if !stem_name.is_empty() {
                     stems.push(StemResult {
                         stem_type: stem_name.to_string(),
