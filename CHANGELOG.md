@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.3] — 2026-04-11 — First-Run Wizard & Model Management Fixes
+
+### Fixed
+- **[FIX-WIZARD-DEPS]** FirstRunWizard dependency status indicators were always grey (pending) because `getDepStatus()` was called with the wrong key names. Extracted a shared `getDepStatus()` utility that maps `DependencyCheckPanel` keys to `DependencyStatus` keys, ensuring coloured indicators (green/red/yellow) appear correctly.
+- **[FIX-WIZARD-PREFETCH]** DependencyCheckPanel installer-prefetch logic was reading stale state from a closure captured before the dependency check completed. Removed the broken prefetch logic; the panel now shows the correct status after the check finishes.
+- **[FIX-MODELS-CMD]** Tauri `get_models` command was not registered in `lib.rs`, causing the AI Models section to hang with an infinite spinner. Added `get_models` to the command registration list.
+- **[FIX-MODELS-ERROR]** UnifiedModelSection error state was not handled correctly — the component would show a spinner forever when the sidecar returned an error. Added proper error/warning banner display with `data-testid` attributes for E2E testing.
+- **[FIX-CUDA-MANIFEST]** CUDA manifest key collision in `install_manifest.rs` — the `cuda` key was used for both the CUDA toolkit and cuDNN entries, causing the wrong dependency to be checked. Split into `cuda_toolkit` and `cudnn` keys.
+- **[FIX-MEMO]** `runDependencyCheck` function was recreated on every render due to missing `useCallback` dependency stabilization. Added proper memoization with stable dependencies.
+- **[FIX-USEEFFECT]** UnifiedModelSection `useEffect` had unstable dependencies causing unnecessary re-renders and model list reloads. Stabilized with `useCallback` and proper dependency arrays.
+
+### Added
+- **[TEST-DEPCHECK]** Unit tests for DependencyCheckPanel (error handling, retry, all-deps-ok callback).
+- **[TEST-WIZARD]** Unit tests for FirstRunWizard (step navigation, dependency check flow, skip/complete callbacks).
+- **[TEST-UNIFIED]** Unit tests for UnifiedModelSection (loading, error, warning, model cards, download).
+- **[TEST-DEPSTATUS]** Unit tests for `getDepStatus()` utility (all dependency key mappings, edge cases).
+- **[TEST-RUST]** Rust unit tests for `read_installer_dep_marker` (missing file returns `Ok(None)`).
+- **[TEST-PYTHON]** Python sidecar CLI tests for `--list-models` and `--check-model` (empty list, unknown model, invalid download).
+- **[TEST-E2E-WIZARD]** Binary E2E test verifying wizard shows coloured dependency indicators after check.
+- **[TEST-E2E-MODELS]** Binary E2E test verifying AI Models section loads without indefinite spinner.
+- **[I18N-KEYS]** Missing i18n keys: `models.loadError`, `models.listWarning`, `dependencies.couldNotCheck`, `dependencies.allInstalled`.
+
+### Internal
+- **[COVERAGE]** Frontend coverage thresholds raised: lines 42→55, functions 65→72, branches 68→75, statements 42→55.
+- **[COMMENT]** Added Windows-only comment to `read_installer_dep_marker` in `commands/mod.rs`.
+
 ## [1.4.2] — 2026-04-10 — Bug Fixes, Quality Improvements & Installer Enhancement
 
 ### Fixed
