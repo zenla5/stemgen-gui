@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Progress } from '@/components/ui/Progress';
 import { DependencyCheckPanel } from '@/components/setup/DependencyCheckPanel';
 import type { PackageStatus } from '@/lib/types';
-import { hasPackageStatusKey, getPackageStatusValue } from '@/lib/types';
+import { getDepStatus } from '@/lib/depStatus';
 
 interface DependencyCheck {
   name: string;
@@ -34,27 +34,6 @@ interface InstallerDepMarker {
   demucs: boolean;
   timestamp?: string;
   installerVersion?: string;
-}
-
-/** Check a PackageStatus discriminated union and return our dependency check status */
-function getDepStatus(pkg: PackageStatus | unknown, successMsg?: string): { status: DependencyCheck['status']; message?: string } {
-  if (typeof pkg === 'string') {
-    if (pkg === 'available') return { status: 'ok', message: successMsg ?? 'Ready' };
-    return { status: 'missing', message: 'Not configured' };
-  }
-  if (!pkg || typeof pkg !== 'object') {
-    return { status: 'missing', message: 'Not configured' };
-  }
-  if (hasPackageStatusKey(pkg, 'available')) {
-    return { status: 'ok', message: successMsg ?? 'Ready' };
-  }
-  const unavailable = getPackageStatusValue(pkg, 'unavailable');
-  if (unavailable !== undefined) return { status: 'warning', message: unavailable };
-  const warning = getPackageStatusValue(pkg, 'warning');
-  if (warning !== undefined) return { status: 'warning', message: warning };
-  const missing = getPackageStatusValue(pkg, 'missing');
-  if (missing !== undefined) return { status: 'missing', message: missing };
-  return { status: 'warning', message: 'Unknown status' };
 }
 
 export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {

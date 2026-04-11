@@ -13,7 +13,7 @@ import { useAppStore } from '@/stores/appStore';
 import { InstallProgress } from '@/components/ui/InstallProgress';
 import { Button } from '@/components/ui/Button';
 import type { PackageStatus, AvailableInstaller } from '@/lib/types';
-import { hasPackageStatusKey, getPackageStatusValue } from '@/lib/types';
+import { getDepStatus } from '@/lib/depStatus';
 import { CheckCircle, XCircle, AlertCircle, Download, Loader2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -42,26 +42,6 @@ const DEPENDENCY_DEFS: Array<{ name: string; manifestKey: string; description: s
   { name: 'demucs', manifestKey: 'demucs', description: 'AI stem separation model — required' },
   { name: 'CUDA', manifestKey: 'pytorch', description: 'GPU acceleration — optional' },
 ];
-
-function getDepStatus(pkg: PackageStatus | unknown, successMsg?: string): { status: DepRow['status']; message?: string } {
-  if (typeof pkg === 'string') {
-    if (pkg === 'available') return { status: 'ok', message: successMsg ?? 'Ready' };
-    return { status: 'missing', message: 'Not configured' };
-  }
-  if (!pkg || typeof pkg !== 'object') {
-    return { status: 'missing', message: 'Not configured' };
-  }
-  if (hasPackageStatusKey(pkg, 'available')) {
-    return { status: 'ok', message: successMsg ?? 'Ready' };
-  }
-  const unavailable = getPackageStatusValue(pkg, 'unavailable');
-  if (unavailable !== undefined) return { status: 'warning', message: unavailable };
-  const warning = getPackageStatusValue(pkg, 'warning');
-  if (warning !== undefined) return { status: 'warning', message: warning };
-  const missing = getPackageStatusValue(pkg, 'missing');
-  if (missing !== undefined) return { status: 'missing', message: missing };
-  return { status: 'warning', message: 'Unknown status' };
-}
 
 const STATUS_ICON: Record<DepRow['status'], () => ReactNode> = {
   ok: () => <CheckCircle className="h-4 w-4 text-green-500" />,
