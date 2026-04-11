@@ -352,6 +352,61 @@ class TestRunDemucsModel:
 
 
 
+
+# ----------------------------------------------------------------------------------------------
+# Tests for DEMUCS_PRETRAINED_NAME mapping (TASK-02)
+# ----------------------------------------------------------------------------------------------
+
+
+class TestDownloadModel:
+    """Tests for --download-model with model name mapping."""
+
+    def test_download_demucs_resolves_to_htdemucs(self, monkeypatch, capsys):
+        """--download-model demucs must resolve to htdemucs before calling get_model."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        mock_get_model = MagicMock()
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "demucs"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        mock_get_model.assert_called_once_with("htdemucs")
+
+    def test_download_htdemucs_ft_resolves_correctly(self, monkeypatch, capsys):
+        """--download-model htdemucs_ft must resolve to htdemucs_ft."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        mock_get_model = MagicMock()
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "htdemucs_ft"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        mock_get_model.assert_called_once_with("htdemucs_ft")
+
+    def test_download_unknown_id_passes_through(self, monkeypatch, capsys):
+        """--download-model with an unknown ID must pass through unchanged."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        mock_get_model = MagicMock()
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "my_custom_model"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        mock_get_model.assert_called_once_with("my_custom_model")
+
+
 # ----------------------------------------------------------------------------------------------
 # Tests for get_model() device-keyword bug fix (TASK-01)
 # ----------------------------------------------------------------------------------------------

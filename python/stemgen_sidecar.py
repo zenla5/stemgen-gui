@@ -46,6 +46,16 @@ try:
 except ImportError:
     replicate_module = None  # type: ignore[assignment]
 
+# Maps GUI model IDs to the demucs pretrained model name used for
+# download and loading.  "demucs" (the GUI label for the CPU-friendly
+# model) resolves to "htdemucs" which is the lightest full model bag.
+DEMUCS_PRETRAINED_NAME: dict[str, str] = {
+    "demucs":      "htdemucs",
+    "htdemucs":    "htdemucs",
+    "htdemucs_ft": "htdemucs_ft",
+}
+
+
 # ------------------------------------------------------------------------------
 # JSON line output helper
 # ------------------------------------------------------------------------------
@@ -694,8 +704,9 @@ def main() -> None:
     if args.download_model:
         try:
             import demucs.pretrained
-            print(f"Downloading model: {args.download_model}", flush=True)
-            demucs.pretrained.get_model(args.download_model)
+            pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.download_model, args.download_model)
+            print(f"Downloading model: {args.download_model} (as {pretrained_name})", flush=True)
+            demucs.pretrained.get_model(pretrained_name)
             print(f"Download complete: {args.download_model}", flush=True)
             sys.exit(0)
         except Exception as e:
