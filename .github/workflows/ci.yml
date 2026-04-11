@@ -63,7 +63,7 @@ jobs:
       - name: Check coverage thresholds
         run: |
           echo "=== Coverage Report Summary ==="
-          echo "Thresholds: lines 32%, functions 60%, branches 63%, statements 32%"
+          echo "Thresholds: lines 55%, functions 72%, branches 75%, statements 55%"
           echo "If thresholds are not met, CI will fail here."
 
   # Python sidecar tests
@@ -83,8 +83,14 @@ jobs:
       - name: Install Python test dependencies
         run: pip install -r python/requirements-dev.txt
 
-      - name: Run Python tests
-        run: cd python && pytest tests/ -m "not integration" --tb=short -v
+      - name: Install runtime deps for import verification
+        run: pip install soundfile
+
+      - name: Verify runtime imports
+        run: python -c "import soundfile; print('Deps OK')"
+
+      - name: Run Python tests with coverage
+        run: cd python && pytest tests/ -m "not integration" --tb=short -v --cov=stemgen_sidecar --cov-report=term-missing --cov-fail-under=40
 
       - name: Upload pytest output
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
