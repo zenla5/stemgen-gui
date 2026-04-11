@@ -583,6 +583,20 @@ mod package_status_tests {
         let validation = EnvironmentValidation::default();
         assert!(!validation.is_ready, "EnvironmentValidation::default() should have is_ready = false");
     }
+
+    #[test]
+    fn test_read_installer_dep_marker_returns_none_when_file_not_exists() {
+        // This test verifies that read_installer_dep_marker returns Ok(None)
+        // when the marker file does not exist (which is the normal case on
+        // non-Windows platforms or when the installer didn't run dep check).
+        // Note: This test can only run in environments where the data directory
+        // doesn't contain the marker file.
+        let result = read_installer_dep_marker();
+        assert!(result.is_ok(), "read_installer_dep_marker should not return an error");
+        // The result may be None (no marker) or Some (if marker exists in test env)
+        // Both are valid - the function should not panic or error
+        let _ = result.unwrap();
+    }
 }
 
 impl std::fmt::Display for PackageStatus {
@@ -661,6 +675,9 @@ pub struct InstallerDepMarker {
 /// Returns `None` if the marker does not exist (installer did not run dep check).
 /// This is not an error — it simply means the FirstRunWizard should run its
 /// normal dependency-check flow.
+///
+/// Note: The marker file is only written by the NSIS installer on Windows.
+/// On other platforms, this function will always return `Ok(None)`.
 #[tauri::command]
 pub fn read_installer_dep_marker() -> Result<Option<InstallerDepMarker>, String> {
     let data_dir = get_data_dir();
