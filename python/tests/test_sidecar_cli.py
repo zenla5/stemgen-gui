@@ -364,6 +364,7 @@ class TestCheckModel:
 
     def test_check_model_available(self, monkeypatch, capsys):
         """--check-model with a cached model must return available=true."""
+        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -384,6 +385,7 @@ class TestCheckModel:
 
     def test_check_model_not_available(self, monkeypatch, capsys):
         """--check-model with an uncached model must return available=false."""
+        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -406,6 +408,7 @@ class TestCheckModel:
 
     def test_list_models_json_array(self, monkeypatch, capsys):
         """--list-models must output a JSON array with all known model IDs."""
+        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -440,6 +443,7 @@ class TestDownloadModel:
 
     def test_download_demucs_resolves_to_htdemucs(self, monkeypatch, capsys):
         """--download-model demucs must resolve to htdemucs before calling get_model."""
+        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -455,6 +459,7 @@ class TestDownloadModel:
 
     def test_download_htdemucs_ft_resolves_correctly(self, monkeypatch, capsys):
         """--download-model htdemucs_ft must resolve to htdemucs_ft."""
+        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -470,6 +475,7 @@ class TestDownloadModel:
 
     def test_download_unknown_id_passes_through(self, monkeypatch, capsys):
         """--download-model with an unknown ID must pass through unchanged."""
+        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -709,6 +715,7 @@ class TestDownloadModelMapping:
 
     def test_download_model_demucs_does_not_call_get_model_with_demucs(self, monkeypatch, capsys):
         """--download-model demucs must never call get_model with bare string 'demucs'."""
+        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
