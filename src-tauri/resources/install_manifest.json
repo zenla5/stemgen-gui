@@ -224,6 +224,147 @@
           ]
         }
       }
+    },
+    "soundfile": {
+      "name": "soundfile",
+      "display_name": "SoundFile",
+      "description": "Audio file reading and writing library",
+      "required": true,
+      "platforms": {
+        "windows": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python",
+              "detect_args": ["-c", "import soundfile"],
+              "install_command": "python",
+              "install_args": ["-m", "pip", "install", "--user", "soundfile"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "macos": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import soundfile"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "soundfile"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "linux": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import soundfile"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "soundfile"],
+              "needs_elevation": false
+            }
+          ]
+        }
+      }
+    },
+    "librosa": {
+      "name": "librosa",
+      "display_name": "librosa",
+      "description": "Python library for audio and music analysis",
+      "required": false,
+      "platforms": {
+        "windows": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python",
+              "detect_args": ["-c", "import librosa"],
+              "install_command": "python",
+              "install_args": ["-m", "pip", "install", "--user", "librosa"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "macos": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import librosa"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "librosa"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "linux": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import librosa"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "librosa"],
+              "needs_elevation": false
+            }
+          ]
+        }
+      }
+    },
+    "mutagen": {
+      "name": "mutagen",
+      "display_name": "mutagen",
+      "description": "Python module for handling audio metadata",
+      "required": false,
+      "platforms": {
+        "windows": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python",
+              "detect_args": ["-c", "import mutagen"],
+              "install_command": "python",
+              "install_args": ["-m", "pip", "install", "--user", "mutagen"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "macos": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import mutagen"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "mutagen"],
+              "needs_elevation": false
+            }
+          ]
+        },
+        "linux": {
+          "package_managers": [
+            {
+              "id": "pip",
+              "priority": 1,
+              "detect_command": "python3",
+              "detect_args": ["-c", "import mutagen"],
+              "install_command": "python3",
+              "install_args": ["-m", "pip", "install", "--user", "mutagen"],
+              "needs_elevation": false
+            }
+          ]
+        }
+      }
     }
   }
 }
