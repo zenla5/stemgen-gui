@@ -134,7 +134,7 @@ export function DependencyCheckPanel({
     } finally {
       setIsChecking(false);
     }
-  }, [fetchInstallManifest, getAvailableInstallers, installersMap, deps, updateDep, validateEnvironment]);
+  }, [fetchInstallManifest, getAvailableInstallers, installersMap, updateDep, validateEnvironment]);
 
   // Auto-check on mount
   useEffect(() => {
