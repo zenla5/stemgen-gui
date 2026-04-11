@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { HardDrive, RefreshCw } from 'lucide-react';
 import { ModelCard, type ModelCardData } from './ModelCard';
-import { useAppStore } from '@/stores/appStore';
+import { useAppStore, useDownloadedModels } from '@/stores/appStore';
 import { hasPackageStatusKey } from '@/lib/types';
 
 interface DownloadProgress {
@@ -12,16 +12,20 @@ interface DownloadProgress {
   progress: number;
   downloaded_mb: number;
   total_mb: number;
+  error?: string;
 }
 
 export function UnifiedModelSection() {
   const [models, setModels] = useState<ModelCardData[]>([]);
-  const [downloadedModels, setDownloadedModels] = useState<Set<string>>(new Set());
   const [checking, setChecking] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+
+  // Use appStore for persisted downloaded models
+  const downloadedModels = useDownloadedModels();
+  const { setDownloadedModels, addDownloadedModel, removeDownloadedModel } = useAppStore();
 
   // Load models and check availability on mount
   const loadModels = useCallback(async () => {
@@ -32,28 +36,28 @@ export function UnifiedModelSection() {
       const availableModels = await invoke<ModelCardData[]>('get_models');
       setModels(availableModels);
 
-      // Check which models are downloaded
+      // Check which models are downloaded and update appStore
       const available = await invoke<string[]>('list_downloaded_models');
-      setDownloadedModels(new Set(available));
+      setDownloadedModels(available);
     } catch (err) {
       console.error('Failed to load models:', err);
     } finally {
       setChecking(false);
       setLoading(false);
     }
-  }, []);
+  }, [setDownloadedModels]);
 
   useEffect(() => {
     loadModels();
 
     // Listen for download progress events
     const unlisten = listen<DownloadProgress>('model-download-progress', (event) => {
-      const { model_id, status, progress: prog } = event.payload;
+      const { model_id, status, progress: prog, error } = event.payload;
 
       if (status === 'complete') {
         setDownloading(null);
         setDownloadProgress(0);
-        setDownloadedModels(prev => new Set([...prev, model_id]));
+        addDownloadedModel(model_id);
         setDownloadErrors(prev => { const next = { ...prev }; delete next[model_id]; return next; });
       } else if (status === 'downloading') {
         setDownloading(model_id);
@@ -61,6 +65,9 @@ export function UnifiedModelSection() {
       } else if (status === 'error') {
         setDownloading(null);
         setDownloadProgress(0);
+        if (error) {
+          setDownloadErrors(prev => ({ ...prev, [model_id]: error }));
+        }
       }
     });
 
@@ -98,11 +105,7 @@ export function UnifiedModelSection() {
   const deleteModel = async (modelId: string) => {
     try {
       await invoke('delete_model', { modelId });
-      setDownloadedModels(prev => {
-        const next = new Set(prev);
-        next.delete(modelId);
-        return next;
-      });
+      removeDownloadedModel(modelId);
     } catch (err) {
       console.error('Failed to delete model:', err);
     }
@@ -151,7 +154,7 @@ export function UnifiedModelSection() {
           <ModelCard
             key={model.id}
             model={model}
-            isDownloaded={downloadedModels.has(model.id)}
+            isDownloaded={downloadedModels.includes(model.id)}
             isChecking={checking}
             isDownloading={downloading === model.id}
             downloadProgress={downloading === model.id ? downloadProgress : 0}

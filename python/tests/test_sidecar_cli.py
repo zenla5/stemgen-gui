@@ -640,6 +640,99 @@ class TestCheckDependenciesDetailed:
 # ----------------------------------------------------------------------------------------------
 
 
+# ----------------------------------------------------------------------------------------------
+# Integration tests for --check-model and --list-models (TASK-08)
+# ----------------------------------------------------------------------------------------------
+
+
+class TestCheckModelIntegration:
+    """Integration tests for --check-model and --list-models CLI modes.
+
+    These tests require demucs/torch to be installed and are marked as
+    'integration' so CI can skip them with -m "not integration".
+    Run manually with: pytest tests/ -m integration --tb=short -v
+    """
+
+    @pytest.mark.integration
+    def test_check_model_htdemucs_outputs_available_key(self, tmp_path):
+        """--check-model htdemucs must output JSON with 'available' key."""
+        pytest.importorskip("torch", reason="demucs/torch not installed")
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, "stemgen_sidecar.py", "--check-model", "htdemucs"],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, f"Exit code {result.returncode}\nstderr:\n{result.stderr}"
+        parsed = json.loads(result.stdout.strip())
+        assert "available" in parsed, f"Missing 'available' key in output: {parsed}"
+        assert isinstance(parsed["available"], bool), f"'available' should be bool, got {type(parsed['available'])}"
+
+    @pytest.mark.integration
+    def test_list_models_outputs_all_four_ids(self, tmp_path):
+        """--list-models must output a JSON array containing all four model IDs."""
+        pytest.importorskip("torch", reason="demucs/torch not installed")
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, "stemgen_sidecar.py", "--list-models"],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, f"Exit code {result.returncode}\nstderr:\n{result.stderr}"
+        parsed = json.loads(result.stdout.strip())
+        assert isinstance(parsed, list), f"Expected list, got {type(parsed)}"
+        ids = {item["id"] for item in parsed}
+        assert "demucs" in ids, f"Missing 'demucs' in {ids}"
+        assert "htdemucs" in ids, f"Missing 'htdemucs' in {ids}"
+        assert "htdemucs_ft" in ids, f"Missing 'htdemucs_ft' in {ids}"
+        assert "bs_roformer" in ids, f"Missing 'bs_roformer' in {ids}"
+
+    @pytest.mark.integration
+    def test_download_model_demucs_exits_zero(self, tmp_path):
+        """--download-model demucs must exit 0 with 'Download complete' message."""
+        pytest.importorskip("torch", reason="demucs/torch not installed")
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, "stemgen_sidecar.py", "--download-model", "demucs"],
+            capture_output=True, text=True, timeout=600,
+        )
+        assert result.returncode == 0, f"Exit code {result.returncode}\nstderr:\n{result.stderr}"
+        assert "Download complete" in result.stdout, f"Missing 'Download complete' in stdout:\n{result.stdout}"
+
+
+class TestDownloadModelMapping:
+    """Non-integration unit tests for download-model model name mapping."""
+
+    def test_download_model_demucs_does_not_call_get_model_with_demucs(self, monkeypatch, capsys):
+        """--download-model demucs must never call get_model with bare string 'demucs'."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        mock_get_model = MagicMock()
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "demucs"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        # Verify get_model was called exactly once
+        mock_get_model.assert_called_once()
+        # Verify it was NOT called with bare "demucs"
+        call_args = mock_get_model.call_args[0]
+        assert call_args[0] != "demucs", (
+            f"get_model should not be called with bare 'demucs', got {call_args}"
+        )
+        # Verify it was called with "htdemucs" (the mapped name)
+        assert call_args[0] == "htdemucs", (
+            f"get_model should be called with 'htdemucs', got {call_args[0]}"
+        )
+
+
 class TestNonAsciiPaths:
     """Tests for handling accented/CJK characters in file paths."""
 

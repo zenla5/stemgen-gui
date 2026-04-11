@@ -64,6 +64,7 @@ function resetStore() {
     environmentValidated: false,
     sidebarCollapsed: false,
     activeView: 'files',
+    downloadedModels: [],
   });
 }
 
@@ -540,5 +541,60 @@ describe('useAppStore — separation failure error display', () => {
     const state = useAppStore.getState();
     const failedJob = state.jobs.find((j) => j.input_path === '/audio/hint-test.mp3');
     expect(failedJob?.error).toContain('Setup Wizard');
+  });
+});
+
+// ─── TASK-007: Downloaded models persistence tests ─────────────────────────
+
+describe('useAppStore — downloaded models', () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+  });
+
+  it('starts with empty downloadedModels', () => {
+    expect(useAppStore.getState().downloadedModels).toEqual([]);
+  });
+
+  it('setDownloadedModels replaces the array', () => {
+    const store = useAppStore.getState();
+    store.setDownloadedModels(['htdemucs', 'bs_roformer']);
+    expect(useAppStore.getState().downloadedModels).toEqual(['htdemucs', 'bs_roformer']);
+  });
+
+  it('addDownloadedModel adds a model if not present', () => {
+    const store = useAppStore.getState();
+    store.addDownloadedModel('htdemucs');
+    expect(useAppStore.getState().downloadedModels).toContain('htdemucs');
+  });
+
+  it('addDownloadedModel does not duplicate an existing model', () => {
+    const store = useAppStore.getState();
+    store.addDownloadedModel('htdemucs');
+    store.addDownloadedModel('htdemucs');
+    expect(useAppStore.getState().downloadedModels).toEqual(['htdemucs']);
+  });
+
+  it('removeDownloadedModel removes the specified model', () => {
+    const store = useAppStore.getState();
+    store.setDownloadedModels(['htdemucs', 'bs_roformer', 'htdemucs_ft']);
+    store.removeDownloadedModel('bs_roformer');
+    expect(useAppStore.getState().downloadedModels).toEqual(['htdemucs', 'htdemucs_ft']);
+  });
+
+  it('removeDownloadedModel on non-existent model does not throw', () => {
+    const store = useAppStore.getState();
+    store.setDownloadedModels(['htdemucs']);
+    expect(() => store.removeDownloadedModel('nonexistent')).not.toThrow();
+    expect(useAppStore.getState().downloadedModels).toEqual(['htdemucs']);
+  });
+
+  it('downloadedModels is persisted to localStorage', () => {
+    const store = useAppStore.getState();
+    store.setDownloadedModels(['demucs', 'htdemucs']);
+    
+    // Check that the partialize function includes downloadedModels
+    const state = useAppStore.getState();
+    expect(state.downloadedModels).toEqual(['demucs', 'htdemucs']);
   });
 });

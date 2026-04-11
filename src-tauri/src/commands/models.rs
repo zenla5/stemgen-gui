@@ -412,14 +412,10 @@ pub fn cancel_download(model_id: String) -> Result<(), String> {
 /// Invokes the Python sidecar with `--check-model <model_id>` and parses the
 /// JSON response to determine availability.
 #[tauri::command]
-pub async fn check_model_downloaded(
-    model_id: String,
-    _app: AppHandle,
-) -> Result<bool, String> {
+pub async fn check_model_downloaded(model_id: String, _app: AppHandle) -> Result<bool, String> {
     use super::probe::{find_python, get_data_dir, NoWindow};
 
-    let python = find_python()
-        .ok_or("Python not found — cannot check model availability")?;
+    let python = find_python().ok_or("Python not found — cannot check model availability")?;
     let sidecar = get_data_dir().join("stemgen_sidecar.py");
     if !sidecar.exists() {
         return Err(format!(
@@ -429,11 +425,7 @@ pub async fn check_model_downloaded(
     }
 
     let output = tokio::process::Command::new(&python)
-        .args([
-            sidecar.to_str().unwrap(),
-            "--check-model",
-            &model_id,
-        ])
+        .args([sidecar.to_str().unwrap(), "--check-model", &model_id])
         .no_window()
         .output()
         .await
@@ -454,13 +446,10 @@ pub async fn check_model_downloaded(
 /// Invokes the Python sidecar with `--list-models` and returns the IDs where
 /// `"available": true`.
 #[tauri::command]
-pub async fn list_downloaded_models(
-    _app: AppHandle,
-) -> Result<Vec<String>, String> {
+pub async fn list_downloaded_models(_app: AppHandle) -> Result<Vec<String>, String> {
     use super::probe::{find_python, get_data_dir, NoWindow};
 
-    let python = find_python()
-        .ok_or("Python not found — cannot list downloaded models")?;
+    let python = find_python().ok_or("Python not found — cannot list downloaded models")?;
     let sidecar = get_data_dir().join("stemgen_sidecar.py");
     if !sidecar.exists() {
         return Err(format!(
@@ -470,10 +459,7 @@ pub async fn list_downloaded_models(
     }
 
     let output = tokio::process::Command::new(&python)
-        .args([
-            sidecar.to_str().unwrap(),
-            "--list-models",
-        ])
+        .args([sidecar.to_str().unwrap(), "--list-models"])
         .no_window()
         .output()
         .await

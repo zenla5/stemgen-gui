@@ -94,6 +94,9 @@ interface AppState {
   installManifest: InstallManifest | null;
   activeInstallLines: Record<string, string[]>;  // depName -> output lines
   installResults: Record<string, InstallResult>;  // depName -> result
+
+  // Downloaded models (persisted across restarts)
+  downloadedModels: string[];
   
   // Settings
   settings: ProcessingSettings;
@@ -145,6 +148,11 @@ interface AppState {
   // Settings actions
   updateSettings: (settings: Partial<ProcessingSettings>) => void;
   resetSettings: () => void;
+  
+  // Downloaded models actions
+  setDownloadedModels: (models: string[]) => void;
+  addDownloadedModel: (modelId: string) => void;
+  removeDownloadedModel: (modelId: string) => void;
   
   // UI actions
   toggleSidebar: () => void;
@@ -332,6 +340,7 @@ export const useAppStore = create<AppState>()(
       installManifest: null,
       activeInstallLines: {},
       installResults: {},
+      downloadedModels: [],
       settings: DEFAULT_PROCESSING_SETTINGS,
       sidebarCollapsed: false,
       activeView: 'files',
@@ -759,6 +768,21 @@ export const useAppStore = create<AppState>()(
       
       resetSettings: () => set({ settings: DEFAULT_PROCESSING_SETTINGS }),
       
+      // Downloaded models actions
+      setDownloadedModels: (models) => set({ downloadedModels: models }),
+      addDownloadedModel: (modelId) => {
+        set((state) => ({
+          downloadedModels: state.downloadedModels.includes(modelId)
+            ? state.downloadedModels
+            : [...state.downloadedModels, modelId],
+        }));
+      },
+      removeDownloadedModel: (modelId) => {
+        set((state) => ({
+          downloadedModels: state.downloadedModels.filter((id) => id !== modelId),
+        }));
+      },
+      
       // UI actions
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       
@@ -773,6 +797,7 @@ export const useAppStore = create<AppState>()(
         activeView: state.activeView,
         maxParallelJobs: state.maxParallelJobs,
         environmentValidatedAt: state.environmentValidatedAt,
+        downloadedModels: state.downloadedModels,
       }),
     }
   )
@@ -806,6 +831,11 @@ if (typeof window !== 'undefined') {
  * Consumes only environmentValidation (the richer, canonical data source).
  * Returns a structured object used by both summary cards and the footer.
  */
+/**
+ * Selector hook for accessing downloaded models from appStore.
+ */
+export const useDownloadedModels = () => useAppStore((state) => state.downloadedModels);
+
 export function computeEnvironmentReadiness(v: EnvironmentValidation | null): {
   pythonOk: boolean;
   pytorchOk: boolean;
