@@ -138,6 +138,10 @@ describe('UnifiedModelSection', () => {
       expect(screen.getByTestId('model-card-bs_roformer')).toBeInTheDocument();
       expect(screen.getByTestId('model-card-htdemucs')).toBeInTheDocument();
     });
+
+    // Verify invoke was called exactly once for get_models (not re-firing on re-render)
+    const getModelsCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === 'get_models');
+    expect(getModelsCalls).toHaveLength(1);
   });
 
   // ── Test 4: Error banner renders when get_models throws ──

@@ -27,7 +27,7 @@ export function UnifiedModelSection() {
 
   // Use appStore for persisted downloaded models
   const downloadedModels = useDownloadedModels();
-  const { setDownloadedModels, addDownloadedModel, removeDownloadedModel } = useAppStore();
+  const { addDownloadedModel, removeDownloadedModel } = useAppStore();
 
   // Load models and check availability on mount
   const loadModels = useCallback(async () => {
@@ -45,7 +45,8 @@ export function UnifiedModelSection() {
       // Use independent try/catch so list_downloaded_models failure doesn't prevent showing models
       try {
         const available = await invoke<string[]>('list_downloaded_models');
-        setDownloadedModels(available);
+        // Use getState() to avoid stale closure — Zustand action refs are stable
+        useAppStore.getState().setDownloadedModels(available);
       } catch (listErr) {
         console.error('Failed to list downloaded models:', listErr);
         setListModelsError(
@@ -59,7 +60,7 @@ export function UnifiedModelSection() {
       setChecking(false);
       setLoading(false);
     }
-  }, [setDownloadedModels]);
+  }, []);
 
   useEffect(() => {
     loadModels();
