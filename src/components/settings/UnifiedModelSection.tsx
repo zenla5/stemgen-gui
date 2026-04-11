@@ -74,7 +74,7 @@ export function UnifiedModelSection() {
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [loadModels]);
+  }, [loadModels, addDownloadedModel]);
 
   const downloadModel = async (modelId: string) => {
     // Guard: ensure sidecar is available before attempting download
