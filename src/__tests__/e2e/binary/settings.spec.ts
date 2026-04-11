@@ -100,4 +100,30 @@ test.describe('Settings', () => {
   test('system status section is present', async ({ page }) => {
     await expect(page.locator('text=System Status')).toBeVisible();
   });
+
+  test('AI Models section loads without indefinite spinner', async ({ page }) => {
+    const state = readBinaryState();
+    test.skip(!state?.available, state?.reason || 'Binary not available');
+
+    // Navigate to settings (already done in beforeEach)
+
+    // Locate the AI Models section
+    await expect(page.locator('text=AI Models')).toBeVisible();
+
+    // Wait for loading spinner to disappear (up to 10 seconds)
+    const spinner = page.locator('.animate-spin');
+    await expect(spinner).not.toBeVisible({ timeout: 10000 });
+
+    // Assert that either model cards are visible OR an error/warning banner is visible
+    const modelCards = page.locator('[data-testid^="model-card-"]');
+    const errorBanner = page.locator('[data-testid="models-load-error"]');
+    const warningBanner = page.locator('[data-testid="models-list-warning"]');
+
+    // At least one of these should be visible
+    const hasModelCards = await modelCards.first().isVisible().catch(() => false);
+    const hasErrorBanner = await errorBanner.isVisible().catch(() => false);
+    const hasWarningBanner = await warningBanner.isVisible().catch(() => false);
+
+    expect(hasModelCards || hasErrorBanner || hasWarningBanner).toBe(true);
+  });
 });
