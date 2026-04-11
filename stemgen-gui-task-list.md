@@ -624,7 +624,7 @@ Use semantic versioning: since these are bug fixes, increment the patch version 
 
 ---
 
-### 22. [ ] **TASK-022 — Open PR and verify CI pipeline**
+### 22. [x] **TASK-022 — Open PR and verify CI pipeline**
 
 **Description**: Push the `fix/wizard-models-bugs` branch to `origin` and open a pull request targeting `main`. Monitor the CI pipeline (`frontend`, `integration`, `backend`, `e2e`, `e2e-binary`, `python`, `security`, `check`). All jobs must pass. If any job fails, iterate on the branch until it passes before proceeding to merge.
 
