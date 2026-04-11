@@ -353,6 +353,83 @@ class TestRunDemucsModel:
 
 
 
+
+# ----------------------------------------------------------------------------------------------
+# Tests for --check-model and --list-models CLI modes (TASK-03)
+# ----------------------------------------------------------------------------------------------
+
+
+class TestCheckModel:
+    """Tests for --check-model and --list-models CLI modes."""
+
+    def test_check_model_available(self, monkeypatch, capsys):
+        """--check-model with a cached model must return available=true."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        mock_get_model = MagicMock()
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--check-model", "htdemucs"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert parsed["available"] is True
+        assert parsed["model_id"] == "htdemucs"
+        assert parsed["pretrained_name"] == "htdemucs"
+
+    def test_check_model_not_available(self, monkeypatch, capsys):
+        """--check-model with an uncached model must return available=false."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        def raise_error(*args, **kwargs):
+            raise FileNotFoundError("Model not found in cache")
+
+        mock_get_model = MagicMock(side_effect=raise_error)
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--check-model", "htdemucs_ft"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert parsed["available"] is False
+        assert parsed["model_id"] == "htdemucs_ft"
+
+    def test_list_models_json_array(self, monkeypatch, capsys):
+        """--list-models must output a JSON array with all known model IDs."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        mock_get_model = MagicMock()
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--list-models"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert isinstance(parsed, list)
+        ids = {item["id"] for item in parsed}
+        assert "demucs" in ids
+        assert "htdemucs" in ids
+        assert "htdemucs_ft" in ids
+        for item in parsed:
+            assert "id" in item
+            assert "available" in item
+
+
 # ----------------------------------------------------------------------------------------------
 # Tests for DEMUCS_PRETRAINED_NAME mapping (TASK-02)
 # ----------------------------------------------------------------------------------------------

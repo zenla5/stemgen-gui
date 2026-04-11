@@ -697,6 +697,8 @@ def main() -> None:
     parser.add_argument("--api-key", default=None, type=str, help="API key for cloud provider")
     parser.add_argument("--provider-version", default=None, type=str, help="Replicate model version hash")
     parser.add_argument("--download-model", metavar="MODEL_ID", help="Download a demucs model by ID and exit")
+    parser.add_argument("--check-model", metavar="MODEL_ID", help="Check if a model is available locally and exit")
+    parser.add_argument("--list-models", action="store_true", help="List all known models with availability status and exit")
 
     args = parser.parse_args()
 
@@ -711,6 +713,66 @@ def main() -> None:
             sys.exit(0)
         except Exception as e:
             print(f"Download failed: {e}", file=sys.stderr, flush=True)
+            sys.exit(1)
+
+    # Handle --check-model (standalone check mode)
+    if args.check_model:
+        try:
+            import demucs.pretrained
+            pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.check_model, args.check_model)
+            try:
+                # Try to load model from cache only (no network download)
+                # By setting _IS_TEST, demucs will skip network fetch and raise if not cached
+                original_is_test = getattr(demucs.pretrained, "_IS_TEST", False)
+                demucs.pretrained._IS_TEST = True
+                try:
+                    demucs.pretrained.get_model(pretrained_name)
+                    available = True
+                except Exception:
+                    available = False
+                finally:
+                    demucs.pretrained._IS_TEST = original_is_test
+            except Exception:
+                available = False
+            print(json.dumps({
+                "available": available,
+                "pretrained_name": pretrained_name,
+                "model_id": args.check_model,
+            }), flush=True)
+            sys.exit(0)
+        except Exception as e:
+            print(json.dumps({
+                "available": False,
+                "pretrained_name": DEMUCS_PRETRAINED_NAME.get(args.check_model, args.check_model),
+                "model_id": args.check_model,
+                "error": str(e),
+            }), flush=True)
+            sys.exit(0)
+
+    # Handle --list-models (standalone list mode)
+    if args.list_models:
+        try:
+            import demucs.pretrained
+            results = []
+            for model_id in DEMUCS_PRETRAINED_NAME:
+                pretrained_name = DEMUCS_PRETRAINED_NAME[model_id]
+                try:
+                    original_is_test = getattr(demucs.pretrained, "_IS_TEST", False)
+                    demucs.pretrained._IS_TEST = True
+                    try:
+                        demucs.pretrained.get_model(pretrained_name)
+                        available = True
+                    except Exception:
+                        available = False
+                    finally:
+                        demucs.pretrained._IS_TEST = original_is_test
+                except Exception:
+                    available = False
+                results.append({"id": model_id, "available": available})
+            print(json.dumps(results), flush=True)
+            sys.exit(0)
+        except Exception as e:
+            print(json.dumps({"error": str(e)}), flush=True)
             sys.exit(1)
 
     # Validate required args for separation mode
