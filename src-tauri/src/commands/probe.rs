@@ -394,6 +394,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
 
         // Assert that no Python was found
-        assert!(result.is_none(), "find_python should return None when no Python is in PATH");
+        assert!(
+            result.is_none(),
+            "find_python should return None when no Python is in PATH"
+        );
     }
 }

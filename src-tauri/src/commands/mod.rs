@@ -581,7 +581,10 @@ mod package_status_tests {
     #[test]
     fn test_environment_validation_default_not_ready() {
         let validation = EnvironmentValidation::default();
-        assert!(!validation.is_ready, "EnvironmentValidation::default() should have is_ready = false");
+        assert!(
+            !validation.is_ready,
+            "EnvironmentValidation::default() should have is_ready = false"
+        );
     }
 
     #[test]
@@ -592,7 +595,10 @@ mod package_status_tests {
         // Note: This test can only run in environments where the data directory
         // doesn't contain the marker file.
         let result = read_installer_dep_marker();
-        assert!(result.is_ok(), "read_installer_dep_marker should not return an error");
+        assert!(
+            result.is_ok(),
+            "read_installer_dep_marker should not return an error"
+        );
         // The result may be None (no marker) or Some (if marker exists in test env)
         // Both are valid - the function should not panic or error
         let _ = result.unwrap();
