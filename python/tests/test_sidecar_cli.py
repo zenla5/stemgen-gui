@@ -432,6 +432,76 @@ class TestCheckModel:
             assert "id" in item
             assert "available" in item
 
+    def test_list_models_returns_all_models_with_available_false_when_none_downloaded(self, monkeypatch, capsys):
+        """--list-models returns all models with available=false when none are downloaded."""
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        # Mock get_model to always raise FileNotFoundError (no models cached)
+        def raise_not_found(*args, **kwargs):
+            raise FileNotFoundError("Model not found in cache")
+
+        mock_get_model = MagicMock(side_effect=raise_not_found)
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--list-models"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert isinstance(parsed, list)
+        # All models should be returned with available=False
+        for item in parsed:
+            assert item["available"] is False
+
+    def test_check_model_unknown_model_returns_available_false(self, monkeypatch, capsys):
+        """--check-model with unknown model ID returns { available: false } without exception."""
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        def raise_not_found(*args, **kwargs):
+            raise FileNotFoundError("Unknown model")
+
+        mock_get_model = MagicMock(side_effect=raise_not_found)
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--check-model", "unknown_model_xyz"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert parsed["available"] is False
+        assert parsed["model_id"] == "unknown_model_xyz"
+
+    def test_download_model_invalid_id_exits_nonzero(self, monkeypatch, capsys):
+        """--download-model with invalid model ID exits non-zero with error message to stderr."""
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        def raise_not_found(*args, **kwargs):
+            raise FileNotFoundError("Model not found")
+
+        mock_get_model = MagicMock(side_effect=raise_not_found)
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "invalid_model_xyz"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code != 0
+        captured = capsys.readouterr()
+        # Error is printed to stderr, not JSON
+        assert "Download failed" in captured.err or "not found" in captured.err.lower()
+
 
 # ----------------------------------------------------------------------------------------------
 # Tests for DEMUCS_PRETRAINED_NAME mapping (TASK-02)
