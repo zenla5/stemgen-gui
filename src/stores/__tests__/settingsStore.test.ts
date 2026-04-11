@@ -14,7 +14,7 @@ const invokeMock = vi.mocked(tauriCore.invoke);
 const getDefaults = () => ({
   theme: 'system' as const,
   language: 'en' as const,
-  defaultModel: 'bs_roformer' as AIModel,
+  defaultModel: 'demucs' as AIModel,
   defaultDjSoftware: 'traktor' as DJSoftware,
   defaultOutputFormat: 'alac' as const,
   outputDirectory: '',
@@ -189,9 +189,41 @@ describe('useSettingsStore — reset', () => {
     const state = useSettingsStore.getState();
     expect(state.theme).toBe('system');
     expect(state.language).toBe('en');
-    expect(state.defaultModel).toBe('bs_roformer');
+    expect(state.defaultModel).toBe('demucs');
     expect(state.cpuThreads).toBe(4);
     expect(state.gpuEnabled).toBe(true);
+  });
+});
+
+// ─── TASK-016: Default Model Change Tests ─────────────────────────────────
+
+describe('useSettingsStore — default model change (TASK-016)', () => {
+  beforeEach(() => resetStore());
+
+  it('initial defaultModel is demucs (not bs_roformer)', () => {
+    expect(useSettingsStore.getState().defaultModel).toBe('demucs');
+  });
+
+  it('setDefaultModel changes model to bs_roformer', () => {
+    useSettingsStore.getState().setDefaultModel('bs_roformer');
+    expect(useSettingsStore.getState().defaultModel).toBe('bs_roformer');
+  });
+
+  it('setDefaultModel reverts back to demucs', () => {
+    useSettingsStore.getState().setDefaultModel('bs_roformer');
+    expect(useSettingsStore.getState().defaultModel).toBe('bs_roformer');
+
+    useSettingsStore.getState().setDefaultModel('demucs');
+    expect(useSettingsStore.getState().defaultModel).toBe('demucs');
+  });
+
+  it('setDefaultModel accepts all valid model IDs', () => {
+    const validModels: AIModel[] = ['demucs', 'htdemucs', 'htdemucs_ft', 'bs_roformer'];
+
+    for (const model of validModels) {
+      useSettingsStore.getState().setDefaultModel(model);
+      expect(useSettingsStore.getState().defaultModel).toBe(model);
+    }
   });
 });
 

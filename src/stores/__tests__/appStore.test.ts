@@ -344,7 +344,7 @@ describe('useAppStore — settings', () => {
     store.updateSettings({ model: 'htdemucs' });
     store.resetSettings();
 
-    expect(useAppStore.getState().settings.model).toBe('bs_roformer');
+    expect(useAppStore.getState().settings.model).toBe('demucs');
   });
 
   it('updateSettings can update multiple settings', () => {

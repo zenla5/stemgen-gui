@@ -29,4 +29,28 @@ describe('formatJobError', () => {
     const result = formatJobError('ERROR: no module named DEMUCS');
     expect(result).toContain('Setup Wizard');
   });
+
+  // TASK-015: Tests for soundfile keyword
+  it('appends Setup Wizard hint for soundfile ModuleNotFoundError', () => {
+    const result = formatJobError("ModuleNotFoundError: No module named 'soundfile'");
+    expect(result).toContain('soundfile');
+    expect(result).toContain('Setup Wizard');
+  });
+
+  it('appends Setup Wizard hint for soundfile ImportError', () => {
+    const result = formatJobError("ImportError: cannot import name 'soundfile'");
+    expect(result).toContain('Setup Wizard');
+  });
+
+  it('does not modify unrelated error strings', () => {
+    const result = formatJobError('Network connection failed');
+    expect(result).toBe('Network connection failed');
+    expect(result).not.toContain('Setup Wizard');
+  });
+
+  it('still returns hint for demucs errors (regression guard)', () => {
+    const result = formatJobError("ModuleNotFoundError: No module named 'demucs'");
+    expect(result).toContain('demucs');
+    expect(result).toContain('Setup Wizard');
+  });
 });
