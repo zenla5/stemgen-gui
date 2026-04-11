@@ -101,7 +101,7 @@ const availableLanguages: SupportedLanguageCode[] = supportedLanguages.map(l => 
 const DEFAULT_SETTINGS = {
   theme: 'system' as Theme,
   language: 'en' as SupportedLanguageCode,
-  defaultModel: 'bs_roformer' as AIModel,
+  defaultModel: 'demucs' as AIModel,
   defaultDjSoftware: 'traktor' as DJSoftware,
   defaultOutputFormat: 'alac' as const,
   outputDirectory: '',

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle, Layers, Cloud, ChevronDown, ChevronRight } from 'lucide-react';
+import { Play, Trash2, Music, CheckCircle, XCircle, Loader2, StopCircle, Layers, Cloud, ChevronDown, ChevronRight, Settings } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { cn } from '@/lib/utils';
+import { SETUP_WIZARD_HINT } from '@/lib/errorHints';
 import type { ProcessingJob, ProcessingStatus } from '@/lib/types';
 
 export function ProcessingQueue() {
@@ -229,7 +230,21 @@ function JobItem({
                 data-testid="error-details"
                 className="mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300 whitespace-pre-wrap"
               >
-                {job.error}
+                {job.error.endsWith(SETUP_WIZARD_HINT) ? (
+                  <div className="flex items-center gap-2">
+                    <span>{job.error.slice(0, -SETUP_WIZARD_HINT.length)}</span>
+                    <button
+                      data-testid="open-setup-wizard-btn"
+                      onClick={() => useAppStore.getState().setActiveView('settings')}
+                      className="flex items-center gap-1 rounded-md border border-yellow-500/50 bg-yellow-500/10 px-2 py-0.5 text-xs font-medium text-yellow-700 hover:bg-yellow-500/20 dark:text-yellow-300"
+                    >
+                      <Settings className="h-3 w-3" />
+                      Open Setup Wizard
+                    </button>
+                  </div>
+                ) : (
+                  job.error
+                )}
               </div>
             )}
           </div>

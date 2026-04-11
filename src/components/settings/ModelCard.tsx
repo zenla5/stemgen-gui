@@ -196,6 +196,16 @@ export function ModelCard({
             </div>
           </div>
         )}
+
+        {/* BS-RoFormer not-yet-supported warning */}
+        {model.id === 'bs_roformer' && isSelected && isDownloaded && (
+          <div
+            data-testid="bs-roformer-warning"
+            className="mt-2 rounded-md border border-yellow-500/50 bg-yellow-500/10 p-2 text-xs text-yellow-700 dark:text-yellow-300"
+          >
+            BS-RoFormer local inference is not yet supported. Choose Demucs, HT-Demucs, or HT-Demucs FT for local processing, or enable a cloud provider.
+          </div>
+        )}
       </div>
 
       {/* Action Button */}
