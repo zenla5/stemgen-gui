@@ -202,6 +202,7 @@ class TestRunDemucsModel:
         fake_model.samplerate = 44100
         fake_model.audio_channels = 2
         fake_model.sources = ["drums", "bass", "other", "vocals"]
+        fake_model.to.return_value = fake_model
 
         fake_wav = torch.zeros(2, 44100)
         num_sources = len(fake_model.sources)
@@ -306,6 +307,7 @@ class TestRunDemucsModel:
         fake_model.samplerate = 44100
         fake_model.audio_channels = 2
         fake_model.sources = custom_sources
+        fake_model.to.return_value = fake_model
 
         modules_patch["demucs.pretrained"].get_model = MagicMock(return_value=fake_model)
         modules_patch["demucs.apply"].apply_model = MagicMock(
@@ -347,6 +349,88 @@ class TestRunDemucsModel:
         assert result.returncode == 0, f"Exit code {result.returncode}\nstderr:\n{result.stderr}"
         wav_files = list(output_dir.glob("*.wav"))
         assert len(wav_files) == 4, f"Expected 4 WAV files, found {len(wav_files)}: {wav_files}"
+
+
+
+# ----------------------------------------------------------------------------------------------
+# Tests for get_model() device-keyword bug fix (TASK-01)
+# ----------------------------------------------------------------------------------------------
+
+
+class TestDemucsModelLoad:
+    """Tests for the get_model() call in _run_demucs_model."""
+
+    def test_get_model_called_without_device_kwarg(self, tmp_path):
+        """get_model must be called with only one positional argument (model_name), no device kwarg."""
+        torch = pytest.importorskip("torch")
+        import stemgen_sidecar
+
+        from unittest.mock import MagicMock
+        import types
+
+        fake_model = MagicMock()
+        fake_model.samplerate = 44100
+        fake_model.audio_channels = 2
+        fake_model.sources = ["drums", "bass", "other", "vocals"]
+        fake_model.to.return_value = fake_model
+
+        fake_wav = torch.zeros(2, 44100)
+        num_sources = len(fake_model.sources)
+
+        mock_audio_instance = MagicMock()
+        mock_audio_instance.read.return_value = fake_wav
+        mock_audio_file_cls = MagicMock(return_value=mock_audio_instance)
+
+        mock_apply = MagicMock(return_value=[torch.zeros(num_sources, 2, 44100)])
+
+        mock_get_model = MagicMock(return_value=fake_model)
+
+        mock_ta_save = MagicMock()
+
+        demucs_audio_mod = types.ModuleType("demucs.audio")
+        demucs_audio_mod.AudioFile = mock_audio_file_cls
+
+        demucs_apply_mod = types.ModuleType("demucs.apply")
+        demucs_apply_mod.apply_model = mock_apply
+
+        demucs_pretrained_mod = types.ModuleType("demucs.pretrained")
+        demucs_pretrained_mod.get_model = mock_get_model
+
+        demucs_mod = types.ModuleType("demucs")
+        demucs_mod.audio = demucs_audio_mod
+        demucs_mod.apply = demucs_apply_mod
+        demucs_mod.pretrained = demucs_pretrained_mod
+
+        fake_torchaudio = MagicMock()
+        fake_torchaudio.save = mock_ta_save
+
+        modules_patch = {
+            "demucs": demucs_mod,
+            "demucs.audio": demucs_audio_mod,
+            "demucs.apply": demucs_apply_mod,
+            "demucs.pretrained": demucs_pretrained_mod,
+            "torchaudio": fake_torchaudio,
+        }
+
+        with patch.dict(sys.modules, modules_patch):
+            input_path = tmp_path / "test.wav"
+            input_path.write_bytes(b"fake")
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
+
+            stemgen_sidecar._run_demucs_model(
+                input_path, output_dir, device="cpu", model_name="htdemucs"
+            )
+
+            # get_model must be called with exactly one positional arg (model_name)
+            mock_get_model.assert_called_once()
+            call_args = mock_get_model.call_args
+            assert call_args.args == ("htdemucs",), (
+                f"Expected get_model('htdemucs'), got args={call_args.args}"
+            )
+            assert call_args.kwargs == {}, (
+                f"Expected no keyword args, got kwargs={call_args.kwargs}"
+            )
 
 
 # ----------------------------------------------------------------------------------------------

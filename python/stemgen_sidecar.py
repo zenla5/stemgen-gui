@@ -105,7 +105,8 @@ def _run_demucs_model(
         run_device = torch.device("cpu")
         emit({"status": "progress", "stage": "device", "progress": 0.1, "message": "Using CPU"})
 
-    model = get_model(model_name, device=run_device)
+    model = get_model(model_name)
+    model = model.to(run_device)
     model.eval()
 
     emit({
