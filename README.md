@@ -110,10 +110,14 @@ Audio File (MP3/FLAC/WAV/OGG)
 
 ## Supported AI Models
 
-- **BS RoFormer** - High quality, medium speed
-- **HTDemucs** - High quality, slow
-- **HTDemucs (fine-tuned)** - Highest quality, slow
-- **Demucs v4** - Medium quality, fast
+| Model | Quality | Speed | Local Support | Cloud Support |
+|-------|---------|-------|:---:|:---:|
+| **Demucs v4** | Medium | Fast | Yes | Yes |
+| **HTDemucs** | High | Slow | Yes | Yes |
+| **HTDemucs (fine-tuned)** | Highest | Slow | Yes | Yes |
+| **BS-RoFormer** | High | Medium | No (not yet) | Yes (fal.ai, Replicate) |
+
+> **Note:** BS-RoFormer is available for cloud inference only. Local inference is not yet implemented — select Demucs, HTDemucs, or HT-Demucs FT for local CPU/GPU processing.
 
 ## 📥 Downloads
 
@@ -215,6 +219,17 @@ npm run tauri:build
 4. **Process** - Click "Start Processing" to begin stem separation
 
 5. **Export** - The `.stem.mp4` file will be created alongside the original
+
+## Troubleshooting
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `ModuleNotFoundError: No module named 'soundfile'` | `soundfile` package not installed | Run the Setup Wizard or `pip install soundfile` |
+| `Python not found` | Python not installed or not on PATH | Install Python 3.9+ and ensure it's on your PATH, or use the Setup Wizard |
+| `No module named 'demucs'` | Demucs package not installed | Run the Setup Wizard or `pip install demucs` |
+| Separation exits with code 1 | Missing model weights or dependency | Check System Status in Settings for missing packages |
+
+For more help, check the [GitHub Issues](https://github.com/zenla5/stemgen-gui/issues) page.
 
 ## Development
 

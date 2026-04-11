@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.4] — 2026-04-11 — Separation Pipeline Fixes, CI Hardening & UI Warnings
+
+### Fixed
+- **[FIX-DRAG-DROP-GUARD]** FileBrowser drag-drop handler now guards against `event.payload` being undefined, preventing a crash when the old pre-Tauri-v2 event shape is received.
+- **[FIX-DEFAULT-MODEL]** Fixed stale test assertion in appStore that expected `bs_roformer` as the default model instead of `demucs`.
+
+### Added
+- **[UI-BSROFORMER-WARN]** ModelCard now displays an inline yellow warning banner when BS-RoFormer is selected: "BS-RoFormer local inference is not yet supported. Choose Demucs, HT-Demucs, or HT-Demucs FT for local processing, or enable a cloud provider."
+- **[UI-SETUP-WIZARD-BTN]** Job error messages that contain the dependency hint now render an actionable "Open Setup Wizard" button instead of plain text. Clicking navigates to Settings view.
+- **[CI-SOUNDFILE]** CI Python job now installs `soundfile` and verifies the import succeeds before running tests.
+- **[CI-COV]** CI Python job now runs pytest with `--cov=stemgen_sidecar --cov-report=term-missing --cov-fail-under=40` to enforce minimum 40% line coverage.
+- **[CI-THRESHOLDS]** CI frontend job coverage threshold comment updated to match vitest.config.ts values (lines 55%, functions 72%, branches 75%, statements 55%).
+
+### Internal
+- **[EXPORT]** `SETUP_WIZARD_HINT` constant exported from `errorHints.ts` for reuse in UI components.
+
 ## [1.4.3] — 2026-04-11 — First-Run Wizard & Model Management Fixes
 
 ### Fixed
