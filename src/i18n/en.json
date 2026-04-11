@@ -55,7 +55,9 @@
     "demucs": "Demucs",
     "bs_roformer": "BS-RoFormer",
     "htdemucs": "HT-Demucs",
-    "htdemucs_ft": "HT-Demucs FT"
+    "htdemucs_ft": "HT-Demucs FT",
+    "loadError": "Failed to load models. Check your connection and try again.",
+    "listWarning": "Could not check downloaded models — Python or sidecar not available."
   },
   "status": {
     "ready": "Ready",
@@ -66,7 +68,9 @@
     "ffmpeg": "FFmpeg",
     "python": "Python",
     "gpu": "GPU",
-    "models": "Models"
+    "models": "Models",
+    "couldNotCheck": "Could not check dependency",
+    "allInstalled": "All dependencies are installed."
   },
   "quality": {
     "draft": "Draft",
