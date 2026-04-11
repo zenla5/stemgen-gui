@@ -22,6 +22,8 @@ export function UnifiedModelSection() {
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [listModelsError, setListModelsError] = useState<string | null>(null);
 
   // Use appStore for persisted downloaded models
   const downloadedModels = useDownloadedModels();
@@ -31,16 +33,28 @@ export function UnifiedModelSection() {
   const loadModels = useCallback(async () => {
     setLoading(true);
     setChecking(true);
+    setError(null);
+    setListModelsError(null);
+
     try {
       // Get available models
       const availableModels = await invoke<ModelCardData[]>('get_models');
       setModels(availableModels);
 
       // Check which models are downloaded and update appStore
-      const available = await invoke<string[]>('list_downloaded_models');
-      setDownloadedModels(available);
+      // Use independent try/catch so list_downloaded_models failure doesn't prevent showing models
+      try {
+        const available = await invoke<string[]>('list_downloaded_models');
+        setDownloadedModels(available);
+      } catch (listErr) {
+        console.error('Failed to list downloaded models:', listErr);
+        setListModelsError(
+          listErr instanceof Error ? listErr.message : String(listErr)
+        );
+      }
     } catch (err) {
       console.error('Failed to load models:', err);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setChecking(false);
       setLoading(false);
@@ -148,6 +162,21 @@ export function UnifiedModelSection() {
       <p className="text-xs text-muted-foreground">
         Download and manage AI models for stem separation. Downloaded models are stored locally.
       </p>
+
+      {/* Error banner when get_models fails */}
+      {error && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2" data-testid="models-load-error">
+          <span className="flex-1">{error}</span>
+          <button onClick={loadModels} className="ml-auto underline text-xs">Retry</button>
+        </div>
+      )}
+
+      {/* Warning banner when list_downloaded_models fails but get_models succeeded */}
+      {listModelsError && !error && (
+        <div data-testid="models-list-warning" className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm text-yellow-700 dark:text-yellow-300">
+          Could not check downloaded models — Python or sidecar not available.
+        </div>
+      )}
 
       <div className="space-y-3">
         {models.map((model) => (
