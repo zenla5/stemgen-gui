@@ -373,4 +373,27 @@ mod tests {
         let elapsed = start.elapsed();
         assert!(elapsed.as_secs() < 5, "probe took too long: {elapsed:?}");
     }
+
+    #[test]
+    fn test_find_python_returns_none_when_no_python_in_path() {
+        // Save the original PATH
+        let original_path = std::env::var("PATH").unwrap_or_default();
+
+        // Set PATH to a directory that doesn't contain Python
+        let temp_dir = std::env::temp_dir().join("stemgen-test-no-python");
+        std::fs::create_dir_all(&temp_dir).ok();
+        std::env::set_var("PATH", temp_dir.to_string_lossy().to_string());
+
+        // find_python should return None
+        let result = find_python();
+
+        // Restore the original PATH
+        std::env::set_var("PATH", &original_path);
+
+        // Clean up temp dir
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Assert that no Python was found
+        assert!(result.is_none(), "find_python should return None when no Python is in PATH");
+    }
 }

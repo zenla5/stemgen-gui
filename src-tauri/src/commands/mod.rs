@@ -577,6 +577,12 @@ mod package_status_tests {
         let val: PackageStatus = serde_json::from_str(r#"{"missing":"gone"}"#).unwrap();
         assert!(matches!(val, PackageStatus::Missing(s) if s == "gone"));
     }
+
+    #[test]
+    fn test_environment_validation_default_not_ready() {
+        let validation = EnvironmentValidation::default();
+        assert!(!validation.is_ready, "EnvironmentValidation::default() should have is_ready = false");
+    }
 }
 
 impl std::fmt::Display for PackageStatus {
