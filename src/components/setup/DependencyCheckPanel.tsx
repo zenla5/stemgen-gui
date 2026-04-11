@@ -83,6 +83,9 @@ export function DependencyCheckPanel({
       await fetchInstallManifest();
       const env = await invoke<Record<string, PackageStatus | unknown>>('validate_environment');
 
+      // Track missing deps for installer pre-fetch (computed from fresh results, not stale state)
+      const missingManifestKeys = new Set<string>();
+
       for (const depDef of DEPENDENCY_DEFS) {
         let pkg: PackageStatus | unknown;
         let successMsg: string | undefined;
@@ -106,17 +109,18 @@ export function DependencyCheckPanel({
 
         const { status, message } = getDepStatus(pkg, successMsg);
         updateDep(depDef.name, status, message);
+
+        // Track missing/warning deps for installer pre-fetch
+        if (status === 'missing' || status === 'warning') {
+          missingManifestKeys.add(depDef.manifestKey);
+        }
       }
 
-      // Pre-fetch installers for missing deps
-      const missingDeps = DEPENDENCY_DEFS.filter(d => {
-        const dep = deps.find(dd => dd.name === d.name);
-        return dep?.status === 'missing' || dep?.status === 'warning';
-      });
-      for (const dep of missingDeps) {
-        if (!installersMap[dep.manifestKey]) {
-          const installers = await getAvailableInstallers(dep.manifestKey);
-          setInstallersMap(prev => ({ ...prev, [dep.manifestKey]: installers }));
+      // Pre-fetch installers for missing deps using fresh results
+      for (const key of missingManifestKeys) {
+        if (!installersMap[key]) {
+          const installers = await getAvailableInstallers(key);
+          setInstallersMap(prev => ({ ...prev, [key]: installers }));
         }
       }
 
