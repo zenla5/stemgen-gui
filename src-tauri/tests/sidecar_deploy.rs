@@ -162,17 +162,21 @@ fn test_collect_stems_zero_present() {
 
 #[test]
 fn test_collect_stems_non_ascii_source_path() {
-    // Use ASCII-safe source name to avoid filesystem encoding issues on macOS
-    let source_name = "test_file_unicode";
+    // Test that non-ASCII characters in the source path are handled correctly.
+    // On macOS, the filesystem may normalize non-ASCII characters differently
+    // (NFC vs NFD), so we use ASCII filenames but test the logic with
+    // non-ASCII source paths.
+    let source_name = "test_file";
     let stem_dir = create_stem_dir(source_name, &["drums", "bass", "other", "vocals"]);
 
-    let source_path = PathBuf::from(format!("/music/{}.mp3", source_name));
+    // Use non-ASCII characters in the source path to test the logic
+    let source_path = PathBuf::from(format!("/müsic/{}.mp3", source_name));
     let stems = collect_stems_standalone(stem_dir.path(), &source_path)
-        .expect("should handle source names");
+        .expect("should handle non-ASCII source paths");
 
     assert_eq!(
         stems.len(),
         4,
-        "should find all 4 stems with source name"
+        "should find all 4 stems with non-ASCII source path"
     );
 }
