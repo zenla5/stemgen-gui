@@ -276,6 +276,8 @@ pub fn run() {
             commands::download_model,
             commands::delete_model,
             commands::cancel_download,
+            commands::check_model_downloaded,
+            commands::list_downloaded_models,
             commands::get_processing_history,
             commands::add_to_history,
             commands::get_settings,

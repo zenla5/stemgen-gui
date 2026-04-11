@@ -407,6 +407,99 @@ pub fn cancel_download(model_id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Check whether a specific model is downloaded and available locally.
+///
+/// Invokes the Python sidecar with `--check-model <model_id>` and parses the
+/// JSON response to determine availability.
+#[tauri::command]
+pub async fn check_model_downloaded(
+    model_id: String,
+    _app: AppHandle,
+) -> Result<bool, String> {
+    use super::probe::{find_python, get_data_dir, NoWindow};
+
+    let python = find_python()
+        .ok_or("Python not found — cannot check model availability")?;
+    let sidecar = get_data_dir().join("stemgen_sidecar.py");
+    if !sidecar.exists() {
+        return Err(format!(
+            "Sidecar script not found at '{}'. Open Settings → System Status → Repair Installation.",
+            sidecar.display()
+        ));
+    }
+
+    let output = tokio::process::Command::new(&python)
+        .args([
+            sidecar.to_str().unwrap(),
+            "--check-model",
+            &model_id,
+        ])
+        .no_window()
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run sidecar check-model: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse sidecar check-model output: {e}"))?;
+
+    Ok(parsed
+        .get("available")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false))
+}
+
+/// List all downloaded models that are available locally.
+///
+/// Invokes the Python sidecar with `--list-models` and returns the IDs where
+/// `"available": true`.
+#[tauri::command]
+pub async fn list_downloaded_models(
+    _app: AppHandle,
+) -> Result<Vec<String>, String> {
+    use super::probe::{find_python, get_data_dir, NoWindow};
+
+    let python = find_python()
+        .ok_or("Python not found — cannot list downloaded models")?;
+    let sidecar = get_data_dir().join("stemgen_sidecar.py");
+    if !sidecar.exists() {
+        return Err(format!(
+            "Sidecar script not found at '{}'. Open Settings → System Status → Repair Installation.",
+            sidecar.display()
+        ));
+    }
+
+    let output = tokio::process::Command::new(&python)
+        .args([
+            sidecar.to_str().unwrap(),
+            "--list-models",
+        ])
+        .no_window()
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run sidecar list-models: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse sidecar list-models output: {e}"))?;
+
+    let available_ids: Vec<String> = parsed
+        .into_iter()
+        .filter(|item| {
+            item.get("available")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        })
+        .filter_map(|item| {
+            item.get("id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
+
+    Ok(available_ids)
+}
+
 // ============================================================
 // Unit Tests
 // ============================================================
