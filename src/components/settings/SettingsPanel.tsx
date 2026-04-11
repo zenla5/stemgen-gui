@@ -1,11 +1,11 @@
-import { Settings, Moon, Sun, Monitor, Globe, Cpu, Sparkles, RefreshCw, CheckCircle, XCircle, AlertCircle, Package, HardDrive, Download, ChevronDown, Copy, Check } from 'lucide-react';
+import { Settings, Moon, Sun, Monitor, Globe, Cpu, RefreshCw, CheckCircle, XCircle, AlertCircle, Package, Download, ChevronDown, Copy, Check } from 'lucide-react';
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useSettingsStore, supportedLanguages } from '@/stores/settingsStore';
 import { useAppStore, computeEnvironmentReadiness } from '@/stores/appStore';
-import { THEMES, AI_MODELS, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
+import { THEMES, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
-import { ModelManager } from './ModelManager';
+import { UnifiedModelSection } from './UnifiedModelSection';
 import { InferenceSection } from './InferenceSection';
 import { InstallProgress } from '@/components/ui/InstallProgress';
 import { Button } from '@/components/ui/Button';
@@ -511,55 +511,8 @@ export function SettingsPanel() {
         </select>
       </section>
 
-      {/* AI Model */}
-      <section className="space-y-3">
-        <h3 className="flex items-center gap-2 text-sm font-medium">
-          <Sparkles className="h-4 w-4" />
-          AI Model
-        </h3>
-        <div className="grid gap-2">
-          {AI_MODELS.map((model) => (
-            <button
-              key={model.id}
-              onClick={() => updateSettings({ model: model.id })}
-              className={cn(
-                'flex flex-col items-start rounded-md border p-3 text-left transition-colors',
-                appSettings.settings.model === model.id
-                  ? 'border-primary bg-primary/10'
-                  : 'border-muted hover:border-primary/50'
-              )}
-            >
-              <span className="font-medium">{model.name}</span>
-              <span className="text-xs text-muted-foreground">{model.description}</span>
-              <div className="mt-1 flex gap-2">
-                <span className={cn(
-                  'rounded px-1.5 py-0.5 text-xs',
-                  model.quality === 'draft' && 'bg-yellow-500/20 text-yellow-600',
-                  model.quality === 'standard' && 'bg-green-500/20 text-green-600',
-                  model.quality === 'master' && 'bg-purple-500/20 text-purple-600',
-                )}>
-                  {model.quality}
-                </span>
-                <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-600">
-                  {model.speed}
-                </span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Model Downloads */}
-      <section className="space-y-3 rounded-lg border border-muted p-4">
-        <h3 className="flex items-center gap-2 text-sm font-medium">
-          <HardDrive className="h-4 w-4" />
-          Model Downloads
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          Download and manage AI models for stem separation. Downloaded models are stored locally.
-        </p>
-        <ModelManager />
-      </section>
+      {/* AI Models — unified model selection and download */}
+      <UnifiedModelSection />
 
       {/* Device */}
       <section className="space-y-3">

@@ -1,3 +1,7 @@
+/**
+ * @deprecated This component is replaced by UnifiedModelSection.tsx.
+ * Do not use for new development. Kept for backward compatibility with existing tests.
+ */
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
