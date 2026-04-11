@@ -354,11 +354,10 @@ mod tests {
     fn test_no_window_probe_runs_without_hanging() {
         // If CREATE_NO_WINDOW is mis-applied (e.g. wrong flag) the process
         // will still spawn; we just verify it exits normally.
-        let mut cmd = Command::new(if cfg!(windows) { "cmd" } else { "echo" });
+        // Use `true` on Unix (always succeeds) and `cmd /C echo hello` on Windows.
+        let mut cmd = Command::new(if cfg!(windows) { "cmd" } else { "true" });
         if cfg!(windows) {
             cmd.args(["/C", "echo", "hello"]);
-        } else {
-            cmd.arg("hello");
         }
         let output = cmd.no_window().output().expect("command failed to run");
         assert!(output.status.success());
