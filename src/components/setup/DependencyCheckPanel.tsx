@@ -35,12 +35,12 @@ interface DependencyCheckPanelProps {
   autoCheckOnMount?: boolean;
 }
 
-const DEPENDENCY_DEFS: Array<{ name: string; manifestKey: string; description: string }> = [
+const DEPENDENCY_DEFS: Array<{ name: string; manifestKey: string; description: string; canInstall?: boolean }> = [
   { name: 'FFmpeg', manifestKey: 'ffmpeg', description: 'Audio/video processing — required' },
   { name: 'Python', manifestKey: 'python', description: 'AI model inference — required' },
   { name: 'PyTorch', manifestKey: 'pytorch', description: 'Machine learning framework — required' },
   { name: 'demucs', manifestKey: 'demucs', description: 'AI stem separation model — required' },
-  { name: 'CUDA', manifestKey: 'pytorch', description: 'GPU acceleration — optional' },
+  { name: 'CUDA', manifestKey: 'cuda', description: 'GPU acceleration — optional', canInstall: false },
 ];
 
 const STATUS_ICON: Record<DepRow['status'], () => ReactNode> = {
@@ -216,9 +216,10 @@ export function DependencyCheckPanel({
       {/* Results table */}
       <div className="space-y-1">
         {deps.map(dep => {
+          const depDef = DEPENDENCY_DEFS.find(d => d.name === dep.name);
           const installers = installersMap[dep.manifestKey] || [];
           const isInstalling = installingDep === dep.manifestKey;
-          const canInstall = dep.status === 'missing' && installers.length > 0;
+          const canInstall = dep.status === 'missing' && installers.length > 0 && depDef?.canInstall !== false;
           const Icon = STATUS_ICON[dep.status];
 
           return (
