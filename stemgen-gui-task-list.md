@@ -716,7 +716,7 @@ Each task must be committed separately with a descriptive commit message referen
 
 ---
 
-- [ ] **TASK-028 — Open Pull Request from `fix/wizard-models-bugs` → `main` and verify CI**
+- [x] **TASK-028 — Open Pull Request from `fix/wizard-models-bugs` → `main` and verify CI**
 
   **Description:**
   1. Push the final commit of TASK-027 to `origin/fix/wizard-models-bugs`.
