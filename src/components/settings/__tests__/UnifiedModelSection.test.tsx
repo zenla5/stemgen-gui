@@ -20,23 +20,26 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 // ─── Mock Zustand store ────────────────────────────────────────────────────────
 
-vi.mock('@/stores/appStore', () => ({
-  useAppStore: Object.assign(
-    () => ({
-      setDownloadedModels: mockSetDownloadedModels,
-      addDownloadedModel: mockAddDownloadedModel,
-      removeDownloadedModel: mockRemoveDownloadedModel,
-    }),
-    {
-      getState: () => ({
-        environmentValidation: {
-          sidecarScript: 'available',
-        },
-      }),
-    }
-  ),
-  useDownloadedModels: () => [],
-}));
+vi.mock('@/stores/appStore', () => {
+  const storeState = {
+    setDownloadedModels: mockSetDownloadedModels,
+    addDownloadedModel: mockAddDownloadedModel,
+    removeDownloadedModel: mockRemoveDownloadedModel,
+    environmentValidation: {
+      sidecarScript: 'available',
+    },
+  };
+  return {
+    useAppStore: Object.assign(
+      (selector?: (state: typeof storeState) => unknown) =>
+        selector ? selector(storeState) : storeState,
+      {
+        getState: () => storeState,
+      }
+    ),
+    useDownloadedModels: () => [],
+  };
+});
 
 // ─── Mock lucide-react icons ───────────────────────────────────────────────────
 
@@ -267,6 +270,7 @@ describe('UnifiedModelSection', () => {
     // Override the mock to return missing sidecar
     const { useAppStore } = await import('@/stores/appStore');
     (useAppStore as unknown as { getState: () => Record<string, unknown> }).getState = vi.fn(() => ({
+      setDownloadedModels: mockSetDownloadedModels,
       environmentValidation: {
         sidecarScript: { missing: 'Sidecar not found' },
       },

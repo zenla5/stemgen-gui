@@ -27,7 +27,8 @@ export function UnifiedModelSection() {
 
   // Use appStore for persisted downloaded models
   const downloadedModels = useDownloadedModels();
-  const { addDownloadedModel, removeDownloadedModel } = useAppStore();
+  const addDownloadedModel = useAppStore(state => state.addDownloadedModel);
+  const removeDownloadedModel = useAppStore(state => state.removeDownloadedModel);
 
   // Load models and check availability on mount
   const loadModels = useCallback(async () => {
