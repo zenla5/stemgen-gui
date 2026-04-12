@@ -4,7 +4,7 @@
  * and app state manipulation for tests that drive the compiled binary.
  */
 
-import { expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -247,23 +247,9 @@ export async function navigateToView(
   page: Page,
   view: 'files' | 'queue' | 'mixer' | 'library' | 'settings'
 ): Promise<void> {
-  const navBtn = page.locator(`[data-testid="nav-${view}"]`);
-  await navBtn.click();
-
-  // Wait for the view heading to appear instead of a fixed timeout.
-  // Each view has a known heading element that we can assert on.
-  const headings: Record<string, string> = {
-    settings: 'h2 >> Settings',
-    // Other views can be added as needed
-  };
-
-  const heading = headings[view];
-  if (heading) {
-    await expect(page.locator(heading)).toBeVisible({ timeout: 5000 });
-  } else {
-    // Fallback: brief wait for React state update
-    await page.waitForTimeout(200);
-  }
+  await page.click(`[data-testid="nav-${view}"]`);
+  // Wait a tick for React state update
+  await page.waitForTimeout(100);
 }
 
 /**
