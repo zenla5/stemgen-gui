@@ -93,10 +93,14 @@ fn run_command_with_timeout(
             Some((stdout, stderr, status.success()))
         }
         _ => {
-            // Timed out. Drain threads so they don't leak; the OS process
-            // will be cleaned up eventually by the waiting thread above.
-            let _ = stdout_handle.join();
-            let _ = stderr_handle.join();
+            // Timed out — return immediately without joining the I/O threads.
+            // Joining would block if the child process is still alive and holding
+            // its pipe handles open (e.g. a hung nvidia-smi on Windows CI).
+            // The spawned threads will exit naturally once the process eventually
+            // terminates (the wait thread above will kill fd references).
+            // Drop the join handles so the threads run detached.
+            drop(stdout_handle);
+            drop(stderr_handle);
             None
         }
     }
