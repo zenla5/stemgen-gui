@@ -259,7 +259,7 @@ pub async fn cancel_separation(
 
 /// Get list of available separation models
 #[tauri::command]
-pub fn get_models() -> Result<Vec<ModelInfo>, String> {
+pub async fn get_models() -> Result<Vec<ModelInfo>, String> {
     info!("Getting available models");
     Ok(get_available_models())
 }

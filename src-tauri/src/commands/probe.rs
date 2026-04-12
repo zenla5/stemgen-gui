@@ -243,8 +243,10 @@ pub fn refresh_path_from_registry() {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        if let Ok(output) = Command::new("bash")
-            .args(["-lc", "echo $PATH"])
+        // Use `sh -c` instead of `bash -l` to avoid hanging on profile
+        // file sourcing in CI environments (e.g. xvfb-run on Linux).
+        if let Ok(output) = Command::new("sh")
+            .args(["-c", "echo $PATH"])
             .no_window()
             .output()
         {
