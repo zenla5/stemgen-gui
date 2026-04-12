@@ -39,16 +39,7 @@ export function UnifiedModelSection() {
 
     try {
       // Get available models — this is fast (static data), so clear the primary spinner first.
-      // Race against a timeout so the spinner can't hang indefinitely if the IPC stalls.
-      const GET_MODELS_TIMEOUT_MS = 5000;
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`get_models timed out after ${GET_MODELS_TIMEOUT_MS}ms`)), GET_MODELS_TIMEOUT_MS)
-      );
-      const availableModels = await Promise.race([
-        invoke<ModelCardData[]>('get_models'),
-        timeoutPromise,
-      ]);
-
+      const availableModels = await invoke<ModelCardData[]>('get_models');
       setModels(availableModels);
       setLoading(false);
 

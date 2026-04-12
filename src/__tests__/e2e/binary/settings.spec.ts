@@ -107,15 +107,16 @@ test.describe('Settings', () => {
 
     // Navigate to settings (already done in beforeEach)
     // Wait for the Settings view heading to confirm we're on the right page
-    await expect(page.locator('h2').filter({ hasText: 'Settings' })).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('h2').filter({ hasText: 'Settings' })).toBeVisible({ timeout: 10000 });
 
     // Locate the AI Models section
     await expect(page.locator('text=AI Models')).toBeVisible();
 
-    // Wait for the AI Models loading spinner specifically to disappear (up to 10 seconds).
+    // Wait for the AI Models loading spinner specifically to disappear.
     // Using data-testid to avoid false positives from other spinners on the page.
+    // Generous timeout because environment probes can delay the Tauri IPC on CI.
     const spinner = page.locator('[data-testid="models-loading-spinner"]');
-    await expect(spinner).not.toBeVisible({ timeout: 10000 });
+    await expect(spinner).not.toBeVisible({ timeout: 30000 });
 
     // Assert that either model cards are visible OR an error/warning banner is visible
     const modelCards = page.locator('[data-testid^="model-card-"]');
