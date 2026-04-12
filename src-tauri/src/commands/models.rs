@@ -458,12 +458,16 @@ pub async fn list_downloaded_models(_app: AppHandle) -> Result<Vec<String>, Stri
         ));
     }
 
-    let output = tokio::process::Command::new(&python)
-        .args([sidecar.to_str().unwrap(), "--list-models"])
-        .no_window()
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run sidecar list-models: {e}"))?;
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        tokio::process::Command::new(&python)
+            .args([sidecar.to_str().unwrap(), "--list-models"])
+            .no_window()
+            .output(),
+    )
+    .await
+    .map_err(|_| "list-models timed out after 10s".to_string())?
+    .map_err(|e| format!("Failed to run sidecar list-models: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout)

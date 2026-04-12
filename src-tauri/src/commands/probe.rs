@@ -3,8 +3,12 @@
 //! Extracted from the individual check commands to eliminate duplication.
 //! All probe functions are non-destructive — they never modify system state.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Maximum time to wait for a probe process before treating it as "not installed".
+const PROBE_TIMEOUT_SECS: u64 = 10;
 
 /// Platform-aware helper — suppresses the console window that Win32 creates
 /// when spawning child processes from a GUI application (WS_VISIBLE is set by
@@ -44,6 +48,58 @@ impl NoWindow for tokio::process::Command {
 fn decode_output(bytes: &[u8]) -> String {
     String::from_utf8(bytes.to_vec())
         .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+}
+
+/// Run a `std::process::Command` with a timeout, collecting stdout and stderr.
+///
+/// Returns `(stdout, stderr, exit_success)` on success within the timeout.
+/// Returns `None` if the process does not finish in time — the child is killed
+/// before returning (best-effort).
+fn run_command_with_timeout(
+    cmd: &mut Command,
+    timeout_secs: u64,
+) -> Option<(String, String, bool)> {
+    let mut child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .ok()?;
+
+    let mut stdout_pipe = child.stdout.take()?;
+    let mut stderr_pipe = child.stderr.take()?;
+
+    let stdout_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        stdout_pipe.read_to_end(&mut buf).ok();
+        decode_output(&buf)
+    });
+
+    let stderr_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        stderr_pipe.read_to_end(&mut buf).ok();
+        decode_output(&buf)
+    });
+
+    // Use a channel so we can recv_timeout on the child's exit status.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait());
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
+        Ok(Ok(status)) => {
+            let stdout = stdout_handle.join().unwrap_or_default();
+            let stderr = stderr_handle.join().unwrap_or_default();
+            Some((stdout, stderr, status.success()))
+        }
+        _ => {
+            // Timed out. Drain threads so they don't leak; the OS process
+            // will be cleaned up eventually by the waiting thread above.
+            let _ = stdout_handle.join();
+            let _ = stderr_handle.join();
+            None
+        }
+    }
 }
 
 /// Check if a path points to a Windows Store Python stub.
@@ -86,111 +142,116 @@ pub fn probe_binary(name: &str) -> bool {
 /// Get the version string from a binary by running it with a version flag.
 /// Returns the first line of stdout, or stderr if stdout is empty.
 pub fn probe_binary_version(name: &str, version_flag: &str) -> Option<String> {
-    Command::new(name)
-        .arg(version_flag)
-        .no_window()
-        .output()
-        .ok()
-        .and_then(|o| {
-            let stdout = decode_output(&o.stdout).trim().to_string();
-            if !stdout.is_empty() {
-                Some(stdout)
+    run_command_with_timeout(
+        Command::new(name).arg(version_flag).no_window(),
+        PROBE_TIMEOUT_SECS,
+    )
+    .and_then(|(stdout, stderr, _success)| {
+        let stdout = stdout.trim().to_string();
+        if !stdout.is_empty() {
+            Some(stdout)
+        } else {
+            let stderr = stderr.trim().to_string();
+            if !stderr.is_empty() {
+                Some(stderr)
             } else {
-                let stderr = decode_output(&o.stderr).trim().to_string();
-                if !stderr.is_empty() {
-                    Some(stderr)
-                } else {
-                    None
-                }
+                None
             }
-        })
+        }
+    })
 }
 
 /// Get the Python version string, handling both stdout and stderr output.
 pub fn probe_python_version(python: &Path) -> Option<String> {
-    Command::new(python)
-        .arg("--version")
-        .env("PYTHONUTF8", "1")
-        .no_window()
-        .output()
-        .ok()
-        .and_then(|o| {
-            let stdout = decode_output(&o.stdout).trim().to_string();
-            if !stdout.is_empty() {
-                Some(stdout)
+    run_command_with_timeout(
+        Command::new(python)
+            .arg("--version")
+            .env("PYTHONUTF8", "1")
+            .no_window(),
+        PROBE_TIMEOUT_SECS,
+    )
+    .and_then(|(stdout, stderr, _success)| {
+        let stdout = stdout.trim().to_string();
+        if !stdout.is_empty() {
+            Some(stdout)
+        } else {
+            let stderr = stderr.trim().to_string();
+            if !stderr.is_empty() {
+                Some(stderr)
             } else {
-                let stderr = decode_output(&o.stderr).trim().to_string();
-                if !stderr.is_empty() {
-                    Some(stderr)
-                } else {
-                    None
-                }
+                None
             }
-        })
+        }
+    })
 }
 
 /// Check if a Python module can be imported.
 pub fn probe_python_import(python: &Path, import_statement: &str) -> bool {
-    Command::new(python)
-        .args(["-c", import_statement])
-        .env("PYTHONUTF8", "1")
-        .no_window()
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    run_command_with_timeout(
+        Command::new(python)
+            .args(["-c", import_statement])
+            .env("PYTHONUTF8", "1")
+            .no_window(),
+        PROBE_TIMEOUT_SECS,
+    )
+    .map(|(_, _, success)| success)
+    .unwrap_or(false)
 }
 
 /// Get the version of an installed Python package.
 /// Runs `import <module>; print(<module>.__version__)`.
 pub fn probe_python_package_version(python: &Path, module: &str) -> Option<String> {
     let code = format!("import {module}; print({module}.__version__)");
-    Command::new(python)
-        .args(["-c", &code])
-        .env("PYTHONUTF8", "1")
-        .no_window()
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| decode_output(&o.stdout).trim().to_string())
+    run_command_with_timeout(
+        Command::new(python)
+            .args(["-c", &code])
+            .env("PYTHONUTF8", "1")
+            .no_window(),
+        PROBE_TIMEOUT_SECS,
+    )
+    .filter(|(_, _, success)| *success)
+    .map(|(stdout, _, _)| stdout.trim().to_string())
 }
 
 /// Check if CUDA is available via nvidia-smi.
 pub fn probe_cuda() -> bool {
-    Command::new("nvidia-smi")
-        .arg("--query-gpu=name")
-        .arg("--format=csv,noheader")
-        .no_window()
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    run_command_with_timeout(
+        Command::new("nvidia-smi")
+            .args(["--query-gpu=name", "--format=csv,noheader"])
+            .no_window(),
+        PROBE_TIMEOUT_SECS,
+    )
+    .map(|(_, _, success)| success)
+    .unwrap_or(false)
 }
 
 /// Check if CUDA is available through PyTorch.
 pub fn probe_torch_cuda(python: &Path) -> bool {
-    Command::new(python)
-        .args([
-            "-c",
-            "import torch; print('yes' if torch.cuda.is_available() else 'no')",
-        ])
-        .env("PYTHONUTF8", "1")
-        .no_window()
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| decode_output(&o.stdout).trim() == "yes")
-        .unwrap_or(false)
+    run_command_with_timeout(
+        Command::new(python)
+            .args([
+                "-c",
+                "import torch; print('yes' if torch.cuda.is_available() else 'no')",
+            ])
+            .env("PYTHONUTF8", "1")
+            .no_window(),
+        PROBE_TIMEOUT_SECS,
+    )
+    .filter(|(_, _, success)| *success)
+    .map(|(stdout, _, _)| stdout.trim() == "yes")
+    .unwrap_or(false)
 }
 
 /// Get the GPU name via nvidia-smi.
 pub fn probe_gpu_name() -> Option<String> {
-    Command::new("nvidia-smi")
-        .arg("--query-gpu=name")
-        .arg("--format=csv,noheader")
-        .no_window()
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| decode_output(&o.stdout).trim().to_string())
+    run_command_with_timeout(
+        Command::new("nvidia-smi")
+            .args(["--query-gpu=name", "--format=csv,noheader"])
+            .no_window(),
+        PROBE_TIMEOUT_SECS,
+    )
+    .filter(|(_, _, success)| *success)
+    .map(|(stdout, _, _)| stdout.trim().to_string())
 }
 
 /// Check if MPS (Apple Silicon GPU) is available. Always true on macOS.
@@ -200,14 +261,15 @@ pub fn probe_mps() -> bool {
 
 /// Get the PyTorch device string: "cuda", "mps", or "cpu".
 pub fn probe_torch_device(python: &Path) -> Option<String> {
-    Command::new(python)
-        .args(["-c", "import torch; print('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')"])
-        .env("PYTHONUTF8", "1")
-        .no_window()
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| decode_output(&o.stdout).trim().to_string())
+    run_command_with_timeout(
+        Command::new(python)
+            .args(["-c", "import torch; print('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')"])
+            .env("PYTHONUTF8", "1")
+            .no_window(),
+        PROBE_TIMEOUT_SECS,
+    )
+    .filter(|(_, _, success)| *success)
+    .map(|(stdout, _, _)| stdout.trim().to_string())
 }
 
 /// Check if the torch + torchaudio import works.
