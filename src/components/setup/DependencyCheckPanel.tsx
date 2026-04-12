@@ -29,6 +29,8 @@ interface DepRow {
 interface DependencyCheckPanelProps {
   /** Called when all required dependencies are satisfied. */
   onAllDependenciesOk?: () => void;
+  /** Called when the dependency check completes (regardless of result). */
+  onCheckComplete?: () => void;
   /** Whether to show the "Run Check" button (default: true). */
   showCheckButton?: boolean;
   /** Whether to auto-run the check on mount (default: false). */
@@ -53,6 +55,7 @@ const STATUS_ICON: Record<DepRow['status'], () => ReactNode> = {
 
 export function DependencyCheckPanel({
   onAllDependenciesOk,
+  onCheckComplete,
   showCheckButton = true,
   autoCheckOnMount = false,
 }: DependencyCheckPanelProps) {
@@ -124,9 +127,10 @@ export function DependencyCheckPanel({
         }
       }
 
-      // Invalidate app store cache and re-validate
+      // Invalidate app store cache so Settings panel re-fetches on next visit.
+      // Fire-and-forget — do not await, to avoid doubling the total check time.
       useAppStore.setState({ environmentValidatedAt: null });
-      await validateEnvironment();
+      void validateEnvironment();
     } catch (_err) {
       for (const depDef of DEPENDENCY_DEFS) {
         updateDep(depDef.name, 'warning', 'Could not check dependency');
@@ -143,15 +147,16 @@ export function DependencyCheckPanel({
     }
   }, [autoCheckOnMount, runCheck]);
 
-  // Notify parent when all required deps are OK
+  // Notify parent when check completes, and specifically when all required deps are OK
   useEffect(() => {
     if (!isChecking && hasRunCheckRef.current) {
+      onCheckComplete?.();
       const allOk = deps.filter(d => d.name !== 'CUDA').every(d => d.status === 'ok');
       if (allOk) {
         onAllDependenciesOk?.();
       }
     }
-  }, [deps, isChecking, onAllDependenciesOk]);
+  }, [deps, isChecking, onAllDependenciesOk, onCheckComplete]);
 
   const handleInstall = async (manifestKey: string) => {
     const installers = installersMap[manifestKey];

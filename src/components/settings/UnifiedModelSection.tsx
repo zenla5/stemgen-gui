@@ -37,9 +37,10 @@ export function UnifiedModelSection() {
     setListModelsError(null);
 
     try {
-      // Get available models
+      // Get available models — this is fast (static data), so clear the primary spinner first
       const availableModels = await invoke<ModelCardData[]>('get_models');
       setModels(availableModels);
+      setLoading(false);
 
       // Check which models are downloaded and update appStore
       // Use independent try/catch so list_downloaded_models failure doesn't prevent showing models

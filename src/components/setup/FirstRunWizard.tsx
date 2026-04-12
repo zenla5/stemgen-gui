@@ -66,7 +66,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
               <DependencyCheckPanel
                 autoCheckOnMount
                 showCheckButton={false}
-                onAllDependenciesOk={() => setStep('results')}
+                onCheckComplete={() => setStep('results')}
               />
             </div>
           )}
