@@ -88,8 +88,16 @@ pub async fn get_available_installers(dep_name: String) -> Result<Vec<AvailableI
     managers.sort_by_key(|m| m.priority);
 
     for pm in &managers {
-        // Check if the package manager is available on this system
-        let detected = which::which(&pm.detect_command).is_ok()
+        // Check if the package manager is available on this system.
+        // which::which() performs synchronous filesystem/PATH lookups — run it in
+        // spawn_blocking so it does not stall the tokio async thread pool when
+        // multiple get_available_installers calls run concurrently on settings mount.
+        let detect_cmd = pm.detect_command.clone();
+        let which_found = tokio::task::spawn_blocking(move || which::which(&detect_cmd).is_ok())
+            .await
+            .unwrap_or(false);
+
+        let detected = which_found
             || Command::new(&pm.detect_command)
                 .args(&pm.detect_args)
                 .no_window()
@@ -169,8 +177,13 @@ pub async fn install_dependency(
     // Build the install command
     let (cmd, args) = build_install_command(pm);
 
-    // Pre-check: verify the package manager binary is available
-    if which::which(&cmd).is_err() {
+    // Pre-check: verify the package manager binary is available.
+    // which::which() is synchronous — run in spawn_blocking to avoid stalling the runtime.
+    let cmd_check = cmd.clone();
+    let pm_not_found = tokio::task::spawn_blocking(move || which::which(&cmd_check).is_err())
+        .await
+        .unwrap_or(true);
+    if pm_not_found {
         return Ok(InstallResult {
             success: false,
             dep_name,
