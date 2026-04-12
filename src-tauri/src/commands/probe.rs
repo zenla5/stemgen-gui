@@ -354,8 +354,14 @@ mod tests {
     fn test_no_window_probe_runs_without_hanging() {
         // If CREATE_NO_WINDOW is mis-applied (e.g. wrong flag) the process
         // will still spawn; we just verify it exits normally.
-        // Use `echo` on all platforms — it is always available.
-        let mut cmd = Command::new(if cfg!(windows) { "cmd" } else { "echo" });
+        // Use platform-specific commands that are always available.
+        let mut cmd = Command::new(if cfg!(windows) {
+            "cmd"
+        } else if cfg!(target_os = "macos") {
+            "/bin/echo"
+        } else {
+            "echo"
+        });
         if cfg!(windows) {
             cmd.args(["/C", "echo", "hello"]);
         } else {
