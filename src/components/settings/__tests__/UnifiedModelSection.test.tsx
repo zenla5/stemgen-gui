@@ -89,8 +89,7 @@ describe('UnifiedModelSection', () => {
 
     expect(screen.getByText('AI Models')).toBeInTheDocument();
     // Spinner should be present
-    const spinner = document.querySelector('.animate-spin');
-    expect(spinner).toBeInTheDocument();
+    expect(screen.getByTestId('models-loading-spinner')).toBeInTheDocument();
   });
 
   // ── Test 2: Loading spinner disappears after models load ──
@@ -111,8 +110,7 @@ describe('UnifiedModelSection', () => {
     render(<UnifiedModelSection />);
 
     await waitFor(() => {
-      const spinner = document.querySelector('.animate-spin');
-      expect(spinner).not.toBeInTheDocument();
+      expect(screen.queryByTestId('models-loading-spinner')).not.toBeInTheDocument();
     });
   });
 
@@ -162,8 +160,7 @@ describe('UnifiedModelSection', () => {
     });
 
     // Loading spinner should be gone
-    const spinner = document.querySelector('.animate-spin');
-    expect(spinner).not.toBeInTheDocument();
+    expect(screen.queryByTestId('models-loading-spinner')).not.toBeInTheDocument();
   });
 
   // ── Test 5: Warning banner renders when list_downloaded_models throws ──

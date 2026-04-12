@@ -110,8 +110,9 @@ test.describe('Settings', () => {
     // Locate the AI Models section
     await expect(page.locator('text=AI Models')).toBeVisible();
 
-    // Wait for loading spinner to disappear (up to 10 seconds)
-    const spinner = page.locator('.animate-spin');
+    // Wait for the AI Models loading spinner specifically to disappear (up to 10 seconds).
+    // Using data-testid to avoid false positives from other spinners on the page.
+    const spinner = page.locator('[data-testid="models-loading-spinner"]');
     await expect(spinner).not.toBeVisible({ timeout: 10000 });
 
     // Assert that either model cards are visible OR an error/warning banner is visible

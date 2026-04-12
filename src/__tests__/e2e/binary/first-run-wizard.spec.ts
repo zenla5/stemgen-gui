@@ -75,7 +75,11 @@ test.describe('First Run Wizard', () => {
     await navigateWithWizard(page);
 
     await page.click('button:has-text("Start Check")');
-    await expect(page.locator('text=Checking dependencies')).toBeVisible({ timeout: 10000 });
+    // Accept either the brief "checking" state or the results state — with onCheckComplete the
+    // wizard may transition through 'check' faster than the browser paints the heading in CI.
+    await expect(
+      page.locator('text=Checking dependencies').or(page.locator('text=Dependency Check Complete'))
+    ).toBeVisible({ timeout: 10000 });
     await takeScreenshot(page, 'wizard-checking');
   });
 

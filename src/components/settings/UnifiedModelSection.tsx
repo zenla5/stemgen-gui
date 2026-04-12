@@ -139,7 +139,7 @@ export function UnifiedModelSection() {
           AI Models
         </h3>
         <div className="flex items-center justify-center p-8">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div data-testid="models-loading-spinner" className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       </section>
     );
