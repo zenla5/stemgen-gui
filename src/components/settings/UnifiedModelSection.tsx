@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { HardDrive, RefreshCw } from 'lucide-react';
@@ -16,6 +16,10 @@ interface DownloadProgress {
 }
 
 export function UnifiedModelSection() {
+  // Debug: track render count
+  const renderCount = useRef(0);
+  renderCount.current++;
+  const _renderN = renderCount.current;
   const [models, setModels] = useState<ModelCardData[]>([]);
   const [checking, setChecking] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -30,8 +34,13 @@ export function UnifiedModelSection() {
   const addDownloadedModel = useAppStore(state => state.addDownloadedModel);
   const removeDownloadedModel = useAppStore(state => state.removeDownloadedModel);
 
+  // Debug: track effect invocations to detect infinite loops
+  const effectRunCount = useRef(0);
+
   // Load models and check availability on mount
   const loadModels = useCallback(async () => {
+    const t0 = performance.now();
+    console.log(`[UnifiedModelSection] loadModels START t=${t0.toFixed(0)}ms`);
     setLoading(true);
     setChecking(true);
     setError(null);
@@ -39,32 +48,45 @@ export function UnifiedModelSection() {
 
     try {
       // Get available models — this is fast (static data), so clear the primary spinner first
+      console.log('[UnifiedModelSection] invoking get_models...');
+      const tInvoke = performance.now();
       const availableModels = await invoke<ModelCardData[]>('get_models');
+      console.log(`[UnifiedModelSection] get_models resolved in ${(performance.now() - tInvoke).toFixed(0)}ms, models=${availableModels.length}`);
       setModels(availableModels);
       setLoading(false);
+      console.log(`[UnifiedModelSection] setLoading(false) called, total so far=${(performance.now() - t0).toFixed(0)}ms`);
 
       // Check which models are downloaded and update appStore
       // Use independent try/catch so list_downloaded_models failure doesn't prevent showing models
       try {
+        console.log('[UnifiedModelSection] invoking list_downloaded_models...');
+        const tList = performance.now();
         const available = await invoke<string[]>('list_downloaded_models');
+        console.log(`[UnifiedModelSection] list_downloaded_models resolved in ${(performance.now() - tList).toFixed(0)}ms, count=${available.length}`);
         // Use getState() to avoid stale closure — Zustand action refs are stable
         useAppStore.getState().setDownloadedModels(available);
       } catch (listErr) {
-        console.error('Failed to list downloaded models:', listErr);
+        console.error('[UnifiedModelSection] Failed to list downloaded models:', listErr);
         setListModelsError(
           listErr instanceof Error ? listErr.message : String(listErr)
         );
       }
     } catch (err) {
-      console.error('Failed to load models:', err);
+      console.error('[UnifiedModelSection] Failed to load models:', err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setChecking(false);
       setLoading(false);
+      console.log(`[UnifiedModelSection] loadModels DONE total=${(performance.now() - t0).toFixed(0)}ms`);
     }
   }, []);
 
   useEffect(() => {
+    effectRunCount.current++;
+    console.log(`[UnifiedModelSection] useEffect run #${effectRunCount.current} — calling loadModels`);
+    if (effectRunCount.current > 1) {
+      console.warn(`[UnifiedModelSection] WARNING: useEffect ran ${effectRunCount.current} times — possible infinite loop!`);
+    }
     loadModels();
 
     // Listen for download progress events
@@ -133,6 +155,7 @@ export function UnifiedModelSection() {
   };
 
   if (loading) {
+    console.log(`[UnifiedModelSection] RENDER #${_renderN}: loading=true, showing spinner`);
     return (
       <section className="space-y-3 rounded-lg border border-muted p-4">
         <h3 className="flex items-center gap-2 text-sm font-medium">
@@ -146,6 +169,7 @@ export function UnifiedModelSection() {
     );
   }
 
+  console.log(`[UnifiedModelSection] RENDER #${_renderN}: loading=false, showing ${models.length} models`);
   return (
     <section className="space-y-3 rounded-lg border border-muted p-4">
       <div className="flex items-center justify-between">

@@ -107,13 +107,40 @@ test.describe('Settings', () => {
 
     // Navigate to settings (already done in beforeEach)
 
+    // Capture console logs for debugging
+    const consoleLogs: string[] = [];
+    page.on('console', (msg) => {
+      const text = `[${msg.type()}] ${msg.text()}`;
+      consoleLogs.push(text);
+      if (msg.type() === 'error' || msg.text().includes('[UnifiedModelSection]')) {
+        console.log(`[page-console] ${text}`);
+      }
+    });
+
     // Locate the AI Models section
     await expect(page.locator('text=AI Models')).toBeVisible();
 
     // Wait for the AI Models loading spinner specifically to disappear (up to 10 seconds).
     // Using data-testid to avoid false positives from other spinners on the page.
     const spinner = page.locator('[data-testid="models-loading-spinner"]');
-    await expect(spinner).not.toBeVisible({ timeout: 10000 });
+
+    // Capture timing: poll spinner visibility and log state at intervals
+    const tStart = Date.now();
+    try {
+      await expect(spinner).not.toBeVisible({ timeout: 10000 });
+      console.log(`[debug] Spinner disappeared after ${Date.now() - tStart}ms`);
+    } catch (err) {
+      const elapsed = Date.now() - tStart;
+      console.error(`[debug] Spinner still visible after ${elapsed}ms`);
+      console.error(`[debug] Console logs captured (${consoleLogs.length} entries):`);
+      for (const log of consoleLogs) {
+        console.error(`  ${log}`);
+      }
+      // Check if there are multiple spinners (possible re-mount)
+      const spinnerCount = await page.locator('[data-testid="models-loading-spinner"]').count();
+      console.error(`[debug] Spinner count on page: ${spinnerCount}`);
+      throw err;
+    }
 
     // Assert that either model cards are visible OR an error/warning banner is visible
     const modelCards = page.locator('[data-testid^="model-card-"]');
