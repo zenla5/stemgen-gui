@@ -1,5 +1,5 @@
 import { Settings, Moon, Sun, Monitor, Globe, Cpu, RefreshCw, CheckCircle, XCircle, AlertCircle, Package, Download, ChevronDown, Copy, Check } from 'lucide-react';
-import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useSettingsStore, supportedLanguages } from '@/stores/settingsStore';
 import { useAppStore, computeEnvironmentReadiness } from '@/stores/appStore';
 import { THEMES, DJ_SOFTWARE_PRESETS, OUTPUT_FORMATS, QUALITY_PRESETS, DEVICE_OPTIONS } from '@/lib/constants';
@@ -31,13 +31,6 @@ function getFailureReason(status?: PackageStatus | null): string | undefined {
 }
 
 export function SettingsPanel() {
-  // Debug: track render count
-  const renderCount = useRef(0);
-  renderCount.current++;
-  if (renderCount.current <= 3 || renderCount.current % 20 === 0) {
-    console.log(`[SettingsPanel] RENDER #${renderCount.current}`);
-  }
-
   const settings = useSettingsStore();
   const appSettings = useAppStore();
   const {

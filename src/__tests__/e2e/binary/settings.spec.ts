@@ -115,48 +115,7 @@ test.describe('Settings', () => {
     // Wait for the AI Models loading spinner specifically to disappear (up to 10 seconds).
     // Using data-testid to avoid false positives from other spinners on the page.
     const spinner = page.locator('[data-testid="models-loading-spinner"]');
-
-    // Capture timing
-    const tStart = Date.now();
-    try {
-      await expect(spinner).not.toBeVisible({ timeout: 10000 });
-      console.log(`[debug] Spinner disappeared after ${Date.now() - tStart}ms`);
-    } catch (err) {
-      const elapsed = Date.now() - tStart;
-      console.error(`[debug] Spinner still visible after ${elapsed}ms`);
-
-      // Read DOM-based debug info from the component
-      const debugText = await page.locator('[data-testid="debug-model-section"]').textContent().catch(() => 'not found');
-      console.error(`[debug] Component debug info: ${debugText}`);
-
-      // Check active view via data-testid or visible headings
-      const activeView = await page.evaluate(() => {
-        // Check which nav button has active styling
-        const navBtns = document.querySelectorAll('[data-testid^="nav-"]');
-        const active: string[] = [];
-        navBtns.forEach(btn => {
-          if (btn.classList.toString().includes('active') || btn.getAttribute('data-active') === 'true') {
-            active.push(btn.getAttribute('data-testid') || 'unknown');
-          }
-        });
-        // Check main content area
-        const main = document.querySelector('main');
-        const mainText = main?.textContent?.substring(0, 200) || 'no main';
-        return { activeNavs: active, mainPreview: mainText };
-      });
-      console.error(`[debug] Active navs: ${JSON.stringify(activeView.activeNavs)}`);
-      console.error(`[debug] Main content preview: ${activeView.mainPreview}`);
-
-      // Check spinner count
-      const spinnerCount = await spinner.count();
-      console.error(`[debug] Spinner count on page: ${spinnerCount}`);
-
-      // Check if AI Models heading is still visible
-      const aiModelsVisible = await page.locator('text=AI Models').isVisible().catch(() => false);
-      console.error(`[debug] 'AI Models' heading still visible: ${aiModelsVisible}`);
-
-      throw err;
-    }
+    await expect(spinner).not.toBeVisible({ timeout: 10000 });
 
     // Assert that either model cards are visible OR an error/warning banner is visible
     const modelCards = page.locator('[data-testid^="model-card-"]');
