@@ -107,16 +107,6 @@ test.describe('Settings', () => {
 
     // Navigate to settings (already done in beforeEach)
 
-    // Capture console logs for debugging
-    const consoleLogs: string[] = [];
-    page.on('console', (msg) => {
-      const text = `[${msg.type()}] ${msg.text()}`;
-      consoleLogs.push(text);
-      if (msg.type() === 'error' || msg.text().includes('[UnifiedModelSection]')) {
-        console.log(`[page-console] ${text}`);
-      }
-    });
-
     // Locate the AI Models section
     await expect(page.locator('text=AI Models')).toBeVisible();
 
@@ -124,7 +114,7 @@ test.describe('Settings', () => {
     // Using data-testid to avoid false positives from other spinners on the page.
     const spinner = page.locator('[data-testid="models-loading-spinner"]');
 
-    // Capture timing: poll spinner visibility and log state at intervals
+    // Capture timing
     const tStart = Date.now();
     try {
       await expect(spinner).not.toBeVisible({ timeout: 10000 });
@@ -132,13 +122,37 @@ test.describe('Settings', () => {
     } catch (err) {
       const elapsed = Date.now() - tStart;
       console.error(`[debug] Spinner still visible after ${elapsed}ms`);
-      console.error(`[debug] Console logs captured (${consoleLogs.length} entries):`);
-      for (const log of consoleLogs) {
-        console.error(`  ${log}`);
-      }
-      // Check if there are multiple spinners (possible re-mount)
-      const spinnerCount = await page.locator('[data-testid="models-loading-spinner"]').count();
+
+      // Read DOM-based debug info from the component
+      const debugText = await page.locator('[data-testid="debug-model-section"]').textContent().catch(() => 'not found');
+      console.error(`[debug] Component debug info: ${debugText}`);
+
+      // Check active view via data-testid or visible headings
+      const activeView = await page.evaluate(() => {
+        // Check which nav button has active styling
+        const navBtns = document.querySelectorAll('[data-testid^="nav-"]');
+        const active: string[] = [];
+        navBtns.forEach(btn => {
+          if (btn.classList.toString().includes('active') || btn.getAttribute('data-active') === 'true') {
+            active.push(btn.getAttribute('data-testid') || 'unknown');
+          }
+        });
+        // Check main content area
+        const main = document.querySelector('main');
+        const mainText = main?.textContent?.substring(0, 200) || 'no main';
+        return { activeNavs: active, mainPreview: mainText };
+      });
+      console.error(`[debug] Active navs: ${JSON.stringify(activeView.activeNavs)}`);
+      console.error(`[debug] Main content preview: ${activeView.mainPreview}`);
+
+      // Check spinner count
+      const spinnerCount = await spinner.count();
       console.error(`[debug] Spinner count on page: ${spinnerCount}`);
+
+      // Check if AI Models heading is still visible
+      const aiModelsVisible = await page.locator('text=AI Models').isVisible().catch(() => false);
+      console.error(`[debug] 'AI Models' heading still visible: ${aiModelsVisible}`);
+
       throw err;
     }
 

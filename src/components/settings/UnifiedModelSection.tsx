@@ -36,11 +36,14 @@ export function UnifiedModelSection() {
 
   // Debug: track effect invocations to detect infinite loops
   const effectRunCount = useRef(0);
+  // Debug: store human-readable state for DOM-based diagnostics (CDP can't capture webview console)
+  const debugInfo = useRef<string>('init');
 
   // Load models and check availability on mount
   const loadModels = useCallback(async () => {
     const t0 = performance.now();
     console.log(`[UnifiedModelSection] loadModels START t=${t0.toFixed(0)}ms`);
+    debugInfo.current = `loadModels-started@${Math.round(t0)}ms`;
     setLoading(true);
     setChecking(true);
     setError(null);
@@ -49,9 +52,12 @@ export function UnifiedModelSection() {
     try {
       // Get available models — this is fast (static data), so clear the primary spinner first
       console.log('[UnifiedModelSection] invoking get_models...');
+      debugInfo.current = `invoking-get_models@${Math.round(performance.now())}ms`;
       const tInvoke = performance.now();
       const availableModels = await invoke<ModelCardData[]>('get_models');
-      console.log(`[UnifiedModelSection] get_models resolved in ${(performance.now() - tInvoke).toFixed(0)}ms, models=${availableModels.length}`);
+      const invokeMs = Math.round(performance.now() - tInvoke);
+      console.log(`[UnifiedModelSection] get_models resolved in ${invokeMs}ms, models=${availableModels.length}`);
+      debugInfo.current = `get_models-resolved@${invokeMs}ms models=${availableModels.length}`;
       setModels(availableModels);
       setLoading(false);
       console.log(`[UnifiedModelSection] setLoading(false) called, total so far=${(performance.now() - t0).toFixed(0)}ms`);
@@ -60,32 +66,45 @@ export function UnifiedModelSection() {
       // Use independent try/catch so list_downloaded_models failure doesn't prevent showing models
       try {
         console.log('[UnifiedModelSection] invoking list_downloaded_models...');
+        debugInfo.current = `invoking-list_downloaded_models@${Math.round(performance.now())}ms`;
         const tList = performance.now();
         const available = await invoke<string[]>('list_downloaded_models');
-        console.log(`[UnifiedModelSection] list_downloaded_models resolved in ${(performance.now() - tList).toFixed(0)}ms, count=${available.length}`);
+        const listMs = Math.round(performance.now() - tList);
+        console.log(`[UnifiedModelSection] list_downloaded_models resolved in ${listMs}ms, count=${available.length}`);
+        debugInfo.current = `list_done@${listMs}ms count=${available.length}`;
         // Use getState() to avoid stale closure — Zustand action refs are stable
         useAppStore.getState().setDownloadedModels(available);
       } catch (listErr) {
         console.error('[UnifiedModelSection] Failed to list downloaded models:', listErr);
+        debugInfo.current = `list_error: ${listErr instanceof Error ? listErr.message : String(listErr)}`;
         setListModelsError(
           listErr instanceof Error ? listErr.message : String(listErr)
         );
       }
     } catch (err) {
       console.error('[UnifiedModelSection] Failed to load models:', err);
+      debugInfo.current = `get_models_error: ${err instanceof Error ? err.message : String(err)}`;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setChecking(false);
       setLoading(false);
-      console.log(`[UnifiedModelSection] loadModels DONE total=${(performance.now() - t0).toFixed(0)}ms`);
+      const totalMs = Math.round(performance.now() - t0);
+      console.log(`[UnifiedModelSection] loadModels DONE total=${totalMs}ms`);
+      if (debugInfo.current.startsWith('loadModels-started') || debugInfo.current.startsWith('invoking-get_models')) {
+        debugInfo.current += ` | finally@${totalMs}ms (get_models never resolved!)`;
+      } else {
+        debugInfo.current += ` | finally@${totalMs}ms`;
+      }
     }
   }, []);
 
   useEffect(() => {
     effectRunCount.current++;
     console.log(`[UnifiedModelSection] useEffect run #${effectRunCount.current} — calling loadModels`);
+    debugInfo.current = `effect-run#${effectRunCount.current}`;
     if (effectRunCount.current > 1) {
       console.warn(`[UnifiedModelSection] WARNING: useEffect ran ${effectRunCount.current} times — possible infinite loop!`);
+      debugInfo.current += ` WARNING: infinite-loop-detected`;
     }
     loadModels();
 
@@ -164,6 +183,10 @@ export function UnifiedModelSection() {
         </h3>
         <div className="flex items-center justify-center p-8">
           <div data-testid="models-loading-spinner" className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+        {/* Debug info for CI diagnostics — invisible but readable via page.evaluate */}
+        <div data-testid="debug-model-section" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden' }}>
+          render={_renderN};effectRuns={effectRunCount.current};loading=true;state={debugInfo.current}
         </div>
       </section>
     );
