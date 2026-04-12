@@ -105,9 +105,9 @@ test.describe('Settings', () => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
 
-    // Navigate to settings (already done in beforeEach)
-    // Wait for the Settings view heading to confirm we're on the right page
-    await expect(page.locator('h2').filter({ hasText: 'Settings' })).toBeVisible({ timeout: 10000 });
+    // Navigate to settings — wait for a Settings-specific element to confirm the view loaded.
+    // The 100ms in navigateToView may not be enough on slow CI runners.
+    await expect(page.locator('[data-testid="refresh-env-btn"]')).toBeVisible({ timeout: 10000 });
 
     // Locate the AI Models section
     await expect(page.locator('text=AI Models')).toBeVisible();
