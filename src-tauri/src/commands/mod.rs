@@ -460,8 +460,7 @@ pub async fn validate_environment(app: tauri::AppHandle) -> Result<EnvironmentVa
             // sidecar script (from AppState)
             if sidecar_path.exists() {
                 validation.sidecar_script = Some(PackageStatus::Available);
-                validation.sidecar_script_path =
-                    Some(sidecar_path.to_string_lossy().to_string());
+                validation.sidecar_script_path = Some(sidecar_path.to_string_lossy().to_string());
             } else {
                 validation.sidecar_script = Some(PackageStatus::Missing(format!(
                     "stemgen_sidecar.py not found at {:?}",
