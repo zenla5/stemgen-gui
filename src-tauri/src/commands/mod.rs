@@ -119,7 +119,7 @@ pub async fn check_dependencies() -> Result<CheckDependenciesResult, String> {
         let cuda = probe_cuda();
         let mps = probe_mps();
 
-        let model_dir = get_data_dir().join("models");
+        let model_dir = get_models_dir();
         std::fs::create_dir_all(&model_dir).ok();
         let model_count = if model_dir.exists() {
             std::fs::read_dir(&model_dir)
@@ -223,7 +223,7 @@ pub async fn get_sidecar_status(app: tauri::AppHandle) -> Result<SidecarStatus, 
         }
 
         // 4. Check model directory
-        let model_dir = get_model_directory();
+        let model_dir = get_models_dir();
         status.model_directory = model_dir.to_string_lossy().to_string();
 
         if model_dir.exists() {
@@ -312,7 +312,7 @@ pub async fn deploy_sidecar(app: tauri::AppHandle) -> Result<String, String> {
 pub async fn check_model_available(model: String) -> Result<ModelAvailability, String> {
     info!("Checking model availability: {}", model);
 
-    let model_dir = get_model_directory();
+    let model_dir = get_models_dir();
     let model_path = model_dir.join(&model);
 
     let available = model_path.exists() && model_path.is_dir();
@@ -624,6 +624,33 @@ mod package_status_tests {
         // Both are valid - the function should not panic or error
         let _ = result.unwrap();
     }
+
+    #[test]
+    fn test_gpu_status_serializes_camel_case() {
+        let status = GpuStatus {
+            gpu_present: true,
+            gpu_device: Some("cuda".to_string()),
+            gpu_name: Some("NVIDIA RTX 3090".to_string()),
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("gpuPresent"), "should use camelCase");
+        assert!(json.contains("gpuDevice"), "should use camelCase");
+        assert!(json.contains("gpuName"), "should use camelCase");
+    }
+
+    #[test]
+    fn test_gpu_status_no_gpu_serializes_nulls() {
+        let status = GpuStatus {
+            gpu_present: false,
+            gpu_device: None,
+            gpu_name: None,
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        assert_eq!(
+            json,
+            r#"{"gpuPresent":false,"gpuDevice":null,"gpuName":null}"#
+        );
+    }
 }
 
 impl std::fmt::Display for PackageStatus {
@@ -660,8 +687,44 @@ pub struct EnvironmentValidation {
     pub warnings: Vec<String>,
 }
 
-fn get_model_directory() -> PathBuf {
-    get_data_dir().join("models")
+// ============================================================================
+// GPU status — lightweight probe for model-selection logic
+// ============================================================================
+
+/// Lightweight GPU detection result used by the model panel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuStatus {
+    pub gpu_present: bool,
+    pub gpu_device: Option<String>,
+    pub gpu_name: Option<String>,
+}
+
+/// Return a lightweight GPU status without running the full environment validation.
+///
+/// The frontend can use this as a fast fallback when `environmentValidation` is
+/// not yet populated in the store.
+#[tauri::command]
+pub fn get_gpu_status() -> Result<GpuStatus, String> {
+    let cuda = probe_cuda();
+    let mps = probe_mps();
+    let gpu_present = cuda || mps;
+
+    let gpu_device = if cuda {
+        Some("cuda".to_string())
+    } else if mps {
+        Some("mps".to_string())
+    } else {
+        None
+    };
+
+    let gpu_name = if cuda { probe_gpu_name() } else { None };
+
+    Ok(GpuStatus {
+        gpu_present,
+        gpu_device,
+        gpu_name,
+    })
 }
 
 fn calculate_dir_size(path: &std::path::Path) -> std::io::Result<u64> {

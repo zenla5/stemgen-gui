@@ -4,7 +4,6 @@
 
 use reqwest;
 use serde::Serialize;
-use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 use tracing::{info, warn};
 
@@ -64,13 +63,6 @@ pub struct DownloadProgressPayload {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Return the platform-specific models directory
-fn get_models_dir() -> PathBuf {
-    directories::ProjectDirs::from("dev", "stemgen", "stemgen-gui")
-        .map(|d| d.data_dir().join("models"))
-        .unwrap_or_else(|| std::env::temp_dir().join("stemgen-gui/models"))
-}
 
 /// demucs / HuggingFace download URL for each model ID.
 ///
@@ -180,7 +172,7 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
     let url =
         model_download_url(&model_id).ok_or_else(|| format!("Unknown model: {}", model_id))?;
 
-    let models_dir = get_models_dir();
+    let models_dir = crate::commands::probe::get_models_dir();
     std::fs::create_dir_all(&models_dir)
         .map_err(|e| format!("Failed to create models directory: {}", e))?;
 
@@ -376,7 +368,7 @@ async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<
 pub fn delete_model(model_id: String) -> Result<(), String> {
     info!("Deleting model: {}", model_id);
 
-    let models_dir = get_models_dir();
+    let models_dir = crate::commands::probe::get_models_dir();
     let model_path = models_dir.join(&model_id);
 
     if !model_path.exists() {
@@ -424,12 +416,16 @@ pub async fn check_model_downloaded(model_id: String, _app: AppHandle) -> Result
         ));
     }
 
-    let output = tokio::process::Command::new(&python)
-        .args([sidecar.to_str().unwrap(), "--check-model", &model_id])
-        .no_window()
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run sidecar check-model: {e}"))?;
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        tokio::process::Command::new(&python)
+            .args([sidecar.to_str().unwrap(), "--check-model", &model_id])
+            .no_window()
+            .output(),
+    )
+    .await
+    .map_err(|_| "check-model timed out after 10 s".to_string())?
+    .map_err(|e| format!("Failed to run sidecar check-model: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
@@ -659,7 +655,7 @@ mod tests {
 
     #[test]
     fn test_get_models_dir_returns_path() {
-        let models_dir = get_models_dir();
+        let models_dir = crate::commands::probe::get_models_dir();
         assert!(models_dir.to_string_lossy().contains("stemgen-gui"));
         assert!(models_dir.to_string_lossy().contains("models"));
     }

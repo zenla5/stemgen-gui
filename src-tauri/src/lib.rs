@@ -269,6 +269,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::check_dependencies,
             commands::check_python_deps,
+            commands::get_gpu_status,
             commands::get_audio_info,
             commands::start_separation,
             commands::cancel_separation,

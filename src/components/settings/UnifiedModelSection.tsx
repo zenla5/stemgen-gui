@@ -3,8 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { HardDrive, RefreshCw } from 'lucide-react';
 import { ModelCard, type ModelCardData } from './ModelCard';
-import { useAppStore, useDownloadedModels } from '@/stores/appStore';
-import { hasPackageStatusKey } from '@/lib/types';
+import { useAppStore, computeEnvironmentReadiness } from '@/stores/appStore';
+import { hasPackageStatusKey, type ModelCheckStatus } from '@/lib/types';
 
 interface DownloadProgress {
   model_id: string;
@@ -17,52 +17,82 @@ interface DownloadProgress {
 
 export function UnifiedModelSection() {
   const [models, setModels] = useState<ModelCardData[]>([]);
-  const [checking, setChecking] = useState(true);
+  const [modelStatuses, setModelStatuses] = useState<Record<string, ModelCheckStatus>>({});
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [listModelsError, setListModelsError] = useState<string | null>(null);
 
   // Use appStore for persisted downloaded models
-  const downloadedModels = useDownloadedModels();
   const addDownloadedModel = useAppStore(state => state.addDownloadedModel);
   const removeDownloadedModel = useAppStore(state => state.removeDownloadedModel);
+
+  /** Run per-model availability checks in parallel. */
+  const checkModelsInParallel = useCallback(async (modelList: ModelCardData[]) => {
+    // Initialise all rows to 'checking' so the panel renders instantly with spinners
+    const initialStatuses: Record<string, ModelCheckStatus> = {};
+    for (const m of modelList) {
+      initialStatuses[m.id] = 'checking';
+    }
+    setModelStatuses(initialStatuses);
+
+    // Determine GPU presence from the store (fast path) or fall back to IPC
+    const { environmentValidation } = useAppStore.getState();
+    const { gpuStatus } = computeEnvironmentReadiness(environmentValidation);
+    let gpuPresent = gpuStatus === 'cuda';
+    if (gpuStatus === 'unknown') {
+      try {
+        const gpu = await invoke<{ gpuPresent: boolean }>('get_gpu_status');
+        gpuPresent = gpu.gpuPresent;
+      } catch {
+        // If GPU probe fails, assume no GPU — safe default
+        gpuPresent = false;
+      }
+    }
+
+    // Fire all checks concurrently — each row updates independently
+    const checkPromises = modelList.map(async (model) => {
+      try {
+        const downloaded = await invoke<boolean>('check_model_downloaded', { modelId: model.id });
+        if (!downloaded) {
+          setModelStatuses(prev => ({ ...prev, [model.id]: 'unavailable' }));
+          return;
+        }
+        // Model is downloaded — determine colour
+        if (model.gpu_required && !gpuPresent) {
+          setModelStatuses(prev => ({ ...prev, [model.id]: 'gpu-warning' }));
+        } else {
+          setModelStatuses(prev => ({ ...prev, [model.id]: 'available' }));
+          addDownloadedModel(model.id);
+        }
+      } catch {
+        // Sidecar error or timeout → mark as unavailable
+        setModelStatuses(prev => ({ ...prev, [model.id]: 'unavailable' }));
+      }
+    });
+
+    await Promise.allSettled(checkPromises);
+  }, [addDownloadedModel]);
 
   // Load models and check availability on mount
   const loadModels = useCallback(async () => {
     setLoading(true);
-    setChecking(true);
     setError(null);
-    setListModelsError(null);
 
     try {
-      // Get available models — this is fast (static data), so clear the primary spinner first.
       const availableModels = await invoke<ModelCardData[]>('get_models');
       setModels(availableModels);
       setLoading(false);
 
-      // Check which models are downloaded and update appStore
-      // Use independent try/catch so list_downloaded_models failure doesn't prevent showing models
-      try {
-        const available = await invoke<string[]>('list_downloaded_models');
-        // Use getState() to avoid stale closure — Zustand action refs are stable
-        useAppStore.getState().setDownloadedModels(available);
-      } catch (listErr) {
-        console.error('Failed to list downloaded models:', listErr);
-        setListModelsError(
-          listErr instanceof Error ? listErr.message : String(listErr)
-        );
-      }
+      // Per-model async checks replace the old list_downloaded_models call
+      await checkModelsInParallel(availableModels);
     } catch (err) {
       console.error('Failed to load models:', err);
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setChecking(false);
       setLoading(false);
     }
-  }, []);
+  }, [checkModelsInParallel]);
 
   useEffect(() => {
     loadModels();
@@ -75,6 +105,7 @@ export function UnifiedModelSection() {
         setDownloading(null);
         setDownloadProgress(0);
         addDownloadedModel(model_id);
+        setModelStatuses(prev => ({ ...prev, [model_id]: 'available' }));
         setDownloadErrors(prev => { const next = { ...prev }; delete next[model_id]; return next; });
       } else if (status === 'downloading') {
         setDownloading(model_id);
@@ -123,6 +154,7 @@ export function UnifiedModelSection() {
     try {
       await invoke('delete_model', { modelId });
       removeDownloadedModel(modelId);
+      setModelStatuses(prev => ({ ...prev, [modelId]: 'unavailable' }));
     } catch (err) {
       console.error('Failed to delete model:', err);
     }
@@ -174,20 +206,12 @@ export function UnifiedModelSection() {
         </div>
       )}
 
-      {/* Warning banner when list_downloaded_models fails but get_models succeeded */}
-      {listModelsError && !error && (
-        <div data-testid="models-list-warning" className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm text-yellow-700 dark:text-yellow-300">
-          Could not check downloaded models — Python or sidecar not available.
-        </div>
-      )}
-
       <div className="space-y-3">
         {models.map((model) => (
           <ModelCard
             key={model.id}
             model={model}
-            isDownloaded={downloadedModels.includes(model.id)}
-            isChecking={checking}
+            status={modelStatuses[model.id] ?? 'checking'}
             isDownloading={downloading === model.id}
             downloadProgress={downloading === model.id ? downloadProgress : 0}
             downloadError={downloadErrors[model.id] || null}

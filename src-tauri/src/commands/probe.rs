@@ -288,6 +288,11 @@ pub fn get_data_dir() -> PathBuf {
         .unwrap_or_else(|| std::env::temp_dir().join("stemgen-gui"))
 }
 
+/// Return the platform-specific models directory.
+pub fn get_models_dir() -> PathBuf {
+    get_data_dir().join("models")
+}
+
 /// Refresh the current process's PATH environment variable from the OS.
 ///
 /// On Windows, re-reads PATH from `cmd /C echo %PATH%` (which picks up
@@ -474,4 +479,12 @@ mod tests {
             "find_python should return None when no Python is in PATH"
         );
     }
+}
+
+#[test]
+fn test_get_models_dir_contains_expected_segments() {
+    let path = get_models_dir();
+    let path_str = path.to_string_lossy();
+    assert!(path_str.contains("stemgen-gui"));
+    assert!(path_str.contains("models"));
 }

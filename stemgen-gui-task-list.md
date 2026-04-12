@@ -1,770 +1,562 @@
-# Stemgen-GUI — Comprehensive Bug-Fix, Quality & Installer Enhancement Task List
+# Stemgen-GUI — Per-Model Async Checking, 3-Colour Status, & Quality Improvements
 
-*Generated: April 2026 · Repository: stemgen-gui · Branch target: `fix/wizard-models-bugs`*
-
-## Objective(s)
-
-This document captures every confirmed bug, latent defect, and quality gap discovered during a full code audit of the `stemgen-gui` repository (Tauri v2 + React/TypeScript frontend, Rust backend, Python sidecar). It translates those findings into a sequentially ordered, self-contained task list that AI coding agents can execute independently on a dedicated feature branch.
-
-Three categories of work are addressed:
-
-1. **Critical separation-pipeline bugs** — concrete defects that prevent the primary use case (processing an audio file) from succeeding on a fresh install.
-2. **Latent / secondary bugs** — issues that do not always surface immediately but will cause incorrect output or hard failures under specific conditions.
-3. **Project quality & test coverage improvements** — gaps in the CI pipeline, missing dependency checks, low coverage thresholds, and absent integration tests.
-
-### Root-Cause Summary of the Reported Error
-
-The user reported: *"I selected Demucs to process on CPU, but got: `ModuleNotFoundError: No module named 'soundfile'`."*
-
-The traceback shows that `run_bs_roformer()` was called even though the user believed they selected "Demucs". This has two overlapping causes:
-
-- `DEFAULT_PROCESSING_SETTINGS.model` is hardcoded to `'bs_roformer'` in `src/lib/constants.ts`, and `settingsStore.defaultModel` is also `'bs_roformer'`. On a fresh install the user's actual active model is `bs_roformer` unless they explicitly change it — but the UI label "Demucs" may have been visible in another context (e.g. a preset), causing confusion.
-- `run_bs_roformer()` is an incomplete stub that unconditionally calls `sys.exit(1)` after emitting an error. Before reaching the stub guard, it executes `import soundfile as sf` at the module top — but `soundfile` is never listed in `install_manifest.json`, so the Setup Wizard never installs it. The import therefore raises `ModuleNotFoundError` before the stub's own error message can even be emitted.
+*Generated: April 2026 · Repository: stemgen-gui*
 
 ---
 
-## Confirmed Bug Catalogue
+## Objective(s)
 
-The following bugs were verified directly in source code. They are ordered by severity and cross-referenced to tasks below.
+This document captures the results of a full code-audit of the `stemgen-gui` repository (Tauri v2, Rust backend, React/TypeScript frontend, Python sidecar), focusing on three areas:
+
+1. **Newly discovered bugs** — defects not covered by the existing `stemgen-gui-task-list.md` (BUG-09 through BUG-13), including a missing sidecar timeout, a path-resolution inconsistency between two model-directory helpers, and a structural type mismatch in `ModelCard`.
+2. **Project quality & testing gaps** — no test for `ModelCard` status states, no GPU-status-aware model selection coverage, and per-model check logic entirely absent from the test suite.
+3. **New feature: per-model async availability checking with three-colour status rows** — the current unified model view fires one batch call (`list_downloaded_models`) and blocks the entire panel behind a global spinner. The requested change replaces this with concurrent per-model checks, each showing an individual loading spinner, and presents each row in one of four states: **checking (spinner)**, **green (available, selectable)**, **orange (model present but GPU required and no GPU detected)**, or **red (not installed — one-click download)**. GPU-required models in orange state are not selectable while local inference is active.
+
+### High-Level Architecture of the New Feature
+
+```
+Mount
+ └─► setModelStatuses({all models → 'checking'})  ← view renders instantly, all rows show spinner
+ └─► for each modelId in parallel:
+       invoke('check_model_downloaded', {modelId})
+        ├─ true  → gpu_required && !gpuPresent → 'gpu-warning' (orange)
+        │          gpu_required &&  gpuPresent  → 'available'  (green)
+        │         !gpu_required                → 'available'  (green)
+        └─ false / error → 'unavailable'  (red, show Download button)
+```
+
+GPU presence is derived from the already-available `computeEnvironmentReadiness(environmentValidation).gpuStatus` selector, avoiding any new backend call.
+
+---
+
+## Project Quality & Testing Assessment
+
+### Architecture
+The codebase is well-structured for its scale: a clear separation between the Tauri Rust commands layer, the React/Zustand frontend, and the Python sidecar. CI/CD pipelines exist. Internationalization (en/de) is in place. A test suite covers the store, most lib utilities, and key UI components.
+
+### Test Coverage Gaps
+- `ModelCard.tsx` has no dedicated test file at all. Its visual states (spinner, green, orange, red), selection logic, and GPU-warning tooltip are completely untested.
+- `UnifiedModelSection.test.tsx` mocks `ModelCard` entirely, so integration of status props is never verified.
+- The Rust `check_model_downloaded` function has no unit or integration test for the timeout path.
+- GPU-aware selection (orange state → local inference disabled) has no test anywhere in the suite.
+- The `computeEnvironmentReadiness` store selector is tested in `environmentReadiness.test.ts` but not exercised from within any component test.
+
+### Newly Discovered Bugs
 
 | ID | Severity | File | Description |
 |----|----------|------|-------------|
-| BUG-01 | Critical | `install_manifest.json` | `soundfile` absent from installer manifest — Setup Wizard never installs it |
-| BUG-02 | High | `stemgen_sidecar.py` | `check_dependencies()` does not check `soundfile`, `librosa`, or `mutagen` |
-| BUG-03 | High | `constants.ts`, `settingsStore.ts` | Default model is `bs_roformer` — a non-functional stub |
-| BUG-04 | High | `stemgen_sidecar.py:210` | `run_bs_roformer()` imports `soundfile` bare before its own guard — crashes before emitting structured error |
-| BUG-05 | Medium | `stemgen_sidecar.py:178` | Sample rate hardcoded to `44100` instead of `model.samplerate` |
-| BUG-06 | Medium | `sidecar.rs:317` | `collect_stems()` hardcodes `["drums","bass","other","vocals"]` — breaks non-standard model stem names |
-| BUG-07 | High | `FileBrowser.tsx` | Drag-drop reads `event.paths` instead of `event.payload.paths` (Tauri v2 API change) |
-| BUG-08 | Low | `errorHints.ts` | `soundfile` missing from `DEPENDENCY_KEYWORDS` — Setup Wizard hint not shown for soundfile errors |
-
-### BUG-01 · `soundfile` missing from `install_manifest.json` (Critical)
-
-**File:** `src-tauri/resources/install_manifest.json`
-
-`run_bs_roformer()` (`stemgen_sidecar.py:210`) imports `soundfile` at function entry. The package `soundfile==0.12.1` appears in `python/requirements.txt` but has no entry in `install_manifest.json`. The Setup Wizard only installs what is listed in the manifest, so `soundfile` is never present after a GUI-guided install. Any invocation of `bs_roformer` crashes with `ModuleNotFoundError` before any user-facing error can be produced. Fixed by **TASK-001**.
-
-### BUG-02 · `check_dependencies()` incomplete — does not verify `soundfile`, `librosa`, or `mutagen` (High)
-
-**File:** `python/stemgen_sidecar.py`, `def check_dependencies()`
-
-The pre-flight check only verifies `torch`, `torchaudio`, and `demucs`. It does not check `soundfile` (required by `bs_roformer`), `librosa`, or `mutagen`. Missing packages only produce an error at the point of use, deep inside a model runner, rather than in a clear preflight message. Fixed by **TASK-003**.
-
-### BUG-03 · Default model is `'bs_roformer'` — a broken stub (High)
-
-**Files:** `src/lib/constants.ts` (`DEFAULT_PROCESSING_SETTINGS.model`), `src/stores/settingsStore.ts` (`defaultModel`)
-
-Both the processing defaults and the settings store initialise the active model to `'bs_roformer'`. `run_bs_roformer()` is a known-broken stub (it always calls `sys.exit(1)`) and requires packages the installer does not provide. A new user who has never opened Settings will always hit the broken path. Fixed by **TASK-004**.
-
-### BUG-04 · `run_bs_roformer()` stub imports `soundfile` before its own guard (High)
-
-**File:** `python/stemgen_sidecar.py`, `def run_bs_roformer()`
-
-The function begins with `import soundfile as sf` at line 210. This import executes before the `try/except ImportError` block that guards the `bs_roformer` package import. Because `soundfile` is not installed (BUG-01), Python raises `ModuleNotFoundError` at the import line and the process terminates with an unformatted traceback to stderr rather than a structured JSON error on stdout. The Rust layer surfaces this traceback as the error message shown to the user. Fixed by **TASK-002**.
-
-### BUG-05 · Hardcoded sample rate `44100` Hz in `_run_demucs_model()` (Medium)
-
-**File:** `python/stemgen_sidecar.py:178`
-
-Audio is loaded at `model.samplerate` (correct), but stems are saved with `torchaudio.save(..., 44100)` (hardcoded). If a future model uses a different native sample rate the output WAV files will be mislabelled. `htdemucs` happens to use 44100 Hz so the bug is latent today, but it will silently produce incorrect files when any other rate is used. Fixed by **TASK-005**.
-
-### BUG-06 · `collect_stems()` hardcodes stem names in Rust (Medium)
-
-**File:** `src-tauri/src/commands/sidecar.rs`, `fn collect_stems()`
-
-The Rust stem collector looks for exactly `["drums", "bass", "other", "vocals"]`. The Python sidecar derives stem names from `model.sources` (which may vary). If a model produces stems with different names the Rust layer will not find any files and will return "No stem files were generated". Fixed by **TASK-008**.
-
-### BUG-07 · Drag-and-drop payload access uses wrong nesting (High)
-
-**File:** `src/components/file-browser/FileBrowser.tsx`
-
-The `tauri://drag-drop` handler is typed as `(event: DragDropPayload)` and accesses `event.paths` directly. In Tauri v2 the callback receives `Event<T>` and the actual payload is at `event.payload.paths`. `event.paths` is always `undefined` so no dragged files are ever processed. Fixed by **TASK-006**.
-
-### BUG-08 · `soundfile` keyword missing from `errorHints` `DEPENDENCY_KEYWORDS` (Low)
-
-**File:** `src/lib/errorHints.ts`
-
-The `DEPENDENCY_KEYWORDS` array does not include `'soundfile'`. If the `ModuleNotFoundError` for `soundfile` reaches the frontend (as it does today), the "Open Setup Wizard" hint is not appended to the error message because the keyword match fails. Fixed by **TASK-009**.
+| BUG-09 | High | `src-tauri/src/commands/models.rs` | `check_model_downloaded` has **no timeout** — can hang indefinitely if the Python sidecar stalls. `list_downloaded_models` has a 10 s timeout; the single-model variant must match it. |
+| BUG-10 | Medium | `models.rs` vs `mod.rs` | Two independent path helpers: `get_models_dir()` in `models.rs` uses `ProjectDirs::from("dev","stemgen","stemgen-gui").data_dir()` while `get_model_directory()` in `mod.rs` uses `get_data_dir()` (from `probe.rs`). If these resolve to different directories on any platform, downloaded models will not be found by availability checks. |
+| BUG-11 | Low | `src/components/settings/ModelCard.tsx` | `AIModel` is imported from `@/lib/types` but `ModelCardData.id` is typed as `string`, not `AIModel`. The cast `model.id as AIModel` papers over the mismatch without compile-time safety. |
+| BUG-12 | Medium | `UnifiedModelSection.tsx` / `appStore.ts` | When `environmentValidation` has not yet been loaded (store initialises to `null`), the `downloadModel` guard silently falls into the error branch and shows a misleading "Sidecar missing" error instead of "environment not yet checked". |
+| BUG-13 | High | `UnifiedModelSection.tsx` | The `isChecking` prop passed to every `ModelCard` is a **single shared boolean** — once any check is complete the prop flips globally. The new per-model feature requires an independent per-row checking state. |
 
 ---
 
 ## Step-by-Step Implementation Task List for AI Agents
 
-Each task must be committed separately with a descriptive commit message referencing the Task ID. Complete tasks in the order listed — dependencies are explicit.
+In the following section there is a detailed, sequentially ordered task list that an AI coding agent can follow to implement. Each task must include all required fields.
 
 ---
 
-### PHASE 1 — Critical Bug Fixes (separation pipeline)
+### Phase 0 — Backend: Bug Fixes & Foundation
 
 ---
 
-- [x] **TASK-001 — Add `soundfile` to `install_manifest.json` (BUG-01)**
+- [x] **TASK-001** — Fix path-resolution inconsistency between `get_models_dir()` and `get_model_directory()`
 
-  **Description:** Add a new top-level dependency entry `"soundfile"` to `src-tauri/resources/install_manifest.json` following the same schema as the existing `"demucs"` entry. The entry must include platform-specific `pip install` commands for `windows`, `macos`, and `linux`. `detect_command` should be `"python"` (Windows) / `"python3"` (macOS/Linux); `detect_args` should be `["-c", "import soundfile"]`. `install_args` must be `["-m", "pip", "install", "--user", "soundfile"]`. Place the entry after `"demucs"` and before any optional entries.
+  **Description**: In `src-tauri/src/commands/models.rs` the helper `get_models_dir()` computes the models directory via `directories::ProjectDirs::from("dev", "stemgen", "stemgen-gui").data_dir().join("models")`. In `src-tauri/src/commands/mod.rs` the helper `get_model_directory()` computes it via `get_data_dir().join("models")` where `get_data_dir()` is defined in `probe.rs`. Audit both helpers to confirm whether they produce the same absolute path on macOS, Linux, and Windows. If they differ, consolidate them into a single authoritative helper (preferred location: `probe.rs`, exported as `pub fn get_models_dir() -> PathBuf`). Update every call-site in `models.rs`, `mod.rs`, and any other file that computes a model path independently. Add a unit test asserting the path contains both `"stemgen-gui"` and `"models"` segments.
 
-  **Inputs:** `src-tauri/resources/install_manifest.json`
+  **Inputs**: `src-tauri/src/commands/models.rs`, `src-tauri/src/commands/mod.rs`, `src-tauri/src/commands/probe.rs`
 
-  **Outputs / Deliverables:** Updated `install_manifest.json` with a `"soundfile"` dependency entry for all three platforms.
+  **Outputs / deliverables**: A single `pub fn get_models_dir() -> PathBuf` in `probe.rs`; all callers updated; one `#[test]` confirming the path.
 
-  **Acceptance Criteria:**
-  1. JSON is valid (`python -m json.tool install_manifest.json` exits 0).
-  2. The entry is present under `dependencies.soundfile` with non-empty `detect_command` and `install_command` for `windows`, `macos`, and `linux`.
-  3. Existing entries are unchanged.
+  **Acceptance criteria**:
+  - `cargo test` passes with no new failures.
+  - `grep -rn "data_dir.*models\|join.*models"` in `src-tauri/src` shows exactly one definition and N call-sites that all call the same function.
+  - On macOS, the resolved path includes `Application Support/dev.stemgen.stemgen-gui/models` (or equivalent per platform spec).
 
-  **Dependencies:** None.
+  **Dependencies**: None.
 
-  **Estimated Complexity:** Low.
+  **Estimated complexity**: Low.
 
-  **Privilege / Tooling Requirements:** None.
-
----
-
-- [x] **TASK-002 — Fix `run_bs_roformer()` — move `soundfile` import inside try block and remove dead stub (BUG-04)**
-
-  **Description:** In `python/stemgen_sidecar.py`, inside `run_bs_roformer()`:
-  1. Remove the bare `import soundfile as sf` line from the top of the function body — it is dead code (`sf` is never used in the current stub).
-  2. Wrap the `from bs_roformer import BSRoformer` import inside the existing `try/except ImportError` block.
-  3. The function currently always calls `sys.exit(1)` after emitting a "model weights not available" error — this is intentional for now (`bs_roformer` is not yet fully implemented). Ensure the error JSON emitted includes a clear actionable message: `"BS-RoFormer is not yet supported for local inference. Please choose Demucs, HT-Demucs, or HT-Demucs FT, or use a cloud provider."`
-  4. Add the `model_id` field to the error JSON: `{"status": "error", "model_id": "bs_roformer", "error": "..."}`.
-
-  **Inputs:** `python/stemgen_sidecar.py`
-
-  **Outputs / Deliverables:** Updated `stemgen_sidecar.py` where `run_bs_roformer()` no longer imports `soundfile` at module level and emits a clear, structured JSON error before exiting.
-
-  **Acceptance Criteria:**
-  1. Running `python stemgen_sidecar.py --model bs_roformer --input /tmp/x.wav --output /tmp/out --device cpu` (with `bs_roformer` not installed) prints a valid JSON line with `status="error"` to stdout and exits non-zero — no traceback on stderr.
-  2. `import stemgen_sidecar` succeeds even when `soundfile` is not installed.
-  3. Existing demucs tests still pass.
-
-  **Dependencies:** None.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** None.
+  **Privilege / tooling requirements**: None beyond the existing Rust toolchain.
 
 ---
 
-- [x] **TASK-003 — Expand `check_dependencies()` to cover all required packages per model (BUG-02)**
+- [x] **TASK-002** — Add 10-second timeout to `check_model_downloaded`
 
-  **Description:** In `python/stemgen_sidecar.py`, update `check_dependencies(model: str = "demucs")` to accept an optional `model` parameter and verify only the packages required by the requested model:
-  - `demucs` / `htdemucs` / `htdemucs_ft`: `torch`, `torchaudio`, `demucs`
-  - `bs_roformer`: `torch`, `torchaudio`, `bs_roformer`, `soundfile`
+  **Description**: `check_model_downloaded` in `src-tauri/src/commands/models.rs` spawns a Python sidecar process with `--check-model <model_id>` but wraps it in no timeout. If the sidecar hangs, the Tauri command hangs indefinitely, blocking the frontend spinner for that model row forever. Wrap the `tokio::process::Command::output()` call in `tokio::time::timeout(Duration::from_secs(10), ...)` mirroring the pattern already used in `list_downloaded_models`. If the timeout elapses, return `Err("check-model timed out after 10 s".to_string())`. Add a unit test (mocking or using a sleep subprocess) that verifies the timeout error string is returned within ≤ 12 s.
 
-  The function should continue to return `bool` and emit a structured JSON error listing all missing packages with a corrected install hint specific to the model. Call `check_dependencies(args.model)` in `main()` before `run_separation()`. Update the install hint string to include the correct `pip` package names for each missing item.
+  **Inputs**: `src-tauri/src/commands/models.rs`
 
-  **Inputs:** `python/stemgen_sidecar.py`
+  **Outputs / deliverables**: Updated `check_model_downloaded` with timeout; new `#[test]` for timeout path (can use `cfg(not(windows))` guard if the subprocess approach differs).
 
-  **Outputs / Deliverables:** Updated `stemgen_sidecar.py` with an improved `check_dependencies()` function.
+  **Acceptance criteria**:
+  - `cargo test` passes.
+  - The function signature, return type, and `#[tauri::command]` attribute are unchanged.
+  - Manual test: if Python is pointed at a script that sleeps 30 s, the command returns an error in ≈ 10 s.
 
-  **Acceptance Criteria:**
-  1. When `soundfile` is absent and `model=bs_roformer`, the function returns `False` and emits JSON with `error` containing `"soundfile"` and a `pip install` hint.
-  2. When only demucs packages are installed and `model=demucs`, the function returns `True`.
-  3. Existing `TestCheckDependencies` tests still pass.
-  4. New unit tests (added in TASK-012) cover the model-specific paths.
+  **Dependencies**: TASK-001 (so paths are consistent before adjusting the command).
 
-  **Dependencies:** TASK-002.
+  **Estimated complexity**: Low.
 
-  **Estimated Complexity:** Medium.
-
-  **Privilege / Tooling Requirements:** None.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-004 — Change default model from `bs_roformer` to `demucs` (BUG-03)**
+- [x] **TASK-003** — Expose GPU detection status as a lightweight Tauri query command
 
-  **Description:** In two files:
-  1. `src/lib/constants.ts` — change `DEFAULT_PROCESSING_SETTINGS.model` from `'bs_roformer'` to `'demucs'`.
-  2. `src/stores/settingsStore.ts` — change the initial `defaultModel` value from `'bs_roformer'` to `'demucs'`.
+  **Description**: The frontend needs to know whether a GPU (CUDA or MPS) is available without waiting for the full `validate_environment` call, which can be slow. Add a new Tauri command `get_gpu_status() -> Result<GpuStatus, String>` that runs only the GPU-probing portion of `validate_environment` (i.e., calls `probe_pytorch_device()` and `probe_gpu_name()`). Define the return struct:
 
-  Verify that no other file hardcodes a model default of `'bs_roformer'` (search the entire `src/` tree). Update any test snapshots that assert the old default.
+  ```rust
+  #[derive(Debug, Clone, Serialize)]
+  #[serde(rename_all = "camelCase")]
+  pub struct GpuStatus {
+      pub gpu_present: bool,         // true if CUDA or MPS
+      pub gpu_device: Option<String>, // "cuda", "mps", or None
+      pub gpu_name:   Option<String>, // nvidia-smi name if available
+  }
+  ```
 
-  **Inputs:** `src/lib/constants.ts`, `src/stores/settingsStore.ts`, `src/**/__tests__/**`
+  Register the command in `src-tauri/src/lib.rs`. Add unit tests for the struct serialisation. If `environmentValidation` is already populated in the frontend store (from a prior `validate_environment` call) the frontend may read `computeEnvironmentReadiness` from the store instead of calling this command — the command exists as a fallback for when the store has not yet been populated.
 
-  **Outputs / Deliverables:** Updated `constants.ts` and `settingsStore.ts`. Updated or re-generated test snapshots if applicable.
+  **Inputs**: `src-tauri/src/commands/probe.rs`, `src-tauri/src/commands/mod.rs`, `src-tauri/src/lib.rs`
 
-  **Acceptance Criteria:**
-  1. `grep -r "bs_roformer" src/lib/constants.ts` returns no lines containing `defaultModel` or `DEFAULT_PROCESSING_SETTINGS`.
-  2. `npm run test:unit` passes with zero failures.
-  3. A fresh Zustand store instance reports `defaultModel === "demucs"` when inspected in a unit test.
+  **Outputs / deliverables**: `GpuStatus` struct; `get_gpu_status` command; registered in `lib.rs`; serialisation unit test.
 
-  **Dependencies:** None.
+  **Acceptance criteria**:
+  - `cargo test` passes.
+  - Command appears in `src-tauri/gen/schemas/` after `cargo tauri build` or schema generation.
+  - Returns `{ gpuPresent: false, gpuDevice: null, gpuName: null }` on a machine without a GPU (or with CUDA unavailable).
 
-  **Estimated Complexity:** Low.
+  **Dependencies**: TASK-001.
 
-  **Privilege / Tooling Requirements:** None.
+  **Estimated complexity**: Low–Medium.
 
----
-
-- [x] **TASK-005 — Fix hardcoded sample rate in `_run_demucs_model()` (BUG-05)**
-
-  **Description:** In `python/stemgen_sidecar.py`, inside `_run_demucs_model()`, change the `torchaudio.save()` call on line ~178 from the hardcoded rate `44100` to `model.samplerate`. The variable `model` is already in scope at that point. Verify that `model.samplerate` is also used when loading the audio (it already is, on the `AudioFile.read()` call) so that the save rate matches the load rate.
-
-  **Inputs:** `python/stemgen_sidecar.py`
-
-  **Outputs / Deliverables:** Updated `stemgen_sidecar.py` where saved WAV files use `model.samplerate`.
-
-  **Acceptance Criteria:**
-  1. `grep "44100" python/stemgen_sidecar.py` returns zero matches.
-  2. A test (added in TASK-012) mocks `model.samplerate = 48000` and asserts that `torchaudio.save` is called with `48000`.
-  3. Existing demucs tests pass.
-
-  **Dependencies:** None.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** None.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-006 — Fix drag-and-drop payload nesting in `FileBrowser.tsx` (BUG-07)**
-
-  **Description:** In `src/components/file-browser/FileBrowser.tsx`:
-  1. Import the Tauri `Event<T>` wrapper type from `@tauri-apps/api/event` alongside the existing `listen` import.
-  2. Update the `tauri://drag-drop` listener callback type from `(event: DragDropPayload)` to `(event: Event<DragDropPayload>)`.
-  3. Update all accesses of `event.paths` inside the handler body to `event.payload.paths`.
-  4. Confirm that `tauri://drag-enter` and `tauri://drag-leave` handlers do not access payload (they should not need changing).
-
-  **Inputs:** `src/components/file-browser/FileBrowser.tsx`
-
-  **Outputs / Deliverables:** Updated `FileBrowser.tsx` where drag-drop events correctly read `event.payload.paths`.
-
-  **Acceptance Criteria:**
-  1. TypeScript compilation (`npm run check`) passes with zero errors.
-  2. The unit test added in TASK-014 simulates a drag-drop event and asserts that the file path inside `payload.paths` is processed.
-
-  **Dependencies:** None.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** None.
+### Phase 1 — Frontend: Type & Store Changes
 
 ---
 
-- [x] **TASK-007 — Add `soundfile` to `errorHints` `DEPENDENCY_KEYWORDS` (BUG-08)**
+- [x] **TASK-004** — Define `ModelCheckStatus` union type and update `ModelCardData`
 
-  **Description:** In `src/lib/errorHints.ts`, add the string `'soundfile'` to the `DEPENDENCY_KEYWORDS` array so that `ModuleNotFoundError: No module named 'soundfile'` is matched and the "Open Setup Wizard" hint is appended to the error message displayed in the GUI.
+  **Description**: Add the following to `src/lib/types.ts`:
 
-  **Inputs:** `src/lib/errorHints.ts`
+  ```ts
+  /** Per-row availability state for the unified model panel. */
+  export type ModelCheckStatus =
+    | 'checking'      // sidecar call in-flight — show spinner
+    | 'available'     // model installed and selectable
+    | 'gpu-warning'   // model installed but gpu_required && no GPU detected
+    | 'unavailable';  // model not installed — show Download button
+  ```
 
-  **Outputs / Deliverables:** Updated `errorHints.ts` with `soundfile` in `DEPENDENCY_KEYWORDS`.
+  Update `ModelCardData` (in `src/components/settings/ModelCard.tsx`) to replace the separate `isDownloaded: boolean` and `isChecking: boolean` props with a single `status: ModelCheckStatus` prop. Also fix BUG-11: change `ModelCardData.id` from `string` to `AIModel` so the cast in `handleSelect` is compile-time safe. Update all callers of `ModelCard` to pass `status` instead of the two boolean props.
 
-  **Acceptance Criteria:**
-  1. `formatJobError("ModuleNotFoundError: No module named 'soundfile'")` returns a string ending with the Setup Wizard hint.
-  2. Existing `errorHints` tests still pass.
-  3. A new test in `src/lib/__tests__/errorHints.test.ts` asserts the `soundfile` match explicitly.
+  **Inputs**: `src/lib/types.ts`, `src/components/settings/ModelCard.tsx`, `src/components/settings/UnifiedModelSection.tsx`
 
-  **Dependencies:** None.
+  **Outputs / deliverables**: `ModelCheckStatus` type in `types.ts`; updated `ModelCardData` and `ModelCardProps` interfaces; no runtime behaviour change yet.
 
-  **Estimated Complexity:** Low.
+  **Acceptance criteria**:
+  - `tsc --noEmit` passes with zero new errors.
+  - `vitest run` passes (existing tests may need minor mock updates — see TASK-009).
+  - `ModelCardData.id` is typed as `AIModel`.
 
-  **Privilege / Tooling Requirements:** None.
+  **Dependencies**: None (pure type change).
 
----
+  **Estimated complexity**: Low.
 
-### PHASE 2 — Secondary Bug Fixes
-
----
-
-- [x] **TASK-008 — Fix `collect_stems()` hardcoded stem names in Rust (BUG-06)**
-
-  **Description:** In `src-tauri/src/commands/sidecar.rs`, `fn collect_stems()`:
-  1. Replace the static array `["drums", "bass", "other", "vocals"]` with a directory scan: iterate all `.wav` files in `output_dir`, filter for files whose name matches `{source_stem}_{anything}.wav`, and extract the stem name from the suffix.
-  2. The function should still return an error if zero matching files are found.
-  3. Preserve the existing test `test_collect_stems_returns_only_existing_files` (update it if the interface changes).
-
-  This makes Rust tolerant of models that produce stems with different names (e.g. `"guitar"`, `"piano"`).
-
-  **Inputs:** `src-tauri/src/commands/sidecar.rs`
-
-  **Outputs / Deliverables:** Updated `sidecar.rs` with a dynamic stem collector.
-
-  **Acceptance Criteria:**
-  1. `cargo test` passes with all existing sidecar tests.
-  2. A new Rust unit test creates output files named `track_guitar.wav` and `track_piano.wav` in a temp dir and asserts that `collect_stems` returns two results with `stem_type` `"guitar"` and `"piano"`.
-  3. A test with zero matching files still returns an `Err`.
-
-  **Dependencies:** None.
-
-  **Estimated Complexity:** Medium.
-
-  **Privilege / Tooling Requirements:** Requires Rust toolchain (`cargo`).
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-009 — Add `librosa` and `mutagen` to `install_manifest.json`**
+- [x] **TASK-005** — Add `modelCheckStatuses` state to `UnifiedModelSection` (local state, not store)
 
-  **Description:** `librosa==0.10.2.post1` and `mutagen==1.47.0` appear in `python/requirements.txt` but are absent from `install_manifest.json`. Although neither is imported by the current model runners at startup, they are declared runtime dependencies and should be installable via the Setup Wizard to avoid future breakage. Add entries for both packages following the same schema as the `soundfile` entry added in TASK-001.
+  **Description**: In `UnifiedModelSection.tsx`, replace the current `checking: boolean` state with a per-model status map:
 
-  **Inputs:** `src-tauri/resources/install_manifest.json`
+  ```ts
+  const [modelStatuses, setModelStatuses] =
+    useState<Record<string, ModelCheckStatus>>({});
+  ```
 
-  **Outputs / Deliverables:** Updated `install_manifest.json` with `librosa` and `mutagen` entries.
+  On mount (and on `loadModels` refresh), after `get_models` returns the model list, initialise all entries to `'checking'` in a single `setModelStatuses` call — this causes the view to render immediately with all rows in the spinner state. Remove the old `loading` boolean gate that prevented the panel from rendering at all while `list_downloaded_models` was in-flight (replace with the per-row spinner pattern). Keep the full-panel spinner only for the brief window before `get_models` itself returns (i.e. before we know the model list).
 
-  **Acceptance Criteria:**
-  1. JSON validates (`python -m json.tool` exits 0).
-  2. Both entries present under `dependencies.librosa` and `dependencies.mutagen` with correct `detect_args` (`["-c", "import librosa"]` and `["-c", "import mutagen"]`) for all three platforms.
+  **Inputs**: `src/components/settings/UnifiedModelSection.tsx`, `src/lib/types.ts`
 
-  **Dependencies:** TASK-001.
+  **Outputs / deliverables**: Updated `UnifiedModelSection` state shape; `loading` replaced by per-row `modelStatuses`.
 
-  **Estimated Complexity:** Low.
+  **Acceptance criteria**:
+  - After the change, if `get_models` returns in 50 ms and `check_model_downloaded` takes 3 s per model, the panel becomes visible in ≈ 50 ms with all rows showing spinners.
+  - `vitest run` passes (tests updated in TASK-009).
 
-  **Privilege / Tooling Requirements:** None.
+  **Dependencies**: TASK-004.
 
----
+  **Estimated complexity**: Medium.
 
-- [x] **TASK-010 — Improve separation error surfacing: propagate structured JSON errors from Python to the GUI**
-
-  **Description:** When the Python sidecar exits non-zero and has already emitted a structured JSON error line to stdout, the Rust layer currently ignores that and surfaces raw stderr text instead. In `src-tauri/src/commands/sidecar.rs`, update the error branch of `run_separation()` to:
-  1. Check if the `stderr_tail` is a valid JSON object with an `"error"` key — if so, extract and use that value as the primary message.
-  2. Otherwise fall back to the existing raw `stderr_tail` surfacing.
-
-  This ensures that structured errors from the Python sidecar are displayed cleanly in the GUI rather than as raw tracebacks.
-
-  **Inputs:** `src-tauri/src/commands/sidecar.rs`
-
-  **Outputs / Deliverables:** Updated `sidecar.rs` with structured-JSON error extraction.
-
-  **Acceptance Criteria:**
-  1. `cargo test` passes.
-  2. A unit test (Rust) provides a fake `stderr_tail` of `'{"status":"error","error":"my error"}'` and asserts the returned `Err` string is `"my error"` (not the raw JSON).
-
-  **Dependencies:** TASK-002.
-
-  **Estimated Complexity:** Medium.
-
-  **Privilege / Tooling Requirements:** Requires Rust toolchain.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-011 — Validate `--check-model` for `bs_roformer` in Python sidecar**
+- [x] **TASK-006** — Implement parallel per-model availability checks in `UnifiedModelSection`
 
-  **Description:** The `--check-model` mode (used by the GUI to check if a model is cached locally) calls `demucs.pretrained.get_model()` — this path is only valid for demucs-family models. For `bs_roformer`, it should immediately return `{"available": false, "model_id": "bs_roformer", "reason": "not_implemented"}`. In the `--check-model` handler in `main()`, add an early branch: if `args.check_model.lower() in ("bs_roformer", "bs-roformer")`, print the not-implemented JSON and `sys.exit(0)`.
+  **Description**: After `get_models` returns and `modelStatuses` is initialised to `{all → 'checking'}`, fire one `invoke('check_model_downloaded', { modelId })` call per model concurrently (do **not** `await` them sequentially). For each, on settlement:
 
-  **Inputs:** `python/stemgen_sidecar.py`
+  1. Read GPU presence from the Zustand store: `const { gpuStatus } = computeEnvironmentReadiness(useAppStore.getState().environmentValidation)`. If `environmentValidation` is still `null` (environment check not yet run), fall back to `invoke('get_gpu_status')` (TASK-003) and cache the result in a local ref.
+  2. Determine `ModelCheckStatus`:
+     - `check_model_downloaded` threw or returned `false` → `'unavailable'`
+     - returned `true` AND `model.gpu_required` AND `gpuStatus === 'cpu'` → `'gpu-warning'`
+     - returned `true` (all other cases) → `'available'`
+  3. Call `setModelStatuses(prev => ({ ...prev, [modelId]: newStatus }))` so each row updates independently as its check completes.
 
-  **Outputs / Deliverables:** Updated `stemgen_sidecar.py` with `bs_roformer` guard in `--check-model` path.
+  Also keep the `downloadedModels` array in the `appStore` in sync: call `addDownloadedModel` when status becomes `'available'` or `'gpu-warning'`, and ensure `removeDownloadedModel` is still called from `deleteModel`.
 
-  **Acceptance Criteria:**
-  1. Running `python stemgen_sidecar.py --check-model bs_roformer` prints valid JSON with `available=false` and exits `0`.
-  2. Running `python stemgen_sidecar.py --check-model demucs` still calls `get_model()` as before.
-  3. Unit test added in TASK-012 covers this branch.
+  Remove the call to `list_downloaded_models` entirely (it is superseded by the per-model checks). Remove the `listModelsError` state and its warning banner (the per-row status conveys the same information). Remove the `isChecking` prop from `ModelCard` calls (replaced by `status`).
 
-  **Dependencies:** TASK-002.
+  **Inputs**: `src/components/settings/UnifiedModelSection.tsx`, `src/stores/appStore.ts`, `src/lib/types.ts`
 
-  **Estimated Complexity:** Low.
+  **Outputs / deliverables**: Updated `loadModels` / mount logic; `list_downloaded_models` call removed; per-model check loop added.
 
-  **Privilege / Tooling Requirements:** None.
+  **Acceptance criteria**:
+  - Opening the model panel shows all rows with spinners immediately.
+  - Each row transitions independently to its final colour as its check resolves.
+  - No row stays in `'checking'` state after 12 s (timeout from TASK-002 propagates).
+  - `vitest run` passes (tests updated in TASK-009).
 
----
+  **Dependencies**: TASK-002, TASK-003, TASK-004, TASK-005.
 
-### PHASE 3 — Test Coverage Improvements (Python)
+  **Estimated complexity**: Medium–High.
 
----
-
-- [x] **TASK-012 — Add Python unit tests for all bug-fix paths in `stemgen_sidecar.py`**
-
-  **Description:** In `python/tests/test_sidecar_cli.py`, add new test classes / methods covering:
-  - (a) `run_bs_roformer` emits structured JSON error when `bs_roformer` package is absent (no traceback to stderr).
-  - (b) `run_bs_roformer` emits structured JSON error when `bs_roformer` is present but weights unavailable.
-  - (c) `check_dependencies(model="bs_roformer")` returns `False` and emits JSON containing `"soundfile"` when `soundfile` is missing.
-  - (d) `check_dependencies(model="demucs")` returns `True` when `torch`, `torchaudio`, `demucs` are present.
-  - (e) `_run_demucs_model()` calls `torchaudio.save` with `model.samplerate`, not hardcoded `44100` (use `monkeypatch`/`MagicMock`).
-  - (f) `--check-model bs_roformer` outputs JSON with `available=false` and exits `0`.
-  - (g) `main()` with `model=demucs` and all deps missing emits error JSON referencing `"demucs"`, not `"bs_roformer"`.
-
-  All new tests must be marked `@pytest.mark.unit` (not integration) so they run in CI without GPU.
-
-  **Inputs:** `python/tests/test_sidecar_cli.py`, `python/stemgen_sidecar.py`
-
-  **Outputs / Deliverables:** Extended test file with 7+ new test methods.
-
-  **Acceptance Criteria:** `cd python && pytest tests/ -m "not integration" -v` exits `0` with all new tests collected and passing.
-
-  **Dependencies:** TASK-003, TASK-004, TASK-005, TASK-011.
-
-  **Estimated Complexity:** Medium.
-
-  **Privilege / Tooling Requirements:** None.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-013 — Add Python integration smoke test for demucs CPU separation**
-
-  **Description:** In `python/tests/test_sidecar_cli.py` (or a new file `python/tests/test_integration.py`), add one integration test marked `@pytest.mark.integration` that:
-  1. Invokes the sidecar as a subprocess: `python stemgen_sidecar.py --model demucs --input tests/fixtures/test-short.wav --output /tmp/stemgen_test_out --device cpu`.
-  2. Asserts that the process exits with code `0`.
-  3. Asserts that four WAV files (`test-short_drums.wav`, `test-short_bass.wav`, `test-short_other.wav`, `test-short_vocals.wav`) exist in the output directory.
-  4. Asserts that each WAV file is `> 0` bytes.
-
-  This test is excluded from the standard CI run (which uses `-m "not integration"`) and is intended for local verification and release gating.
-
-  **Inputs:** `python/stemgen_sidecar.py`, `tests/fixtures/audio/test-short.wav` (already exists in repo)
-
-  **Outputs / Deliverables:** New integration test file or extended `test_sidecar_cli.py`.
-
-  **Acceptance Criteria:** Running `pytest -m integration` in an environment with `demucs` + `torch` installed exits `0` and all assertions pass.
-
-  **Dependencies:** TASK-005.
-
-  **Estimated Complexity:** Medium.
-
-  **Privilege / Tooling Requirements:** Requires `demucs`, `torch`, `torchaudio` installed in the test environment.
+### Phase 2 — Frontend: `ModelCard` Visual & Interaction Changes
 
 ---
 
-### PHASE 4 — Test Coverage Improvements (Frontend TypeScript)
+- [ ] **TASK-007** — Rework `ModelCard` visual rendering for four states
+
+  **Description**: Update `src/components/settings/ModelCard.tsx` to consume `status: ModelCheckStatus` (from TASK-004) instead of `isDownloaded` / `isChecking`. Implement the four visual states:
+
+  **Checking (spinner)**:
+  - Left icon area: animated spinner (CSS `animate-spin`, `rounded-full border-2 border-primary border-t-transparent`).
+  - Row border: `border-muted`.
+  - No action button rendered.
+  - `data-testid={`model-card-checking-${model.id}`}`.
+
+  **Available — green**:
+  - Left icon: `Check` icon in a green circle (`bg-green-500/20`, `text-green-500`); if this model is the currently selected default, use primary colour instead.
+  - Row border: `border-green-500/30 bg-green-500/5` (or `border-primary bg-primary/5` if selected).
+  - Action buttons: "Select" + Trash (existing behaviour).
+  - `data-testid={`model-card-available-${model.id}`}`.
+
+  **GPU-Warning — orange**:
+  - Left icon: `AlertTriangle` from `lucide-react` in an orange circle (`bg-orange-500/20`, `text-orange-500`).
+  - Row border: `border-orange-500/30 bg-orange-500/5`.
+  - Below the description, add a small inline notice: *"GPU required — will use CPU (slower) or enable a cloud provider."*
+  - Action buttons: "Select" is shown but clicking it when `activeProvider === 'local'` opens a confirmation/tooltip (see TASK-008); Trash is shown.
+  - `data-testid={`model-card-gpu-warning-${model.id}`}`.
+
+  **Unavailable — red**:
+  - Left icon: `X` or `Download` icon in a red circle (`bg-red-500/20`, `text-red-500`).
+  - Row border: `border-red-500/30 bg-red-500/5` (or `border-muted` if neutral styling is preferred — match existing "not downloaded" style adjusted to red tint).
+  - Action button: one-click "Download" (existing `onDownload` callback).
+  - `data-testid={`model-card-unavailable-${model.id}`}`.
+
+  Remove the `isChecking`-driven skeleton/pulse block entirely (replaced by the spinner state above). The skeleton was a full-row replacement; the spinner is just the icon area while info is rendered normally.
+
+  **Inputs**: `src/components/settings/ModelCard.tsx`, `src/stores/settingsStore.ts` (for `activeProvider`).
+
+  **Outputs / deliverables**: Updated `ModelCard` component; all four `data-testid` variants present.
+
+  **Acceptance criteria**:
+  - Storybook (or vitest snapshot) shows the four distinct states.
+  - `tsc --noEmit` passes.
+  - No `isChecking` / `isDownloaded` prop references remain in `ModelCard`.
+
+  **Dependencies**: TASK-004, TASK-006.
+
+  **Estimated complexity**: Medium.
+
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-014 — Add frontend unit test for drag-and-drop payload fix**
+- [ ] **TASK-008** — GPU-warning selection guard: prevent selecting a GPU model for local inference without a GPU
 
-  **Description:** In `src/components/file-browser/__tests__/` (create directory if absent), add a new test file `FileBrowser.dragdrop.test.tsx`. The test should:
-  1. Mock `@tauri-apps/api/event` so that `listen()` captures the registered callback.
-  2. Trigger the callback with an event object of shape `{ payload: { paths: ["/tmp/test.wav"] } }`.
-  3. Assert that the store's `addFile` (or equivalent) action was called with `"/tmp/test.wav"`.
-  4. Separately trigger with `{ paths: ["/tmp/wrong.wav"] }` (no `payload` nesting) and assert that no file was added, confirming the old broken path is not re-introduced.
+  **Description**: In `ModelCard`, when the user clicks "Select" on an orange (`'gpu-warning'`) row and `activeProvider === 'local'`, do **not** silently call `setDefaultModel`. Instead show an inline warning panel directly below the "Select" button:
 
-  **Inputs:** `src/components/file-browser/FileBrowser.tsx`, `src/stores/appStore.ts`
+  ```
+  ⚠ No GPU detected. This model will run on CPU and may be very slow.
+     [Select anyway]  [Cancel]
+  ```
 
-  **Outputs / Deliverables:** New test file `src/components/file-browser/__tests__/FileBrowser.dragdrop.test.tsx`.
+  Implement this as a local `useState<boolean>` toggle (`showGpuConfirm`). "Select anyway" calls `setDefaultModel` and hides the panel. "Cancel" hides the panel without changing the model. If `activeProvider !== 'local'` (cloud inference is active), allow selection without the confirmation (the GPU is not needed for cloud runs).
 
-  **Acceptance Criteria:** `npm run test:unit` passes with the new test collected and passing.
+  Add `data-testid="gpu-confirm-dialog"`, `data-testid="gpu-confirm-select"`, and `data-testid="gpu-confirm-cancel"` to the confirmation elements.
 
-  **Dependencies:** TASK-006.
+  **Inputs**: `src/components/settings/ModelCard.tsx`, `src/stores/settingsStore.ts`
 
-  **Estimated Complexity:** Medium.
+  **Outputs / deliverables**: GPU confirmation panel in `ModelCard`; `data-testid` attributes; no store changes.
 
-  **Privilege / Tooling Requirements:** None.
+  **Acceptance criteria**:
+  - Clicking Select on an orange row with `activeProvider = 'local'` shows the confirmation panel (verified in TASK-011 unit test).
+  - Clicking "Select anyway" calls `setDefaultModel(model.id)`.
+  - Clicking "Cancel" does not change the model and hides the panel.
+  - Clicking Select on an orange row with `activeProvider = 'fal'` calls `setDefaultModel` directly with no confirmation.
 
----
+  **Dependencies**: TASK-007.
 
-- [x] **TASK-015 — Add frontend unit tests for `errorHints` `soundfile` keyword**
+  **Estimated complexity**: Low–Medium.
 
-  **Description:** In `src/lib/__tests__/errorHints.test.ts`, add test cases:
-  - (a) `formatJobError` with a `soundfile` `ModuleNotFoundError` message returns a string with the Setup Wizard hint.
-  - (b) `formatJobError` with an unrelated error string returns the string unchanged.
-  - (c) `formatJobError` with a `demucs`-related error still returns the hint (regression guard).
-
-  **Inputs:** `src/lib/__tests__/errorHints.test.ts`, `src/lib/errorHints.ts`
-
-  **Outputs / Deliverables:** Extended `errorHints.test.ts` with 3+ new test cases.
-
-  **Acceptance Criteria:** `npm run test:unit` passes.
-
-  **Dependencies:** TASK-007.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** None.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-016 — Add unit tests for `settingsStore` default model change**
-
-  **Description:** In `src/stores/__tests__/settingsStore.test.ts`, add a test that:
-  1. Imports the fresh store and reads the initial `defaultModel` value.
-  2. Asserts it equals `"demucs"` (not `"bs_roformer"`).
-  3. Calls `setDefaultModel("bs_roformer")` and asserts the store updates correctly.
-  4. Calls `setDefaultModel("demucs")` again and asserts the store reverts.
-
-  **Inputs:** `src/stores/__tests__/settingsStore.test.ts`, `src/stores/settingsStore.ts`
-
-  **Outputs / Deliverables:** Extended `settingsStore.test.ts`.
-
-  **Acceptance Criteria:** `npm run test:unit` passes.
-
-  **Dependencies:** TASK-004.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** None.
+### Phase 3 — Internationalisation
 
 ---
 
-- [x] **TASK-017 — Add regression guard for `DEFAULT_PROCESSING_SETTINGS` in `constants.test.ts`**
+- [ ] **TASK-009** — Add i18n keys for all new model-status strings
 
-  **Description:** In `src/lib/__tests__/constants.test.ts`, add a test that asserts `DEFAULT_PROCESSING_SETTINGS.model === "demucs"`. This acts as a regression guard to prevent the default being silently changed back to a broken model.
+  **Description**: Add the following keys to `src/i18n/en.json` under the existing `"models"` section:
 
-  **Inputs:** `src/lib/__tests__/constants.test.ts`
+  ```json
+  "checking": "Checking availability…",
+  "available": "Available",
+  "gpuWarning": "GPU required — will run on CPU (slower) or use a cloud provider.",
+  "unavailable": "Not installed",
+  "gpuConfirmTitle": "No GPU detected",
+  "gpuConfirmBody": "This model requires a GPU for good performance. Running on CPU may be very slow.",
+  "gpuConfirmSelectAnyway": "Select anyway",
+  "gpuConfirmCancel": "Cancel",
+  "downloadOneClick": "Download & Install"
+  ```
 
-  **Outputs / Deliverables:** Extended `constants.test.ts` with one additional assertion.
+  Add the German equivalents to `src/i18n/de.json`. Update `ModelCard` and `UnifiedModelSection` to use `t('models.xxx')` from the i18n hook instead of hardcoded English strings for all new copy. Existing hardcoded strings in `ModelCard` that are not yet translated (e.g. "GPU Required" badge, "Selected" badge, download progress text) should also be migrated in this task.
 
-  **Acceptance Criteria:** `npm run test:unit` passes.
+  **Inputs**: `src/i18n/en.json`, `src/i18n/de.json`, `src/components/settings/ModelCard.tsx`, `src/components/settings/UnifiedModelSection.tsx`
 
-  **Dependencies:** TASK-004.
+  **Outputs / deliverables**: Updated JSON files; ModelCard and UnifiedModelSection using i18n for all new strings.
 
-  **Estimated Complexity:** Low.
+  **Acceptance criteria**:
+  - `vitest run` (i18n tests in `src/i18n/__tests__/index.test.ts`) passes and covers the new keys.
+  - All new keys present in both `en.json` and `de.json`.
+  - No hardcoded English model-status strings remain in the two component files.
 
-  **Privilege / Tooling Requirements:** None.
+  **Dependencies**: TASK-007, TASK-008.
 
----
+  **Estimated complexity**: Low.
 
-### PHASE 5 — Test Coverage Improvements (Rust)
-
----
-
-- [x] **TASK-018 — Add Rust unit tests for dynamic `collect_stems()`**
-
-  **Description:** In `src-tauri/src/commands/sidecar.rs` (test module at the bottom), add:
-  - (a) `test_collect_stems_non_standard_names` — creates `track_guitar.wav` and `track_piano.wav` in a temp dir, calls `collect_stems()`, asserts two results with `stem_type` `"guitar"` and `"piano"`.
-  - (b) `test_collect_stems_standard_names_still_work` — existing four-stem test remains valid after the refactor.
-  - (c) `test_collect_stems_no_files_returns_error` — temp dir is empty, asserts `Err`.
-
-  **Inputs:** `src-tauri/src/commands/sidecar.rs`
-
-  **Outputs / Deliverables:** Extended test module with 3 new unit tests.
-
-  **Acceptance Criteria:** `cargo test` in `src-tauri/` exits `0` with all new tests passing.
-
-  **Dependencies:** TASK-008.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** Requires Rust toolchain.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-019 — Add Rust unit test for structured JSON error extraction from stderr**
-
-  **Description:** In `src-tauri/src/commands/sidecar.rs`, add a unit test that exercises the JSON-extraction helper introduced in TASK-010:
-  - (a) Input: `stderr_tail = '{"status":"error","error":"my structured error"}'` → asserts the returned error string is `"my structured error"`.
-  - (b) Input: `stderr_tail = "plain traceback text"` → asserts the returned string is `"plain traceback text"`.
-  - (c) Input: `stderr_tail = '{invalid json}'` → asserts the fallback raw string is returned.
-
-  **Inputs:** `src-tauri/src/commands/sidecar.rs`
-
-  **Outputs / Deliverables:** Extended test module with 3 new unit tests for JSON error extraction.
-
-  **Acceptance Criteria:** `cargo test` exits `0`.
-
-  **Dependencies:** TASK-010.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** Requires Rust toolchain.
+### Phase 4 — Tests
 
 ---
 
-### PHASE 6 — CI Pipeline & Coverage Thresholds
+- [ ] **TASK-010** — Create `ModelCard.test.tsx` with full coverage of all four status states
+
+  **Description**: Create `src/components/settings/__tests__/ModelCard.test.tsx`. Mock `@tauri-apps/api/core` (for `invoke`), `@/stores/settingsStore`, and `lucide-react`. Write the following test cases:
+
+  1. **`status = 'checking'`**: renders spinner (`data-testid` contains `animate-spin`), renders model name and description, renders no action button.
+  2. **`status = 'available'`, not selected**: renders green Check icon area, renders "Select" and Delete buttons, does not render the GPU confirmation panel.
+  3. **`status = 'available'`, selected**: renders primary-coloured icon, renders "Selected" badge, renders only Delete button (no "Select").
+  4. **`status = 'gpu-warning'`, `activeProvider = 'local'`**: renders orange AlertTriangle icon, clicking "Select" shows `data-testid="gpu-confirm-dialog"`, clicking "Select anyway" calls `setDefaultModel`, clicking "Cancel" hides the dialog.
+  5. **`status = 'gpu-warning'`, `activeProvider = 'fal'`**: clicking "Select" calls `setDefaultModel` directly without showing confirmation.
+  6. **`status = 'unavailable'`**: renders red icon, renders "Download & Install" button, clicking it calls `onDownload(model.id)`.
+  7. **Download in progress**: `isDownloading = true` renders progress bar and "Cancel" button.
+  8. **`downloadError` present**: renders error message and Retry button; clicking Retry calls `onRetry(model.id)`.
+  9. **BS-RoFormer selected warning**: when `model.id === 'bs_roformer'`, `status = 'available'`, selected — renders the unsupported-local-inference warning banner.
+
+  **Inputs**: `src/components/settings/ModelCard.tsx`, `src/stores/settingsStore.ts`
+
+  **Outputs / deliverables**: `src/components/settings/__tests__/ModelCard.test.tsx` with ≥ 9 test cases, all passing.
+
+  **Acceptance criteria**:
+  - `vitest run --reporter=verbose` shows all 9 tests green.
+  - Coverage for `ModelCard.tsx` ≥ 85 % lines.
+
+  **Dependencies**: TASK-007, TASK-008.
+
+  **Estimated complexity**: Medium.
+
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-020 — Add `soundfile` import check to Python CI dependency installation**
+- [ ] **TASK-011** — Update `UnifiedModelSection.test.tsx` for per-model async checking
 
-  **Description:** In `.github/workflows/ci.yml`, in the Python job's `pip install` step, add `soundfile` to the installation command so that CI tests can import it. Also add a post-install verification step: `python -c "import soundfile; import demucs; print('Deps OK')"` and fail the job if that command fails.
+  **Description**: Rewrite the existing `UnifiedModelSection.test.tsx` to reflect the new per-model checking architecture. The `ModelCard` mock should now accept `status: ModelCheckStatus` instead of `isDownloaded`/`isChecking`, and expose `data-testid={`status-${model.id}`}` that renders the status string for easy assertion.
 
-  **Inputs:** `.github/workflows/ci.yml`
+  Required test cases (replace or extend existing 8):
 
-  **Outputs / Deliverables:** Updated `ci.yml` Python job.
+  1. **Instant render**: the panel and all model rows appear immediately (before `check_model_downloaded` resolves) — all rows show `status="checking"`.
+  2. **Full panel spinner before `get_models` resolves**: the global `models-loading-spinner` is visible until `get_models` returns.
+  3. **Per-model green**: when `check_model_downloaded('demucs')` returns `true` and GPU is unavailable, the Demucs row becomes `status="available"` (CPU model, no GPU needed).
+  4. **Per-model green with GPU**: when `check_model_downloaded('bs_roformer')` returns `true` and GPU is available (`gpuStatus = 'cuda'`), the row becomes `status="available"`.
+  5. **Per-model orange**: when `check_model_downloaded('bs_roformer')` returns `true` and GPU is unavailable (`gpuStatus = 'cpu'`), the row becomes `status="gpu-warning"`.
+  6. **Per-model red**: when `check_model_downloaded('htdemucs')` returns `false`, the row becomes `status="unavailable"`.
+  7. **Per-model error → red**: when `check_model_downloaded` rejects (sidecar error), the row becomes `status="unavailable"`.
+  8. **Independent transitions**: model A resolves to green while model B is still checking — only model A's status changes.
+  9. **Download triggers `download_model` invoke**.
+  10. **Error banner when `get_models` fails**.
+  11. **Refresh button reruns all per-model checks and resets statuses to `'checking'`**.
+  12. **Sidecar missing guard** — download blocked with correct error message.
 
-  **Acceptance Criteria:** The CI Python job installs `soundfile` without error. The verification step prints `"Deps OK"`. No existing steps are removed.
+  **Inputs**: `src/components/settings/__tests__/UnifiedModelSection.test.tsx`, `src/components/settings/UnifiedModelSection.tsx`
 
-  **Dependencies:** TASK-001.
+  **Outputs / deliverables**: Updated test file, all ≥ 12 tests passing.
 
-  **Estimated Complexity:** Low.
+  **Acceptance criteria**:
+  - `vitest run --reporter=verbose` shows all 12 tests green.
+  - No test imports `list_downloaded_models` as an expected invoke call (it has been removed).
 
-  **Privilege / Tooling Requirements:** None (YAML edit only).
+  **Dependencies**: TASK-006, TASK-010.
 
----
+  **Estimated complexity**: Medium–High.
 
-- [x] **TASK-021 — Raise vitest coverage thresholds to reflect improved test suite**
-
-  **Description:** After all Phase 3–5 tests are added and passing, update `vitest.config.ts` `coverage.thresholds` to the highest values that all tests currently achieve (run `npm run test:unit -- --coverage` to measure). The new thresholds must be at least: `lines ≥ 55`, `functions ≥ 70`, `branches ≥ 72`, `statements ≥ 55`. Do not set thresholds higher than the current actual values or CI will fail.
-
-  **Inputs:** `vitest.config.ts`, output of `npm run test:unit -- --coverage`
-
-  **Outputs / Deliverables:** Updated `vitest.config.ts` with raised thresholds.
-
-  **Dependencies:** TASK-014, TASK-015, TASK-016, TASK-017.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** None.
-
----
-
-- [x] **TASK-022 — Add Python pytest coverage reporting to CI**
-
-  **Description:** In `.github/workflows/ci.yml`, update the Python test step to collect coverage: replace `pytest tests/ -m "not integration" --tb=short -v` with `pytest tests/ -m "not integration" --tb=short -v --cov=stemgen_sidecar --cov-report=term-missing --cov-fail-under=40`. This enforces a minimum 40% line coverage baseline on the sidecar. Update `python/requirements-dev.txt` to add `pytest-cov` if not already present.
-
-  **Inputs:** `.github/workflows/ci.yml`, `python/requirements-dev.txt`
-
-  **Outputs / Deliverables:** Updated `ci.yml` Python job and `requirements-dev.txt`.
-
-  **Acceptance Criteria:** CI Python job exits `0` and prints a coverage report. If coverage drops below 40% the job fails.
-
-  **Dependencies:** TASK-012.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** None.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-### PHASE 7 — UI / UX Hardening
+- [ ] **TASK-012** — Add Rust unit tests for `check_model_downloaded` timeout and path consistency
+
+  **Description**: In `src-tauri/src/commands/models.rs` tests module, add:
+
+  1. **`test_check_model_downloaded_timeout`**: spawn a child process that sleeps for 30 s (use `std::process::Command::new("sleep").arg("30")` on Unix or the equivalent no-op on Windows), wrap it in the same 10 s timeout pattern used in the production code, assert the `Err` string contains `"timed out"`. Guard with `#[cfg(unix)]`.
+  2. **`test_models_dir_matches_model_directory`**: call both `get_models_dir()` (from `models.rs`) and `get_models_dir()` (the consolidated function from TASK-001 in `probe.rs`) and assert they resolve to the same path with `assert_eq!`.
+
+  **Inputs**: `src-tauri/src/commands/models.rs`, `src-tauri/src/commands/probe.rs`
+
+  **Outputs / deliverables**: Two new `#[test]` functions; `cargo test` passes.
+
+  **Acceptance criteria**:
+  - Both tests pass in CI.
+  - The timeout test completes in ≤ 12 s wall time.
+
+  **Dependencies**: TASK-001, TASK-002.
+
+  **Estimated complexity**: Low.
+
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-023 — Display a warning banner in the GUI when `bs_roformer` is selected as active model**
+- [ ] **TASK-013** — Add `ModelCheckStatus` type tests to `src/lib/__tests__/constants.test.ts` or a new `types.test.ts`
 
-  **Description:** In the Settings panel (or model selector component), display a visible inline warning when the user selects `bs_roformer` as their model: *"BS-RoFormer local inference is not yet supported. Choose Demucs, HT-Demucs, or HT-Demucs FT for local processing, or enable a cloud provider."* The warning should appear immediately on selection, not only after a failed job. Use the existing `AlertDialog` or a yellow/amber inline banner consistent with the existing UI design system. The `bs_roformer` option should remain selectable (for cloud provider use cases) but the warning must be visible.
+  **Description**: Create `src/lib/__tests__/types.test.ts` (or extend `constants.test.ts`) with tests confirming:
 
-  **Inputs:** `src/components/settings/` (model selector), `src/components/ui/`
+  1. `ModelCheckStatus` admits exactly the four expected literal values and rejects a fifth (TypeScript compile-time check via `@ts-expect-error`).
+  2. `hasPackageStatusKey` correctly handles the bare-string `"available"` form (unit variant) and the object `{ available: null }` form, and returns `false` for an empty object, `null`, and `undefined`.
+  3. `computeEnvironmentReadiness(null)` returns `gpuStatus: 'unknown'`.
+  4. `computeEnvironmentReadiness({ cuda: 'available', ... })` returns `gpuStatus: 'cuda'`.
+  5. `computeEnvironmentReadiness({ cuda: { unavailable: '...' }, python: { available: null }, pythonVersion: '3.11' })` returns `gpuStatus: 'cpu'`.
 
-  **Outputs / Deliverables:** Updated settings component with conditional `bs_roformer` warning.
+  **Inputs**: `src/lib/types.ts`, `src/stores/appStore.ts` (for `computeEnvironmentReadiness`)
 
-  **Acceptance Criteria:**
-  1. Selecting `bs_roformer` in the settings UI shows the warning text.
-  2. Selecting `demucs`, `htdemucs`, or `htdemucs_ft` does not show the warning.
-  3. `npm run test:unit` passes.
-  4. TypeScript compilation passes.
+  **Outputs / deliverables**: `src/lib/__tests__/types.test.ts` with ≥ 5 test cases.
 
-  **Dependencies:** TASK-004.
+  **Acceptance criteria**:
+  - `vitest run` passes; all 5 assertions green.
 
-  **Estimated Complexity:** Medium.
+  **Dependencies**: TASK-004.
 
-  **Privilege / Tooling Requirements:** None.
+  **Estimated complexity**: Low.
 
----
-
-- [x] **TASK-024 — Show actionable "Open Setup Wizard" button in job error messages**
-
-  **Description:** The `formatJobError()` function already appends the text `"— Open Setup Wizard to install missing dependencies."` when a dependency keyword is detected. However, in the processing queue UI this is rendered as plain text with no clickable action. Update the job error display component (identify it via the rendering of `error_message` from the queue store) to:
-  1. Detect the Setup Wizard hint suffix in the error string.
-  2. Strip the hint suffix from the displayed text.
-  3. Append a small "Open Setup Wizard" button that invokes the existing `openSetupWizard()` action from the app store.
-
-  **Inputs:** `src/components/processing/` or `src/components/queue/` (job error display), `src/stores/appStore.ts`
-
-  **Outputs / Deliverables:** Updated processing/queue component with actionable button.
-
-  **Acceptance Criteria:**
-  1. When a job has an error containing the hint suffix, the UI shows the clean error text and a button.
-  2. Clicking the button triggers the `openSetupWizard()` store action.
-  3. `npm run test:unit` passes.
-
-  **Dependencies:** TASK-007.
-
-  **Estimated Complexity:** Medium.
-
-  **Privilege / Tooling Requirements:** None.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-### PHASE 8 — Documentation
+### Phase 5 — Cleanup & Polish
 
 ---
 
-- [x] **TASK-025 — Update `CHANGELOG.md` with all bug fixes and improvements**
+- [ ] **TASK-014** — Remove dead `isChecking` / `isDownloaded` props and `list_downloaded_models` call-site
 
-  **Description:** Add a new version entry at the top of `CHANGELOG.md` (use the next logical semver — if current is `0.x.y`, bump to `0.x.y+1` or `0.(x+1).0` depending on scope). The entry must list every bug fix (BUG-01 through BUG-08 with one-sentence summaries), the new test coverage improvements, and the UI/UX changes introduced in this task list.
+  **Description**: After all prior tasks are complete, do a final sweep:
 
-  **Inputs:** `CHANGELOG.md`
+  1. Confirm `isChecking: boolean` and `isDownloaded: boolean` no longer appear in `ModelCardProps` (replaced by `status: ModelCheckStatus`).
+  2. Confirm `list_downloaded_models` is no longer invoked from `UnifiedModelSection`.
+  3. Confirm `listModelsError` state and its warning banner are removed from `UnifiedModelSection`.
+  4. Confirm the old skeleton/pulse animation block in `ModelCard` is removed.
+  5. Run `grep -rn "isChecking\|isDownloaded\|listModelsError\|list_downloaded_models" src/` and assert zero results in the component files (the Tauri command itself may remain in `models.rs` but should not be called from the frontend).
+  6. If `list_downloaded_models` Tauri command is now unused, add a `// TODO: remove if unused after v1.x` comment or remove it entirely (check whether the command is referenced in any other frontend code first).
 
-  **Outputs / Deliverables:** Updated `CHANGELOG.md` with a new version entry.
+  **Inputs**: `src/components/settings/UnifiedModelSection.tsx`, `src/components/settings/ModelCard.tsx`
 
-  **Acceptance Criteria:** The new entry is the first non-comment block in the file. It includes all bug fix IDs and a "Test Coverage" section.
+  **Outputs / deliverables**: Clean component files; grep sweep passes.
 
-  **Dependencies:** All prior phases.
+  **Acceptance criteria**:
+  - `grep` sweep returns zero hits in component files.
+  - `tsc --noEmit` clean.
+  - `vitest run` passes.
 
-  **Estimated Complexity:** Low.
+  **Dependencies**: TASK-006, TASK-007, TASK-011.
 
-  **Privilege / Tooling Requirements:** None.
+  **Estimated complexity**: Low.
 
----
-
-- [x] **TASK-026 — Update `README.md`: document supported models and known limitations**
-
-  **Description:** In `README.md`, update or add an "AI Models" section that clearly states:
-  - `demucs`, `htdemucs`, `htdemucs_ft` are fully supported for local CPU/GPU inference.
-  - `bs_roformer` is available for cloud inference (`fal`, `replicate`) but local inference is not yet implemented.
-
-  Also add a "Troubleshooting" subsection listing the most common errors (`soundfile` missing, Python not found) and their remedies.
-
-  **Inputs:** `README.md`
-
-  **Outputs / Deliverables:** Updated `README.md`.
-
-  **Acceptance Criteria:** The README contains an "AI Models" table with a "Local Support" column, and a "Troubleshooting" section with at least the `soundfile` and Python-not-found entries.
-
-  **Dependencies:** TASK-025.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** None.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-### PHASE 9 — Release Preparation & Merge
+- [ ] **TASK-015** — Update `CHANGELOG.md` and bump the version
 
----
+  **Description**: Add a new `## [Unreleased]` or version section to `CHANGELOG.md` that documents:
 
-- [x] **TASK-027 — Bump version in `package.json` and `Cargo.toml`**
+  - **New feature**: Per-model async availability checking with individual loading spinners.
+  - **New feature**: Three-colour model status (green / orange / red) with GPU-aware selection guard.
+  - **New feature**: One-click model download button for unavailable (red) models.
+  - **Bug fix (BUG-09)**: Added 10 s timeout to `check_model_downloaded` to prevent indefinite hangs.
+  - **Bug fix (BUG-10)**: Consolidated `get_models_dir()` / `get_model_directory()` into a single authoritative helper.
+  - **Bug fix (BUG-11)**: Fixed dead `AIModel` type cast in `ModelCard`.
+  - **Bug fix (BUG-12)**: Fixed misleading "sidecar missing" error when `environmentValidation` is not yet loaded.
+  - **i18n**: Added 9 new model-status keys to `en.json` and `de.json`.
 
-  **Description:** Update the `version` field in both `package.json` and `src-tauri/Cargo.toml` (and `src-tauri/tauri.conf.json` if a `version` field is present there) to the new version decided in TASK-025. The three files must all carry the same version string.
+  Bump `version` in `package.json` and `src-tauri/tauri.conf.json` by one patch or minor increment (coordinate with the project's versioning policy).
 
-  **Inputs:** `package.json`, `src-tauri/Cargo.toml`, `CHANGELOG.md`
+  **Inputs**: `CHANGELOG.md`, `package.json`, `src-tauri/tauri.conf.json`
 
-  **Outputs / Deliverables:** Updated version fields in all three files.
+  **Outputs / deliverables**: Updated `CHANGELOG.md`; bumped version in both config files.
 
-  **Acceptance Criteria:** `node -e "console.log(require('./package.json').version)"` matches the `CHANGELOG.md` entry version. `cargo metadata --format-version 1 | jq -r '.packages[] | select(.name=="stemgen-gui") | .version'` matches.
+  **Acceptance criteria**:
+  - Version strings in `package.json` and `tauri.conf.json` match.
+  - `CHANGELOG.md` has a new dated entry covering all items above.
 
-  **Dependencies:** TASK-025.
+  **Dependencies**: All prior tasks.
 
-  **Estimated Complexity:** Low.
+  **Estimated complexity**: Low.
 
-  **Privilege / Tooling Requirements:** None.
-
----
-
-- [x] **TASK-028 — Open Pull Request from `fix/wizard-models-bugs` → `main` and verify CI**
-
-  **Description:**
-  1. Push the final commit of TASK-027 to `origin/fix/wizard-models-bugs`.
-  2. Open a Pull Request targeting `main`. Title: `"fix: separation pipeline bugs, default model, test coverage (BUG-01 through BUG-08)"`.
-  3. PR description must reference every Task ID and Bug ID.
-  4. Wait for all CI jobs (frontend, python, rust) to pass. If any fail, fix them on the branch before proceeding.
-  5. Request review and merge only after CI is fully green.
-
-  **Inputs:** All committed changes on `fix/wizard-models-bugs`.
-
-  **Outputs / Deliverables:** Merged PR on `main`. All CI jobs green.
-
-  **Acceptance Criteria:** GitHub shows `CI: passed` on the merge commit of `main`. No regressions in any CI job.
-
-  **Dependencies:** TASK-027 and all prior tasks.
-
-  **Estimated Complexity:** Low.
-
-  **Privilege / Tooling Requirements:** Requires repository write access and PR review.
+  **Privilege / tooling requirements**: None.
 
 ---
 
 ## Verification & Release
 
-The following checks must all pass before the branch is merged and a release is tagged.
-
-1. **End-to-end smoke test (Windows)** — on a clean Windows 10 machine with no prior stemgen installation, install the app, run the Setup Wizard, then process a short `.wav` file using the default model (Demucs / CPU). Confirm four stem WAV files are created and all are playable, with zero error dialogs.
-2. **End-to-end smoke test (macOS + Linux)** — repeat on macOS (Apple Silicon, MPS path) and Linux (CPU path) to confirm cross-platform correctness.
-3. **bs_roformer warning test** — select BS-RoFormer as the model in Settings and confirm the inline warning banner is visible. Attempt to start a local separation job and confirm the structured JSON error message is displayed in the GUI (not a raw traceback).
-4. **Drag-and-drop test** — drag a supported audio file onto the FileBrowser panel and confirm the file is accepted and added to the queue.
-5. **GUI verification** — confirm the GUI renders correctly including: very long model names, missing optional fields, non-ASCII source paths (e.g. `été.wav`), and paths with spaces.
-6. **Unit test suite** — run `npm run test:unit -- --coverage` and confirm all tests pass and all four coverage thresholds are met.
-7. **Python sidecar tests** — run `cd python && pytest tests/ -m "not integration" --cov=stemgen_sidecar --cov-fail-under=40` and confirm all tests pass.
-8. **Rust tests** — run `cargo test` in `src-tauri/` and confirm all tests pass.
-9. **TypeScript type check** — run `npm run check` and confirm zero type errors.
-10. **Lint** — run `npm run lint` and confirm zero lint errors.
-11. **`install_manifest.json` validation** — run `python -m json.tool src-tauri/resources/install_manifest.json` and confirm the file is valid JSON with `soundfile`, `librosa`, and `mutagen` entries present.
-12. **Update CHANGELOG and bump version** — confirm TASK-025 and TASK-027 are done and the version is consistent across all three files.
-13. **Tag the release** — create a Git tag matching the new version (e.g. `v0.x.y`) and push it. Write release notes summarising every bug fix, test improvement, and UI change.
-14. **GitHub CI/CD verification** — confirm that both the CI pipeline and the release/CD pipeline run successfully on GitHub Actions after the tag is pushed. If any pipeline job fails, iterate until both are fully green before announcing the release.
+1. **Full Rust test suite**: run `cargo test --workspace` in `src-tauri/` and confirm all tests pass, including the new timeout and path-consistency tests.
+2. **Full frontend test suite**: run `vitest run` from the project root and confirm all tests pass, including the new `ModelCard.test.tsx` and updated `UnifiedModelSection.test.tsx`. Coverage for `ModelCard.tsx` must be ≥ 85 % lines.
+3. **End-to-end smoke test (model panel)**: open the GUI with a fresh environment (no models downloaded). Confirm: panel renders instantly with all rows showing spinners; rows resolve one-by-one; red rows show "Download & Install"; green rows show "Select" / Delete; orange rows show the GPU warning badge.
+4. **GPU-warning guard test**: on a machine without a GPU (or with CUDA disabled), select an orange model row with local inference active — confirm the confirmation dialog appears; confirm "Cancel" dismisses it without changing the default model; confirm "Select anyway" sets the model.
+5. **Download flow test**: click "Download & Install" on a red row; confirm the progress bar appears; confirm the row transitions to green on completion; confirm cancellation via the "Cancel" button works and the row returns to red.
+6. **i18n verification**: switch the OS locale to German, reopen the model panel, confirm all model-status strings appear in German.
+7. **Regression sweep**: confirm no previously passing tests are broken (`vitest run` and `cargo test` both clean).
+8. **Type-check**: `tsc --noEmit` produces zero errors.
+9. **Lint**: `eslint --max-warnings 0` produces no new warnings.
+10. **Update changelog and confirm version bump** — `package.json` and `tauri.conf.json` both contain the new version string.
+11. **Tag the release** with `git tag v<new-version>` and push; publish release notes referencing all new feature items and bug IDs BUG-09 through BUG-13.
+12. **Verify GitHub CI/CD pipelines** — confirm both the `ci.yml` and `release.yml` workflows succeed on the tagged commit. If either fails, iterate until both are green before considering the release complete.
 
 ---
 
 ## Operational Constraints
 
-- **Pause-and-ask policy**: If at any point the AI agent needs elevated privileges, access to external services, new library installations, additional MCP server connections, API keys, or anything beyond its current sandbox capabilities, it must **immediately stop execution, clearly describe what it needs and why, and wait for explicit approval** before continuing.
-- **Incremental commits**: each task must be committed separately with a descriptive commit message referencing the Task ID (e.g. `"fix(sidecar): remove dead soundfile import in run_bs_roformer [TASK-002]"`), so progress is reviewable and reversible.
-- **No silent failures**: any error must surface explicitly in the GUI and logs — never silently swallowed or defaulted to an empty value.
-- **Test-before-merge discipline**: no task is considered complete until its associated acceptance criteria tests pass locally. Do not merge tasks whose tests are still failing.
-- **Do not modify `main` directly**: all changes go through the `fix/wizard-models-bugs` branch and the PR process defined in TASK-028.
-- **JSON validity**: every modification to `install_manifest.json` must be validated with `python -m json.tool` before committing.
+- **Pause-and-ask policy**: If at any point the AI agent needs elevated privileges, access to external services, new library installations, additional MCP server connections, API keys (e.g., for a remote model-version feed), or anything beyond its current sandbox capabilities, it must **immediately stop execution, clearly describe what it needs and why, and wait for explicit approval** before continuing.
+- **Incremental commits**: each task should be committed separately with a descriptive commit message referencing the Task ID (e.g. `fix(models): add 10s timeout to check_model_downloaded [TASK-002]`), so progress is reviewable and reversible.
+- **No silent failures**: any error in a per-model check must surface explicitly as a red row in the GUI and be logged — never silently swallowed or left in `'checking'` state indefinitely.
+- **Backwards compatibility**: the `check_model_downloaded` Tauri command signature must remain unchanged (same name, same arguments, same return type) so that any external integration or script that calls it continues to work.
+- **GPU detection dependency order**: TASK-006 relies on `environmentValidation` being available in the store. If it is not yet populated, TASK-006 must fall back to the lightweight `get_gpu_status` command (TASK-003) — do not assume `environmentValidation` is always present.

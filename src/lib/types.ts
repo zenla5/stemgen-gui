@@ -115,6 +115,13 @@ export interface DJSoftwareInfo {
 // AI Models
 export type AIModel = 'bs_roformer' | 'htdemucs' | 'htdemucs_ft' | 'demucs';
 
+/** Per-row availability state for the unified model panel. */
+export type ModelCheckStatus =
+  | 'checking'      // sidecar call in-flight — show spinner
+  | 'available'     // model installed and selectable
+  | 'gpu-warning'   // model installed but gpu_required && no GPU detected
+  | 'unavailable';  // model not installed — show Download button
+
 export interface ModelInfo {
   id: AIModel;
   name: string;
