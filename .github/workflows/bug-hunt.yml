@@ -1,0 +1,111 @@
+name: Bug-Hunt
+
+# Optional harness: runs the bug-hunt loop in CI and opens an Issue if it gives
+# up (iteration cap, stall, or budget). Uses the frontend-only chromium E2E so no
+# Rust/Tauri build is required.
+on:
+  workflow_dispatch:  # manual trigger only (no scheduled runs)
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: bug-hunt
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  bug-hunt:
+    name: Bug Hunt
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Install opencode CLI
+        run: npm install -g opencode-ai
+
+      - name: Verify tooling
+        run: |
+          command -v opencode && opencode --version
+          command -v npx && npx playwright --version
+
+      - name: Run bug-hunt harness
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          MAX_ITER: ${{ vars.BUG_HUNT_MAX_ITER || 5 }}
+        id: hunt
+        run: |
+          set +e
+          cd tools/bug-hunt
+          ./bug_hunt.sh > ci-hunt.log 2>&1
+          HUNT_EXIT=$?
+          set -e
+          echo "exit=$HUNT_EXIT" >> "$GITHUB_OUTPUT"
+          echo "hunt-exit=$HUNT_EXIT"
+          echo "---- ci-hunt.log tail ----"
+          tail -40 ci-hunt.log
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bug-hunt-artifacts
+          path: |
+            tools/bug-hunt/bug_hunt.log
+            tools/bug-hunt/hunt-input.txt
+            tools/bug-hunt/summary.txt
+            tools/bug-hunt/screenshots/*.png
+            tools/bug-hunt/ci-hunt.log
+          retention-days: 7
+
+      - name: Open Issue on give-up
+        if: steps.hunt.outputs.hunt-exit != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SUMMARY="$(cat tools/bug-hunt/summary.txt 2>/dev/null || echo 'No summary')"
+          BODY="## Bug-Hunt gave up :bug:
+
+          **Exit code:** ${{ steps.hunt.outputs.hunt-exit }}
+
+          <details><summary>Summary</summary>
+
+          \`\`\`
+          ${SUMMARY}
+          \`\`\`
+
+          </details>
+
+          <details><summary>Findings</summary>
+
+          \`\`\`
+          $(cat tools/bug-hunt/hunt-input.txt 2>/dev/null || echo 'n/a')
+          \`\`\`
+
+          </details>
+
+          Artifacts (screenshots, logs) are attached to the run.
+          "
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Bug-Hunt: did not converge (exit ${{ steps.hunt.outputs.hunt-exit }})" \
+            --body "$BODY" \
+            --label "bug" \
+            || echo "Failed to open issue (may already exist / perms)"
