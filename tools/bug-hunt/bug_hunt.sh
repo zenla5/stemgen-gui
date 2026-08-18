@@ -113,6 +113,13 @@ capture() {
 # ---------------------------------------------------------------------------
 vision_review() {
   log '== vision review ='
+  local oc
+  oc="$(command -v opencode 2>/dev/null || true)"
+  if [ -z "$oc" ]; then
+    log 'VISION UNAVAILABLE: opencode CLI not found on PATH — cannot claim GREEN without it'
+    printf '[SEVERITY] critical\n[SCREEN] vision\n[FILE] n/a\n[CATEGORY] other\n[DESCRIPTION] opencode CLI is not installed or not on PATH, so the multimodal vision-review could not run; the definition of done cannot be met without it\n[REPRO] install opencode (npm install -g opencode-ai) and ensure it is on PATH, then re-run\n\n' >> "$INPUT"
+    return 1
+  fi
   local -a files=()
   local f
   for f in "$SHOTS"/*.png; do [ -e "$f" ] || continue; files+=( -f "$f" ); done
@@ -130,7 +137,7 @@ this format, one entry per finding:
 [DESCRIPTION] one precise sentence
 [REPRO]    how to reproduce
 If every screenshot looks clean, output exactly: [CLEAN]"
-  "$(command -v opencode)" run "$prompt" "${files[@]}" --agent vision-review \
+  "$oc" run "$prompt" "${files[@]}" --agent vision-review \
     >>"$INPUT" 2>>"$LOG"
 }
 
@@ -288,10 +295,16 @@ for i in $(seq 1 "$MAX_ITER"); do
     exit 1
   fi
 
-  log 'calling bug-hunter (one commit per fix, then re-gates)'
-  "$(command -v opencode)" run \
-    "Read $INPUT. Fix EACH distinct finding with exactly ONE commit per finding (never one batch commit). After each fix re-run: npm run check, npm run lint, npm run test — all must pass before you stop. Only report which gates pass; never claim the loop done." \
-    --agent bug-hunter >>"$LOG" 2>&1 || log 'bug-hunter returned nonzero (loop continues)'
+  local oc
+  oc="$(command -v opencode 2>/dev/null || true)"
+  if [ -z "$oc" ]; then
+    log 'bug-hunter UNAVAILABLE: opencode CLI not on PATH — cannot fix findings'
+  else
+    log 'calling bug-hunter (one commit per fix, then re-gates)'
+    "$oc" run \
+      "Read $INPUT. Fix EACH distinct finding with exactly ONE commit per finding (never one batch commit). After each fix re-run: npm run check, npm run lint, npm run test — all must pass before you stop. Only report which gates pass; never claim the loop done." \
+      --agent bug-hunter >>"$LOG" 2>&1 || log 'bug-hunter returned nonzero (loop continues)'
+  fi
 done
 
 log "MAX_ITER=$MAX_ITER reached without converging"

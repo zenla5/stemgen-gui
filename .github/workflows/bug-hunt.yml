@@ -38,6 +38,14 @@ jobs:
       - name: Install Playwright chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Install opencode CLI
+        run: npm install -g opencode-ai
+
+      - name: Verify tooling
+        run: |
+          command -v opencode && opencode --version
+          command -v npx && npx playwright --version
+
       - name: Run bug-hunt harness
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -51,6 +59,8 @@ jobs:
           set -e
           echo "exit=$HUNT_EXIT" >> "$GITHUB_OUTPUT"
           echo "hunt-exit=$HUNT_EXIT"
+          echo "---- ci-hunt.log tail ----"
+          tail -40 ci-hunt.log
 
       - name: Upload artifacts
         if: always()
