@@ -18,11 +18,12 @@ const __dirname = dirname(__filename);
 const PROJECT_ROOT = __dirname;
 
 function getBinaryPath(): string | null {
+  const exe = process.platform === 'win32' ? '.exe' : '';
   const candidates = [
-    path.join(PROJECT_ROOT, 'target', 'release', 'stemgen-gui'),
-    path.join(PROJECT_ROOT, 'target', 'release', 'stemgen_gui'),
-    path.join(PROJECT_ROOT, 'src-tauri', 'target', 'release', 'stemgen-gui'),
-    path.join(PROJECT_ROOT, 'src-tauri', 'target', 'release', 'stemgen_gui'),
+    path.join(PROJECT_ROOT, 'target', 'release', `stemgen-gui${exe}`),
+    path.join(PROJECT_ROOT, 'target', 'release', `stemgen_gui${exe}`),
+    path.join(PROJECT_ROOT, 'src-tauri', 'target', 'release', `stemgen-gui${exe}`),
+    path.join(PROJECT_ROOT, 'src-tauri', 'target', 'release', `stemgen_gui${exe}`),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;

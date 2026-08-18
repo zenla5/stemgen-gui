@@ -57,29 +57,48 @@ export async function navigateSkippingWizard(appUrl: string): Promise<void> {
 /**
  * Reset app state between tests.
  * Preserves the current theme so theme persistence tests work correctly.
+ *
+ * This is used in `afterEach` hooks, so it must be resilient under CI load:
+ * - Dismiss any native file dialog that a previous test may have left open
+ *   (e.g. after pressing Enter on the drop zone), otherwise WebDriver commands
+ *   block indefinitely behind the modal.
+ * - Retry the navigation + render wait, since a single page load can be slow
+ *   or interrupted on a busy runner.
  */
 export async function resetAppState(appUrl: string): Promise<void> {
-  await browser.execute(
-    (key: string) => {
-      // Preserve theme before clearing
-      let theme = 'system';
-      try {
-        const raw = localStorage.getItem(key);
-        if (raw) theme = JSON.parse(raw)?.state?.theme || 'system';
-      } catch { /* ignore */ }
+  // Dismiss any potentially-open native dialog first.
+  try { await browser.keys('Escape'); } catch { /* not currently focused */ }
 
-      localStorage.clear();
-      localStorage.setItem(key, JSON.stringify({
-        state: { hasSeenFirstRun: true, theme, language: 'en' },
-        version: 0,
-      }));
-    },
-    SETTINGS_KEY
-  );
+  const deadline = Date.now() + 30000;
+  for (;;) {
+    try {
+      await browser.execute(
+        (key: string) => {
+          // Preserve theme before clearing
+          let theme = 'system';
+          try {
+            const raw = localStorage.getItem(key);
+            if (raw) theme = JSON.parse(raw)?.state?.theme || 'system';
+          } catch { /* ignore */ }
 
-  await browser.url(appUrl);
-  try { await browser.setWindowSize(1280, 720); } catch { /* tauri-driver may not support this */ }
-  await $('[data-testid="nav-files"]').waitForDisplayed({ timeout: 15000 });
+          localStorage.clear();
+          localStorage.setItem(key, JSON.stringify({
+            state: { hasSeenFirstRun: true, theme, language: 'en' },
+            version: 0,
+          }));
+        },
+        SETTINGS_KEY
+      );
+
+      await browser.url(appUrl);
+      try { await browser.setWindowSize(1280, 720); } catch { /* tauri-driver may not support this */ }
+      await $('[data-testid="nav-files"]').waitForDisplayed({ timeout: 5000 });
+      return;
+    } catch (err) {
+      if (Date.now() > deadline) throw err;
+      await browser.pause(1000);
+    }
+  }
 }
 
 /**
