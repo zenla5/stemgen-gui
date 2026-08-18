@@ -73,26 +73,26 @@ jobs:
           SUMMARY="$(cat tools/bug-hunt/summary.txt 2>/dev/null || echo 'No summary')"
           BODY="## Bug-Hunt gave up :bug:
 
-**Exit code:** ${{ steps.hunt.outputs.hunt-exit }}
+          **Exit code:** ${{ steps.hunt.outputs.hunt-exit }}
 
-<details><summary>Summary</summary>
+          <details><summary>Summary</summary>
 
-\`\`\`
-${SUMMARY}
-\`\`\`
+          \`\`\`
+          ${SUMMARY}
+          \`\`\`
 
-</details>
+          </details>
 
-<details><summary>Findings</summary>
+          <details><summary>Findings</summary>
 
-\`\`\`
-$(cat tools/bug-hunt/hunt-input.txt 2>/dev/null || echo 'n/a')
-\`\`\`
+          \`\`\`
+          $(cat tools/bug-hunt/hunt-input.txt 2>/dev/null || echo 'n/a')
+          \`\`\`
 
-</details>
+          </details>
 
-Artifacts (screenshots, logs) are attached to the run.
-"
+          Artifacts (screenshots, logs) are attached to the run.
+          "
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "Bug-Hunt: did not converge (exit ${{ steps.hunt.outputs.hunt-exit }})" \
