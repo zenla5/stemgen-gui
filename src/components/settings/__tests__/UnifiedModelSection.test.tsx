@@ -38,6 +38,16 @@ vi.mock('@/stores/appStore', () => {
       }
     ),
     useDownloadedModels: () => [],
+    computeEnvironmentReadiness: () => ({
+      pythonOk: true,
+      pytorchOk: true,
+      gpuStatus: 'cpu',
+      demucsOk: true,
+      ffmpegOk: true,
+      ffprobeOk: true,
+      sidecarOk: true,
+      isReady: true,
+    }),
   };
 });
 
@@ -104,8 +114,8 @@ describe('UnifiedModelSection', () => {
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'list_downloaded_models') {
-        return [];
+      if (cmd === 'check_model_downloaded') {
+        return false;
       }
       return null;
     });
@@ -127,8 +137,8 @@ describe('UnifiedModelSection', () => {
           { id: 'htdemucs', name: 'HTDemucs', description: 'Good all-around', quality: 'high', speed: 'slow', gpuRequired: true },
         ];
       }
-      if (cmd === 'list_downloaded_models') {
-        return [];
+      if (cmd === 'check_model_downloaded') {
+        return false;
       }
       return null;
     });
@@ -166,16 +176,16 @@ describe('UnifiedModelSection', () => {
     expect(screen.queryByTestId('models-loading-spinner')).not.toBeInTheDocument();
   });
 
-  // ── Test 5: Warning banner renders when list_downloaded_models throws ──
+  // ── Test 5: Per-model availability check failure degrades gracefully ──
 
-  it('renders warning banner when list_downloaded_models throws', async () => {
+  it('renders model cards when per-model availability check fails', async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'get_models') {
         return [
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'list_downloaded_models') {
+      if (cmd === 'check_model_downloaded') {
         throw new Error('Python not available');
       }
       return null;
@@ -184,13 +194,11 @@ describe('UnifiedModelSection', () => {
     render(<UnifiedModelSection />);
 
     await waitFor(() => {
-      // Model cards should still be rendered
+      // Model cards should still be rendered (per-model failure is caught)
       expect(screen.getByTestId('model-card-bs_roformer')).toBeInTheDocument();
-      // Warning banner should be visible
-      expect(screen.getByTestId('models-list-warning')).toBeInTheDocument();
     });
 
-    // Error banner should NOT be visible (only warning)
+    // Per-model check failure should NOT surface a top-level error banner
     expect(screen.queryByTestId('models-load-error')).not.toBeInTheDocument();
   });
 
@@ -208,8 +216,8 @@ describe('UnifiedModelSection', () => {
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'list_downloaded_models') {
-        return [];
+      if (cmd === 'check_model_downloaded') {
+        return false;
       }
       return null;
     });
@@ -242,8 +250,8 @@ describe('UnifiedModelSection', () => {
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'list_downloaded_models') {
-        return [];
+      if (cmd === 'check_model_downloaded') {
+        return false;
       }
       if (cmd === 'download_model') {
         return null;
@@ -282,8 +290,8 @@ describe('UnifiedModelSection', () => {
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'list_downloaded_models') {
-        return [];
+      if (cmd === 'check_model_downloaded') {
+        return false;
       }
       return null;
     });
