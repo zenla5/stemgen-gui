@@ -39,6 +39,13 @@ TOKEN_CAP=2000000 ./bug_hunt.sh   # soft token/cost guard
 Requirements: Node + npm deps installed (`npm i`), `opencode` CLI on PATH with
 the two agents configured, `OPENROUTER_API_KEY` set. No Rust/Tauri build needed.
 
+CI: an optional `.github/workflows/bug-hunt.yml` runs the same loop on a GitHub
+runner (manual `workflow_dispatch`; installs `opencode-ai` and reads the repo's
+`.opencode/opencode.json`). Note: a GitHub runner is ephemeral and has no push
+credentials, so **fixes `bug-hunter` makes in CI are not pushed back** — CI is a
+watchdog (proves convergence, uploads findings/screenshots, opens an Issue on
+give-up). Run locally to actually land fixes.
+
 Exit status:
 - `0` — **GREEN**: all four gates pass **and** a fresh vision review finds no
   defects **and** the automated layout/overflow checks are clean.
@@ -95,7 +102,9 @@ DIV right=2000
 
 ## Model routing
 
-Defined in `~/.config/opencode/opencode.json`:
+Defined in the repo at `.opencode/opencode.json` (version-controlled, so every
+checkout/CI runner has the same agents) and mirrored in
+`~/.config/opencode/opencode.json`:
 
 - `bug-hunter` pinned to `openrouter/~deepseek/deepseek-v4-flash-latest`
   (text-only), `mode: all`.

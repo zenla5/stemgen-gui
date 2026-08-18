@@ -7,13 +7,31 @@ prompt template for an agent/LLM that monitors a run.
 The harness is **complete and runnable**. It was proven end-to-end on this
 machine: `cd tools/bug-hunt && ./bug_hunt.sh` → `EXIT=0` (GREEN) with
 `npm run check`, `lint`, `test`, and the chromium E2E all passing, a clean
-`vision-review`, and no layout violations.
+`vision-review`, and no layout violations. It is also proven in CI: a manual
+`workflow_dispatch` run on a fresh GitHub runner converged GREEN (vision found
+real findings in iteration 1, `bug-hunter` acted, and a fresh vision pass
+confirmed clean in iteration 2).
+
+## Local vs CI — where fixes actually land (important)
+- **Locally** is the mode that fixes the repo. `bug-hunter` commits each fix to
+  your `bug-hunt-*` scratch branch; you review and push. This is how a real
+  defect gets fixed back into `main`.
+- **CI** is a watchdog. It proves the loop converges and uploads findings +
+  screenshots, but a GitHub runner is ephemeral and has no push credentials, so
+  **fixes `bug-hunter` makes there are NOT pushed back into the repo** — they
+  exist only for the lifetime of the run. Use CI to repeatedly probe the default
+  branch for non-convergence (it opens an Issue on give-up), and run locally to
+  actually land fixes.
 
 ## Prerequisites
 - `npm install` (dev deps; includes `tsx`).
-- `opencode` CLI on `PATH`, agents configured in `~/.config/opencode/opencode.json`
-  (`bug-hunter`, `vision-review`).
-- `OPENROUTER_API_KEY` exported.
+- `opencode` CLI on `PATH`. The two agents (`bug-hunter`, `vision-review`) and
+  the openrouter provider are defined in the repo at `.opencode/opencode.json`
+  (version-controlled, so CI and any checkout get identical agents). They are
+  also defined in your global `~/.config/opencode/opencode.json`; the repo-scoped
+  copy is what a fresh runner uses.
+- `OPENROUTER_API_KEY` exported locally; for CI, stored as a GitHub Actions
+  repository secret with that exact name.
 - Optional (only for full-suite / real-app work): Rust toolchain + Tauri/WebKit
   deps + display (see README "E2E scope boundary" and the Tauri note below).
 - **NixOS inotify caveat**: the `localsearch` indexer can exhaust the inotify
