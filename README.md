@@ -9,38 +9,20 @@ A free and open source (FOSS) streamlined end-to-end pipeline software to conver
 
 ## Screenshots
 
-> **Screenshots will be added in v1.0.0.** The app features a clean, modern UI with dark/light theme support.
-
 ### App Overview
-```
-┌─────────────────────────────────────────────────────────────┐
-│  🎛 Stemgen GUI                              [─] [□] [✕]   │
-├────────────┬────────────────────────────────────────────────┤
-│            │  📁 Drop audio files here or click to browse  │
-│  📁 Files  │                                                │
-│  🎚️ Mixer  │     [drag-drop zone with preview]             │
-│  ⚙️ Settings│                                                │
-│  📜 History│                                                │
-│            │────────────────────────────────────────────────│
-│  ⚡ Status │  Ready                          v1.4.4       │
-└────────────┴────────────────────────────────────────────────┘
-```
+![App Overview](docs/screenshots/main-window.png)
 
 ### Stem Mixer View
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Stem Mixer                              [▶ Play All]      │
-├─────────────────────────────────────────────────────────────┤
-│  🔴 Drums     ████████████████░░░░░  [🔇] [👁]  100%       │
-│  🩵 Bass      ██████████░░░░░░░░░░░  [🔇] [👁]  80%        │
-│  🟡 Other     ████████████████░░░░░  [🔇] [👁]  100%       │
-│  🩷 Vocals    ████████░░░░░░░░░░░░░  [🔇] [👁]  60%        │
-├─────────────────────────────────────────────────────────────┤
-│  ▶️ 00:45 / 03:22    [═══════════●═══════════]            │
-└─────────────────────────────────────────────────────────────┘
-```
+![Stem Mixer](docs/screenshots/stem-mixer.png)
 
-### Processing Pipeline
+### Settings Panel
+![Settings Panel](docs/screenshots/settings-panel.png)
+
+### Processing Queue
+![Processing Queue](docs/screenshots/processing-queue.png)
+
+## Processing Pipeline
+
 ```
 Audio File (MP3/FLAC/WAV/OGG)
         │
