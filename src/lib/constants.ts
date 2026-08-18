@@ -163,7 +163,7 @@ export const DEVICE_OPTIONS = [
 
 // Default processing settings
 export const DEFAULT_PROCESSING_SETTINGS = {
-  model: 'bs_roformer' as AIModel,
+  model: 'demucs' as AIModel,
   device: 'cpu' as const,
   outputFormat: 'alac' as const,
   qualityPreset: 'standard' as const,
@@ -194,7 +194,7 @@ export const KEYBOARD_SHORTCUTS = {
 
 /// App info
 // ⚠️ Keep in sync with package.json "version" field
-export const APP_VERSION = '1.4.3';
+export const APP_VERSION = '1.4.4';
 
 export const APP_INFO = {
   name: 'Stemgen-GUI',

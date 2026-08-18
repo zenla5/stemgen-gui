@@ -13,7 +13,7 @@ import { useAppStore } from '@/stores/appStore';
 import { InstallProgress } from '@/components/ui/InstallProgress';
 import { Button } from '@/components/ui/Button';
 import type { PackageStatus, AvailableInstaller } from '@/lib/types';
-import { hasPackageStatusKey, getPackageStatusValue } from '@/lib/types';
+import { getDepStatus } from '@/lib/depStatus';
 import { CheckCircle, XCircle, AlertCircle, Download, Loader2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -29,39 +29,21 @@ interface DepRow {
 interface DependencyCheckPanelProps {
   /** Called when all required dependencies are satisfied. */
   onAllDependenciesOk?: () => void;
+  /** Called when the dependency check completes (regardless of result). */
+  onCheckComplete?: () => void;
   /** Whether to show the "Run Check" button (default: true). */
   showCheckButton?: boolean;
   /** Whether to auto-run the check on mount (default: false). */
   autoCheckOnMount?: boolean;
 }
 
-const DEPENDENCY_DEFS: Array<{ name: string; manifestKey: string; description: string }> = [
+const DEPENDENCY_DEFS: Array<{ name: string; manifestKey: string; description: string; canInstall?: boolean }> = [
   { name: 'FFmpeg', manifestKey: 'ffmpeg', description: 'Audio/video processing — required' },
   { name: 'Python', manifestKey: 'python', description: 'AI model inference — required' },
   { name: 'PyTorch', manifestKey: 'pytorch', description: 'Machine learning framework — required' },
   { name: 'demucs', manifestKey: 'demucs', description: 'AI stem separation model — required' },
-  { name: 'CUDA', manifestKey: 'pytorch', description: 'GPU acceleration — optional' },
+  { name: 'CUDA', manifestKey: 'cuda', description: 'GPU acceleration — optional', canInstall: false },
 ];
-
-function getDepStatus(pkg: PackageStatus | unknown, successMsg?: string): { status: DepRow['status']; message?: string } {
-  if (typeof pkg === 'string') {
-    if (pkg === 'available') return { status: 'ok', message: successMsg ?? 'Ready' };
-    return { status: 'missing', message: 'Not configured' };
-  }
-  if (!pkg || typeof pkg !== 'object') {
-    return { status: 'missing', message: 'Not configured' };
-  }
-  if (hasPackageStatusKey(pkg, 'available')) {
-    return { status: 'ok', message: successMsg ?? 'Ready' };
-  }
-  const unavailable = getPackageStatusValue(pkg, 'unavailable');
-  if (unavailable !== undefined) return { status: 'warning', message: unavailable };
-  const warning = getPackageStatusValue(pkg, 'warning');
-  if (warning !== undefined) return { status: 'warning', message: warning };
-  const missing = getPackageStatusValue(pkg, 'missing');
-  if (missing !== undefined) return { status: 'missing', message: missing };
-  return { status: 'warning', message: 'Unknown status' };
-}
 
 const STATUS_ICON: Record<DepRow['status'], () => ReactNode> = {
   ok: () => <CheckCircle className="h-4 w-4 text-green-500" />,
@@ -73,6 +55,7 @@ const STATUS_ICON: Record<DepRow['status'], () => ReactNode> = {
 
 export function DependencyCheckPanel({
   onAllDependenciesOk,
+  onCheckComplete,
   showCheckButton = true,
   autoCheckOnMount = false,
 }: DependencyCheckPanelProps) {
@@ -103,6 +86,9 @@ export function DependencyCheckPanel({
       await fetchInstallManifest();
       const env = await invoke<Record<string, PackageStatus | unknown>>('validate_environment');
 
+      // Track missing deps for installer pre-fetch (computed from fresh results, not stale state)
+      const missingManifestKeys = new Set<string>();
+
       for (const depDef of DEPENDENCY_DEFS) {
         let pkg: PackageStatus | unknown;
         let successMsg: string | undefined;
@@ -126,23 +112,25 @@ export function DependencyCheckPanel({
 
         const { status, message } = getDepStatus(pkg, successMsg);
         updateDep(depDef.name, status, message);
-      }
 
-      // Pre-fetch installers for missing deps
-      const missingDeps = DEPENDENCY_DEFS.filter(d => {
-        const dep = deps.find(dd => dd.name === d.name);
-        return dep?.status === 'missing' || dep?.status === 'warning';
-      });
-      for (const dep of missingDeps) {
-        if (!installersMap[dep.manifestKey]) {
-          const installers = await getAvailableInstallers(dep.manifestKey);
-          setInstallersMap(prev => ({ ...prev, [dep.manifestKey]: installers }));
+        // Track missing/warning deps for installer pre-fetch
+        if (status === 'missing' || status === 'warning') {
+          missingManifestKeys.add(depDef.manifestKey);
         }
       }
 
-      // Invalidate app store cache and re-validate
+      // Pre-fetch installers for missing deps using fresh results
+      for (const key of missingManifestKeys) {
+        if (!installersMap[key]) {
+          const installers = await getAvailableInstallers(key);
+          setInstallersMap(prev => ({ ...prev, [key]: installers }));
+        }
+      }
+
+      // Invalidate app store cache so Settings panel re-fetches on next visit.
+      // Fire-and-forget — do not await, to avoid doubling the total check time.
       useAppStore.setState({ environmentValidatedAt: null });
-      await validateEnvironment();
+      void validateEnvironment();
     } catch (_err) {
       for (const depDef of DEPENDENCY_DEFS) {
         updateDep(depDef.name, 'warning', 'Could not check dependency');
@@ -150,7 +138,7 @@ export function DependencyCheckPanel({
     } finally {
       setIsChecking(false);
     }
-  }, [fetchInstallManifest, getAvailableInstallers, installersMap, deps, updateDep, validateEnvironment]);
+  }, [fetchInstallManifest, getAvailableInstallers, installersMap, updateDep, validateEnvironment]);
 
   // Auto-check on mount
   useEffect(() => {
@@ -159,15 +147,16 @@ export function DependencyCheckPanel({
     }
   }, [autoCheckOnMount, runCheck]);
 
-  // Notify parent when all required deps are OK
+  // Notify parent when check completes, and specifically when all required deps are OK
   useEffect(() => {
     if (!isChecking && hasRunCheckRef.current) {
+      onCheckComplete?.();
       const allOk = deps.filter(d => d.name !== 'CUDA').every(d => d.status === 'ok');
       if (allOk) {
         onAllDependenciesOk?.();
       }
     }
-  }, [deps, isChecking, onAllDependenciesOk]);
+  }, [deps, isChecking, onAllDependenciesOk, onCheckComplete]);
 
   const handleInstall = async (manifestKey: string) => {
     const installers = installersMap[manifestKey];
@@ -232,9 +221,10 @@ export function DependencyCheckPanel({
       {/* Results table */}
       <div className="space-y-1">
         {deps.map(dep => {
+          const depDef = DEPENDENCY_DEFS.find(d => d.name === dep.name);
           const installers = installersMap[dep.manifestKey] || [];
           const isInstalling = installingDep === dep.manifestKey;
-          const canInstall = dep.status === 'missing' && installers.length > 0;
+          const canInstall = dep.status === 'missing' && installers.length > 0 && depDef?.canInstall !== false;
           const Icon = STATUS_ICON[dep.status];
 
           return (

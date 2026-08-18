@@ -5,207 +5,20 @@
  * Shown when Python, FFmpeg, or AI models are not detected.
  */
 
-import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Progress } from '@/components/ui/Progress';
 import { DependencyCheckPanel } from '@/components/setup/DependencyCheckPanel';
-import type { PackageStatus } from '@/lib/types';
-import { hasPackageStatusKey, getPackageStatusValue } from '@/lib/types';
-
-interface DependencyCheck {
-  name: string;
-  manifestKey: string;  // key in install_manifest.json
-  description: string;
-  status: 'pending' | 'checking' | 'ok' | 'missing' | 'warning';
-  message?: string;
-}
 
 interface FirstRunWizardProps {
   onComplete?: () => void;
   onSkip?: () => void;
 }
 
-/** Marker file written by the NSIS post-install dependency check script. */
-interface InstallerDepMarker {
-  python: boolean;
-  ffmpeg: boolean;
-  pytorch: boolean;
-  demucs: boolean;
-  timestamp?: string;
-  installerVersion?: string;
-}
-
-/** Check a PackageStatus discriminated union and return our dependency check status */
-function getDepStatus(pkg: PackageStatus | unknown, successMsg?: string): { status: DependencyCheck['status']; message?: string } {
-  if (typeof pkg === 'string') {
-    if (pkg === 'available') return { status: 'ok', message: successMsg ?? 'Ready' };
-    return { status: 'missing', message: 'Not configured' };
-  }
-  if (!pkg || typeof pkg !== 'object') {
-    return { status: 'missing', message: 'Not configured' };
-  }
-  if (hasPackageStatusKey(pkg, 'available')) {
-    return { status: 'ok', message: successMsg ?? 'Ready' };
-  }
-  const unavailable = getPackageStatusValue(pkg, 'unavailable');
-  if (unavailable !== undefined) return { status: 'warning', message: unavailable };
-  const warning = getPackageStatusValue(pkg, 'warning');
-  if (warning !== undefined) return { status: 'warning', message: warning };
-  const missing = getPackageStatusValue(pkg, 'missing');
-  if (missing !== undefined) return { status: 'missing', message: missing };
-  return { status: 'warning', message: 'Unknown status' };
-}
-
 export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
   const [step, setStep] = useState<'welcome' | 'check' | 'results'>('welcome');
-  const [dependencies, setDependencies] = useState<DependencyCheck[]>([
-    { name: 'FFmpeg', manifestKey: 'ffmpeg', description: 'Audio/video processing — required', status: 'pending' },
-    { name: 'Python', manifestKey: 'python', description: 'AI model inference — required', status: 'pending' },
-    { name: 'PyTorch', manifestKey: 'pytorch', description: 'Machine learning framework — required', status: 'pending' },
-    { name: 'demucs', manifestKey: 'demucs', description: 'AI stem separation model — required', status: 'pending' },
-    { name: 'CUDA', manifestKey: 'pytorch', description: 'GPU acceleration — optional', status: 'pending' },
-  ]);
 
-  const updateDependency = (name: string, status: DependencyCheck['status'], message?: string) => {
-    setDependencies(prev =>
-      prev.map(d => d.name === name ? { ...d, status, message } : d)
-    );
-  };
-
-  // Check for installer dep marker on mount
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const marker = await invoke<InstallerDepMarker | null>('read_installer_dep_marker');
-        if (cancelled || !marker) return;
-
-        // Pre-populate statuses from installer marker
-        const updates: Array<{ name: string; status: DependencyCheck['status']; message?: string }> = [];
-
-        if (marker.ffmpeg) {
-          updates.push({ name: 'FFmpeg', status: 'ok', message: 'Installed at setup' });
-        } else {
-          updates.push({ name: 'FFmpeg', status: 'warning', message: 'Could not install at setup' });
-        }
-
-        if (marker.python) {
-          updates.push({ name: 'Python', status: 'ok', message: 'Installed at setup' });
-        } else {
-          updates.push({ name: 'Python', status: 'warning', message: 'Could not install at setup' });
-        }
-
-        // PyTorch and demucs are deferred to first-run
-        updates.push({ name: 'PyTorch', status: 'pending' });
-        updates.push({ name: 'demucs', status: 'pending' });
-
-        setDependencies(prev =>
-          prev.map(d => {
-            const update = updates.find(u => u.name === d.name);
-            return update ? { ...d, ...update } : d;
-          })
-        );
-
-        // If installer-time deps (python, ffmpeg) are both ok,
-        // advance to the check step so the wizard can verify PyTorch/demucs
-        if (marker.python && marker.ffmpeg) {
-          setStep('check');
-          // Auto-run the dependency check for the deferred packages
-          setTimeout(() => runDependencyCheck(), 100);
-        }
-      } catch {
-        // Marker not found — fall through to normal flow
-      }
-    })();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const runDependencyCheck = async () => {
+  const handleStartCheck = () => {
     setStep('check');
-
-    // Mark all as checking with staggered animation
-    for (const dep of dependencies) {
-      updateDependency(dep.name, 'checking');
-      await new Promise(r => setTimeout(r, 200));
-    }
-
-    // Call validate_environment once with a timeout, then process all results.
-    // NOTE: We use a polling-based timeout instead of Promise.race + setTimeout
-    // because WebView2 on Windows throttles setTimeout callbacks when the window
-    // is backgrounded (e.g., CI runners), which can cause the timeout to never fire.
-    const VALIDATION_TIMEOUT_MS = 25_000;
-    let env: Record<string, PackageStatus | unknown> | null = null;
-    const POLL_INTERVAL_MS = 250;
-    const deadline = Date.now() + VALIDATION_TIMEOUT_MS;
-    const invocation = invoke<Record<string, PackageStatus | unknown>>('validate_environment');
-    const pollAndRace = (): Promise<typeof env> =>
-      new Promise((resolve) => {
-        let interval: ReturnType<typeof setInterval>;
-        interval = setInterval(() => {
-          if (Date.now() > deadline) {
-            clearInterval(interval);
-            resolve(null);
-          }
-        }, POLL_INTERVAL_MS);
-        invocation
-          .then((result) => {
-            clearInterval(interval);
-            resolve(result);
-          })
-          .catch(() => {
-            clearInterval(interval);
-            resolve(null);
-          });
-      });
-    env = await pollAndRace();
-
-    for (const dep of dependencies) {
-      if (!env) {
-        updateDependency(dep.name, 'warning', 'Check timed out — try again');
-        continue;
-      }
-      if (dep.name === 'FFmpeg') {
-        const { status, message } = getDepStatus(env.ffmpeg as PackageStatus | undefined, 'Found and ready');
-        updateDependency(dep.name, status, message);
-      } else if (dep.name === 'Python') {
-        const { status, message } = getDepStatus(env.python as PackageStatus | undefined, `v${(env as Record<string, unknown>).pythonVersion ?? 'unknown'}`);
-        updateDependency(dep.name, status, message || 'Python not found');
-      } else if (dep.name === 'PyTorch') {
-        const { status, message } = getDepStatus(env.pytorch as PackageStatus | undefined, `v${(env as Record<string, unknown>).pytorchVersion ?? 'unknown'}`);
-        updateDependency(dep.name, status, message || 'PyTorch not installed');
-      } else if (dep.name === 'demucs') {
-        const { status, message } = getDepStatus(env.demucs as PackageStatus | undefined, 'Ready');
-        updateDependency(dep.name, status, message || 'demucs not installed');
-      } else if (dep.name === 'CUDA') {
-        const gpuName = String((env as Record<string, unknown>).gpuName ?? 'GPU available');
-        const { status, message } = getDepStatus(env.cuda as PackageStatus | undefined, gpuName);
-        updateDependency(dep.name, status, message || 'CPU mode — GPU recommended');
-      }
-    }
-
-    setStep('results');
-  };
-
-  const getStatusIcon = (status: DependencyCheck['status']) => {
-    switch (status) {
-      case 'ok': return '✅';
-      case 'missing': return '❌';
-      case 'warning': return '⚠️';
-      case 'checking': return '🔄';
-      default: return '⏳';
-    }
-  };
-
-  const getStatusColor = (status: DependencyCheck['status']) => {
-    switch (status) {
-      case 'ok': return 'text-green-600 dark:text-green-400';
-      case 'missing': return 'text-red-600 dark:text-red-400';
-      case 'warning': return 'text-yellow-600 dark:text-yellow-400';
-      case 'checking': return 'text-blue-600 dark:text-blue-400';
-      default: return 'text-gray-500';
-    }
   };
 
   return (
@@ -236,7 +49,7 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
                 </ul>
               </div>
               <div className="flex gap-3 pt-2">
-                <Button onClick={runDependencyCheck} className="flex-1">
+                <Button onClick={handleStartCheck} className="flex-1">
                   Start Check
                 </Button>
                 <Button data-testid="wizard-skip" variant="outline" onClick={onSkip}>
@@ -246,36 +59,24 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
             </div>
           )}
 
-          {/* Step: Checking */}
+          {/* Step: Check — DependencyCheckPanel handles the full lifecycle */}
           {step === 'check' && (
             <div className="space-y-4">
               <h2 className="font-semibold text-slate-800 dark:text-slate-200">Checking dependencies...</h2>
-              <div className="space-y-3">
-                {dependencies.map(dep => (
-                  <div key={dep.name} className="flex items-center gap-3">
-                    <span className="text-xl w-8 text-center">{getStatusIcon(dep.status)}</span>
-                    <div className="flex-1">
-                      <div className="flex justify-between">
-                        <span className="font-medium text-slate-700 dark:text-slate-300">{dep.name}</span>
-                        <span className={`text-sm ${getStatusColor(dep.status)}`}>
-                          {dep.status === 'checking' ? 'Checking...' : dep.message ?? ''}
-                        </span>
-                      </div>
-                      {dep.status === 'checking' && (
-                        <Progress value={0} className="mt-1 h-1 animate-pulse" />
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <DependencyCheckPanel
+                autoCheckOnMount
+                showCheckButton={false}
+                onCheckComplete={() => setStep('results')}
+              />
             </div>
           )}
 
-          {/* Step: Results — uses reusable DependencyCheckPanel */}
+          {/* Step: Results — panel has already completed its check */}
           {step === 'results' && (
             <div className="space-y-4">
               <h2 className="font-semibold text-slate-800 dark:text-slate-200">Dependency Check Complete</h2>
               <DependencyCheckPanel
+                autoCheckOnMount={false}
                 showCheckButton={false}
                 onAllDependenciesOk={onComplete}
               />

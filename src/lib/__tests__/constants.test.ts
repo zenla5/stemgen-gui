@@ -213,7 +213,8 @@ describe('constants', () => {
 
   describe('DEFAULT_PROCESSING_SETTINGS', () => {
     it('should have all required settings', () => {
-      expect(DEFAULT_PROCESSING_SETTINGS.model).toBe('bs_roformer');
+      // TASK-017: Regression guard — default model must be 'demucs' (not broken 'bs_roformer' stub)
+      expect(DEFAULT_PROCESSING_SETTINGS.model).toBe('demucs');
       expect(DEFAULT_PROCESSING_SETTINGS.device).toBe('cpu');
       expect(DEFAULT_PROCESSING_SETTINGS.outputFormat).toBe('alac');
       expect(DEFAULT_PROCESSING_SETTINGS.qualityPreset).toBe('standard');

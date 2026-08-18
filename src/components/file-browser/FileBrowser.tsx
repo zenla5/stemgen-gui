@@ -33,7 +33,7 @@ export function FileBrowser() {
     Promise.all([
       register('tauri://drag-drop', async (event: Event<DragDropPayload>) => {
         setIsDraggingOver(false);
-        const paths = event.payload.paths;
+        const paths = event.payload?.paths;
 
         if (paths && paths.length > 0) {
           const newFiles: AudioFileMetadata[] = [];

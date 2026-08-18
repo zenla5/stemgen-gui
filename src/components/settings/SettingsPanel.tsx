@@ -51,16 +51,11 @@ export function SettingsPanel() {
     reason?: string;
   }> | null>(null);
 
-  // Fetch manifest on mount and pre-load installers for all known dep keys
+  // Fetch manifest on mount only — installers are loaded lazily per dep row
+  // to avoid concurrent IPC calls that can delay other commands (e.g. get_models).
   useEffect(() => {
-    fetchInstallManifest().then(async () => {
-      const keys = ['python', 'pytorch', 'demucs', 'ffmpeg'];
-      const entries = await Promise.all(
-        keys.map(async k => [k, await getAvailableInstallers(k)] as const)
-      );
-      setInstallersMap(Object.fromEntries(entries));
-    });
-  }, [fetchInstallManifest, getAvailableInstallers]);
+    fetchInstallManifest();
+  }, [fetchInstallManifest]);
 
   // Load available installers for missing deps
   const loadInstallersForDep = useCallback(async (depKey: string) => {

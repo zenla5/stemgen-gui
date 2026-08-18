@@ -295,8 +295,12 @@ impl SidecarManager {
                 })
                 .unwrap_or_default();
 
+            // Try to extract a structured JSON error from stderr
+            let error_message =
+                extract_structured_error(&stderr_tail).unwrap_or_else(|| stderr_tail.clone());
+
             let exit_code = status.code();
-            if stderr_tail.is_empty() {
+            if error_message.is_empty() {
                 Err(anyhow::anyhow!(
                     "Separation failed (exit {:?}): no stderr output",
                     exit_code
@@ -305,32 +309,57 @@ impl SidecarManager {
                 Err(anyhow::anyhow!(
                     "Separation failed (exit {:?}): {}",
                     exit_code,
-                    stderr_tail
+                    error_message
                 ))
             }
         }
     }
 
-    /// Collect the generated stem files
+    /// Collect the generated stem files by scanning the output directory.
+    ///
+    /// The Python sidecar derives stem names from `model.sources` which may vary
+    /// between models. This function dynamically discovers all `.wav` files
+    /// matching the pattern `{source_stem}_{stem_name}.wav` rather than
+    /// hardcoding a fixed list of stem names.
     pub fn collect_stems(&self, output_dir: &Path, source_path: &Path) -> Result<Vec<StemResult>> {
         let mut stems = Vec::new();
-        let stem_names = ["drums", "bass", "other", "vocals"];
         let source_stem = source_path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("stem");
 
-        for name in &stem_names {
-            let stem_filename = format!("{}_{}.wav", source_stem, name);
-            let stem_path = output_dir.join(&stem_filename);
+        let prefix = format!("{}_", source_stem);
 
-            if stem_path.exists() {
-                stems.push(StemResult {
-                    stem_type: name.to_string(),
-                    path: stem_path,
-                });
-            } else {
-                warn!("Stem file not found: {}", stem_path.display());
+        // Scan output directory for all .wav files matching the stem pattern
+        let entries = std::fs::read_dir(output_dir).with_context(|| {
+            format!("Failed to read output directory: {}", output_dir.display())
+        })?;
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Only consider .wav files
+            if path.extension().and_then(|e| e.to_str()) != Some("wav") {
+                continue;
+            }
+
+            let filename = path
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or_default();
+
+            // Check if filename matches the pattern {source_stem}_{stem_name}.wav
+            if let Some(stem_name) = filename
+                .strip_prefix(&prefix)
+                .and_then(|s| s.strip_suffix(".wav"))
+            {
+                if !stem_name.is_empty() {
+                    stems.push(StemResult {
+                        stem_type: stem_name.to_string(),
+                        path,
+                    });
+                }
             }
         }
 
@@ -392,6 +421,26 @@ pub struct SeparationResult {
 pub struct StemResult {
     pub stem_type: String,
     pub path: PathBuf,
+}
+
+/// Attempt to extract a structured error message from stderr output.
+///
+/// The Python sidecar may emit JSON lines to stdout with an "error" key.
+/// In some failure modes, these structured errors may also appear in stderr.
+/// This function attempts to parse the stderr text and extract the "error" field.
+fn extract_structured_error(stderr: &str) -> Option<String> {
+    // Try to find a JSON object in the stderr text
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('{') && trimmed.ends_with('}') {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                if let Some(error) = parsed.get("error").and_then(|e| e.as_str()) {
+                    return Some(error.to_string());
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -597,5 +646,84 @@ mod tests {
         assert_eq!(stems.len(), 4);
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// TASK-018: Verify collect_stems handles non-standard stem names.
+    /// This tests that the dynamic stem collector works with models that
+    /// produce stems with different names (e.g. "guitar", "piano").
+    /// Skipped on Windows (see test_sidecar_error_message_surfaced).
+    #[cfg(not(windows))]
+    #[test]
+    fn test_collect_stems_non_standard_names() {
+        let tmp = std::env::temp_dir().join("stemgen-test-collect-nonstandard");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        // Create stem files with non-standard names
+        std::fs::write(tmp.join("track_guitar.wav"), b"fake").unwrap();
+        std::fs::write(tmp.join("track_piano.wav"), b"fake").unwrap();
+
+        let manager = SidecarManager::new(PathBuf::from("fake"), tmp.clone());
+        let source = Path::new("/music/track.wav");
+        let stems = manager.collect_stems(&tmp, source).unwrap();
+
+        assert_eq!(stems.len(), 2);
+        let types: Vec<&str> = stems.iter().map(|s| s.stem_type.as_str()).collect();
+        assert!(types.contains(&"guitar"));
+        assert!(types.contains(&"piano"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// TASK-018: Verify collect_stems works with standard four-stem names (regression guard).
+    /// Ensures the refactor to dynamic stem collection doesn't break the common case.
+    /// Skipped on Windows (see test_sidecar_error_message_surfaced).
+    #[cfg(not(windows))]
+    #[test]
+    fn test_collect_stems_standard_names_still_work() {
+        let tmp = std::env::temp_dir().join("stemgen-test-collect-standard");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        // Create all four standard stem files
+        std::fs::write(tmp.join("track_drums.wav"), b"fake").unwrap();
+        std::fs::write(tmp.join("track_bass.wav"), b"fake").unwrap();
+        std::fs::write(tmp.join("track_other.wav"), b"fake").unwrap();
+        std::fs::write(tmp.join("track_vocals.wav"), b"fake").unwrap();
+
+        let manager = SidecarManager::new(PathBuf::from("fake"), tmp.clone());
+        let source = Path::new("/music/track.wav");
+        let stems = manager.collect_stems(&tmp, source).unwrap();
+
+        assert_eq!(stems.len(), 4);
+        let types: Vec<&str> = stems.iter().map(|s| s.stem_type.as_str()).collect();
+        assert!(types.contains(&"drums"));
+        assert!(types.contains(&"bass"));
+        assert!(types.contains(&"other"));
+        assert!(types.contains(&"vocals"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// TASK-019: Verify extract_structured_error parses valid JSON error.
+    #[test]
+    fn test_extract_structured_error_parses_valid_json() {
+        let stderr = r#"{"status":"error","error":"my structured error"}"#;
+        let result = extract_structured_error(stderr);
+        assert_eq!(result, Some("my structured error".to_string()));
+    }
+
+    /// TASK-019: Verify extract_structured_error returns None for plain traceback.
+    #[test]
+    fn test_extract_structured_error_returns_none_for_plain_traceback() {
+        let stderr = "plain traceback text\nmore lines";
+        let result = extract_structured_error(stderr);
+        assert_eq!(result, None);
+    }
+
+    /// TASK-019: Verify extract_structured_error returns None for invalid JSON.
+    #[test]
+    fn test_extract_structured_error_returns_none_for_invalid_json() {
+        let stderr = "{invalid json}";
+        let result = extract_structured_error(stderr);
+        assert_eq!(result, None);
     }
 }

@@ -2,10 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { Download, Trash2, Check, Cpu, Zap, AlertCircle, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
-import type { AIModel } from '@/lib/types';
+import type { AIModel, ModelCheckStatus } from '@/lib/types';
 
 export interface ModelCardData {
-  id: string;
+  id: AIModel;
   name: string;
   description: string;
   quality: string;
@@ -16,8 +16,7 @@ export interface ModelCardData {
 
 interface ModelCardProps {
   model: ModelCardData;
-  isDownloaded: boolean;
-  isChecking: boolean;
+  status: ModelCheckStatus;
   isDownloading: boolean;
   downloadProgress: number;
   downloadError: string | null;
@@ -28,8 +27,7 @@ interface ModelCardProps {
 
 export function ModelCard({
   model,
-  isDownloaded,
-  isChecking,
+  status,
   isDownloading,
   downloadProgress,
   downloadError,
@@ -39,6 +37,8 @@ export function ModelCard({
 }: ModelCardProps) {
   const settings = useSettingsStore();
   const isSelected = settings.defaultModel === model.id;
+  const isDownloaded = status === 'available' || status === 'gpu-warning';
+  const isChecking = status === 'checking';
 
   const getQualityIcon = (quality: string) => {
     switch (quality) {
@@ -65,7 +65,7 @@ export function ModelCard({
 
   const handleSelect = () => {
     if (isDownloaded) {
-      settings.setDefaultModel(model.id as AIModel);
+      settings.setDefaultModel(model.id);
     }
   };
 
@@ -194,6 +194,16 @@ export function ModelCard({
                 Retry
               </button>
             </div>
+          </div>
+        )}
+
+        {/* BS-RoFormer not-yet-supported warning */}
+        {model.id === 'bs_roformer' && isSelected && isDownloaded && (
+          <div
+            data-testid="bs-roformer-warning"
+            className="mt-2 rounded-md border border-yellow-500/50 bg-yellow-500/10 p-2 text-xs text-yellow-700 dark:text-yellow-300"
+          >
+            BS-RoFormer local inference is not yet supported. Choose Demucs, HT-Demucs, or HT-Demucs FT for local processing, or enable a cloud provider.
           </div>
         )}
       </div>

@@ -175,7 +175,7 @@ def _run_demucs_model(
         elif stem_tensor.dim() == 2 and stem_tensor.shape[0] > 2:
             stem_tensor = stem_tensor.mean(0, keepdim=True).repeat(2, 1)
 
-        torchaudio.save(str(stem_path), stem_tensor, 44100)
+        torchaudio.save(str(stem_path), stem_tensor, model.samplerate)
         stems[stem_name] = stem_path
 
         emit({
@@ -205,16 +205,15 @@ def run_htdemucs_ft(input_path: Path, output_dir: Path, device: str) -> Dict[str
 
 def run_bs_roformer(input_path: Path, output_dir: Path, device: str) -> Dict[str, Path]:
     """Run BS-RoFormer stem separation (highest quality for vocals)."""
-    import torch
-    import torchaudio
-    import soundfile as sf
-
     try:
+        import torch
+        import torchaudio
         from bs_roformer import BSRoformer
     except ImportError:
         emit({
             "status": "error",
-            "error": "bs_roformer not installed. Install with: pip install bs-roformer",
+            "model_id": "bs_roformer",
+            "error": "BS-RoFormer is not yet supported for local inference. Please choose Demucs, HT-Demucs, or HT-Demucs FT, or use a cloud provider.",
         })
         sys.exit(1)
 
@@ -241,7 +240,8 @@ def run_bs_roformer(input_path: Path, output_dir: Path, device: str) -> Dict[str
     # For now, fall back to demucs if weights not available
     emit({
         "status": "error",
-        "error": "BS-RoFormer model weights not available. Please download from HuggingFace or use 'demucs' model.",
+        "model_id": "bs_roformer",
+        "error": "BS-RoFormer is not yet supported for local inference. Please choose Demucs, HT-Demucs, or HT-Demucs FT, or use a cloud provider.",
     })
     sys.exit(1)
 
@@ -650,10 +650,17 @@ def run_separation(
 # Dependency checks
 # ------------------------------------------------------------------------------
 
-def check_dependencies() -> bool:
-    """Check if required Python packages are available."""
+def check_dependencies(model: str = "demucs") -> bool:
+    """Check if required Python packages are available for the specified model.
+
+    Parameters
+    ----------
+    model : str
+        Model ID to check dependencies for. One of: demucs, htdemucs, htdemucs_ft, bs_roformer.
+    """
     missing = []
 
+    # All local models require torch and torchaudio
     try:
         import torch
     except ImportError:
@@ -664,15 +671,30 @@ def check_dependencies() -> bool:
     except ImportError:
         missing.append("torchaudio")
 
-    try:
-        from demucs.pretrained import get_model
-    except ImportError:
-        missing.append("demucs")
+    model_lower = model.lower()
+    if model_lower in ("bs_roformer", "bs-roformer"):
+        # BS-RoFormer requires bs_roformer and soundfile
+        try:
+            from bs_roformer import BSRoformer
+        except ImportError:
+            missing.append("bs_roformer")
+
+        try:
+            import soundfile
+        except ImportError:
+            missing.append("soundfile")
+    else:
+        # Demucs-family models require demucs
+        try:
+            from demucs.pretrained import get_model
+        except ImportError:
+            missing.append("demucs")
 
     if missing:
+        install_hint = "pip install " + " ".join(missing)
         emit({
             "status": "error",
-            "error": f"Missing Python packages: {', '.join(missing)}. Install with: pip install torch torchaudio demucs",
+            "error": f"Missing Python packages for {model}: {', '.join(missing)}. Install with: {install_hint}",
         })
         return False
 
@@ -717,6 +739,15 @@ def main() -> None:
 
     # Handle --check-model (standalone check mode)
     if args.check_model:
+        # BS-RoFormer is not yet supported for local inference
+        if args.check_model.lower() in ("bs_roformer", "bs-roformer"):
+            print(json.dumps({
+                "available": False,
+                "model_id": args.check_model,
+                "reason": "not_implemented",
+            }), flush=True)
+            sys.exit(0)
+
         try:
             import demucs.pretrained
             pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.check_model, args.check_model)
@@ -821,7 +852,7 @@ def main() -> None:
     })
 
     # Check dependencies
-    if not check_dependencies():
+    if not check_dependencies(args.model):
         sys.exit(1)
 
     try:

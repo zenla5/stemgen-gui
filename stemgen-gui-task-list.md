@@ -1,69 +1,103 @@
-# Stemgen GUI — Bug Fixes, Quality Improvements & Installer Enhancement Task List
+# Stemgen-GUI — Per-Model Async Checking, 3-Colour Status, & Quality Improvements
+
+*Generated: April 2026 · Repository: stemgen-gui*
+
+---
 
 ## Objective(s)
 
-This document addresses three categories of work identified through a full code audit of the `stemgen-gui` repository (Tauri v2 + React frontend, Rust backend, Python sidecar):
+This document captures the results of a full code-audit of the `stemgen-gui` repository (Tauri v2, Rust backend, React/TypeScript frontend, Python sidecar), focusing on three areas:
 
-1. **Two confirmed bugs** causing broken drag-and-drop file import and a hard crash (`exit code: Some(1)`) whenever a local separation job is started (e.g. DEMUCS on CPU).
-2. **General project quality and test coverage improvements** — the existing test suite covers serialization and store logic well, but leaves the separation pipeline, sidecar invocation, and the drag-and-drop path almost entirely untested.
-3. **Installation wizard enhancement** — the Windows NSIS/MSI installer does not check for runtime dependencies (Python, FFmpeg, etc.) at install time; users only discover missing prerequisites after launching the app for the first time.
+1. **Newly discovered bugs** — defects not covered by the existing `stemgen-gui-task-list.md` (BUG-09 through BUG-13), including a missing sidecar timeout, a path-resolution inconsistency between two model-directory helpers, and a structural type mismatch in `ModelCard`.
+2. **Project quality & testing gaps** — no test for `ModelCard` status states, no GPU-status-aware model selection coverage, and per-model check logic entirely absent from the test suite.
+3. **New feature: per-model async availability checking with three-colour status rows** — the current unified model view fires one batch call (`list_downloaded_models`) and blocks the entire panel behind a global spinner. The requested change replaces this with concurrent per-model checks, each showing an individual loading spinner, and presents each row in one of four states: **checking (spinner)**, **green (available, selectable)**, **orange (model present but GPU required and no GPU detected)**, or **red (not installed — one-click download)**. GPU-required models in orange state are not selectable while local inference is active.
 
-All tasks are designed to be executed by AI coding agents on a new feature branch (`fix/bugs-quality-installer`). Each task is self-contained, has a clear acceptance criterion, and references only files already present in the repository.
+### High-Level Architecture of the New Feature
+
+```
+Mount
+ └─► setModelStatuses({all models → 'checking'})  ← view renders instantly, all rows show spinner
+ └─► for each modelId in parallel:
+       invoke('check_model_downloaded', {modelId})
+        ├─ true  → gpu_required && !gpuPresent → 'gpu-warning' (orange)
+        │          gpu_required &&  gpuPresent  → 'available'  (green)
+        │         !gpu_required                → 'available'  (green)
+        └─ false / error → 'unavailable'  (red, show Download button)
+```
+
+GPU presence is derived from the already-available `computeEnvironmentReadiness(environmentValidation).gpuStatus` selector, avoiding any new backend call.
+
+---
+
+## Project Quality & Testing Assessment
+
+### Architecture
+The codebase is well-structured for its scale: a clear separation between the Tauri Rust commands layer, the React/Zustand frontend, and the Python sidecar. CI/CD pipelines exist. Internationalization (en/de) is in place. A test suite covers the store, most lib utilities, and key UI components.
+
+### Test Coverage Gaps
+- `ModelCard.tsx` has no dedicated test file at all. Its visual states (spinner, green, orange, red), selection logic, and GPU-warning tooltip are completely untested.
+- `UnifiedModelSection.test.tsx` mocks `ModelCard` entirely, so integration of status props is never verified.
+- The Rust `check_model_downloaded` function has no unit or integration test for the timeout path.
+- GPU-aware selection (orange state → local inference disabled) has no test anywhere in the suite.
+- The `computeEnvironmentReadiness` store selector is tested in `environmentReadiness.test.ts` but not exercised from within any component test.
+
+### Newly Discovered Bugs
+
+| ID | Severity | File | Description |
+|----|----------|------|-------------|
+| BUG-09 | High | `src-tauri/src/commands/models.rs` | `check_model_downloaded` has **no timeout** — can hang indefinitely if the Python sidecar stalls. `list_downloaded_models` has a 10 s timeout; the single-model variant must match it. |
+| BUG-10 | Medium | `models.rs` vs `mod.rs` | Two independent path helpers: `get_models_dir()` in `models.rs` uses `ProjectDirs::from("dev","stemgen","stemgen-gui").data_dir()` while `get_model_directory()` in `mod.rs` uses `get_data_dir()` (from `probe.rs`). If these resolve to different directories on any platform, downloaded models will not be found by availability checks. |
+| BUG-11 | Low | `src/components/settings/ModelCard.tsx` | `AIModel` is imported from `@/lib/types` but `ModelCardData.id` is typed as `string`, not `AIModel`. The cast `model.id as AIModel` papers over the mismatch without compile-time safety. |
+| BUG-12 | Medium | `UnifiedModelSection.tsx` / `appStore.ts` | When `environmentValidation` has not yet been loaded (store initialises to `null`), the `downloadModel` guard silently falls into the error branch and shows a misleading "Sidecar missing" error instead of "environment not yet checked". |
+| BUG-13 | High | `UnifiedModelSection.tsx` | The `isChecking` prop passed to every `ModelCard` is a **single shared boolean** — once any check is complete the prop flips globally. The new per-model feature requires an independent per-row checking state. |
 
 ---
 
 ## Step-by-Step Implementation Task List for AI Agents
 
----
-
-### PHASE 0 — Branch & Scaffolding
+In the following section there is a detailed, sequentially ordered task list that an AI coding agent can follow to implement. Each task must include all required fields.
 
 ---
 
-- [x] **TASK-001 — Create feature branch**
+### Phase 0 — Backend: Bug Fixes & Foundation
 
-  **Description**: From the latest `main`, create a new Git branch named `fix/bugs-quality-installer`. This branch will contain all commits for this task list. Do not modify `main` directly.
+---
 
-  **Inputs**: Current `main` HEAD.
+- [x] **TASK-001** — Fix path-resolution inconsistency between `get_models_dir()` and `get_model_directory()`
 
-  **Outputs / deliverables**: Branch `fix/bugs-quality-installer` exists locally and is pushed to `origin`.
+  **Description**: In `src-tauri/src/commands/models.rs` the helper `get_models_dir()` computes the models directory via `directories::ProjectDirs::from("dev", "stemgen", "stemgen-gui").data_dir().join("models")`. In `src-tauri/src/commands/mod.rs` the helper `get_model_directory()` computes it via `get_data_dir().join("models")` where `get_data_dir()` is defined in `probe.rs`. Audit both helpers to confirm whether they produce the same absolute path on macOS, Linux, and Windows. If they differ, consolidate them into a single authoritative helper (preferred location: `probe.rs`, exported as `pub fn get_models_dir() -> PathBuf`). Update every call-site in `models.rs`, `mod.rs`, and any other file that computes a model path independently. Add a unit test asserting the path contains both `"stemgen-gui"` and `"models"` segments.
 
-  **Acceptance criteria**: `git branch --show-current` outputs `fix/bugs-quality-installer`. CI pipeline starts on push.
+  **Inputs**: `src-tauri/src/commands/models.rs`, `src-tauri/src/commands/mod.rs`, `src-tauri/src/commands/probe.rs`
+
+  **Outputs / deliverables**: A single `pub fn get_models_dir() -> PathBuf` in `probe.rs`; all callers updated; one `#[test]` confirming the path.
+
+  **Acceptance criteria**:
+  - `cargo test` passes with no new failures.
+  - `grep -rn "data_dir.*models\|join.*models"` in `src-tauri/src` shows exactly one definition and N call-sites that all call the same function.
+  - On macOS, the resolved path includes `Application Support/dev.stemgen.stemgen-gui/models` (or equivalent per platform spec).
 
   **Dependencies**: None.
 
   **Estimated complexity**: Low.
 
-  **Privilege / tooling requirements**: None beyond standard `git` access.
+  **Privilege / tooling requirements**: None beyond the existing Rust toolchain.
 
 ---
 
-### PHASE 1 — Bug Fix: Drag-and-Drop File Import
+- [x] **TASK-002** — Add 10-second timeout to `check_model_downloaded`
 
-Root cause: In `src/components/file-browser/FileBrowser.tsx`, the Tauri v2 `listen()` callback receives a full `Event<T>` wrapper object, but the handler accesses `event.paths` directly. In Tauri v2, the actual payload is nested at `event.payload`. The handler is also mis-typed as receiving `DragDropPayload` instead of a Tauri `Event<DragDropPayload>`, so `event.paths` is always `undefined` and no files are ever processed.
+  **Description**: `check_model_downloaded` in `src-tauri/src/commands/models.rs` spawns a Python sidecar process with `--check-model <model_id>` but wraps it in no timeout. If the sidecar hangs, the Tauri command hangs indefinitely, blocking the frontend spinner for that model row forever. Wrap the `tokio::process::Command::output()` call in `tokio::time::timeout(Duration::from_secs(10), ...)` mirroring the pattern already used in `list_downloaded_models`. If the timeout elapses, return `Err("check-model timed out after 10 s".to_string())`. Add a unit test (mocking or using a sleep subprocess) that verifies the timeout error string is returned within ≤ 12 s.
 
----
+  **Inputs**: `src-tauri/src/commands/models.rs`
 
-- [x] **TASK-002 — Fix drag-and-drop event payload access in FileBrowser**
-
-  **Description**: In `src/components/file-browser/FileBrowser.tsx`:
-
-  1. Import the Tauri `Event` type from `@tauri-apps/api/event` alongside `listen`.
-  2. Change the type signature of the `tauri://drag-drop` handler from `(event: DragDropPayload)` to `(event: Event<DragDropPayload>)` (or the equivalent `{ payload: DragDropPayload }` inline type).
-  3. Update the payload access from `event.paths` to `event.payload.paths` in all three locations inside the handler body.
-  4. Verify the `tauri://drag-enter` and `tauri://drag-leave` handlers do not need payload access (they do not — no change required there).
-  5. Ensure the `DragDropPayload` interface still accurately reflects the Tauri v2 drag-drop event shape: `{ paths: string[]; position?: { x: number; y: number } }`.
-
-  **Inputs**: `src/components/file-browser/FileBrowser.tsx`
-
-  **Outputs / deliverables**: Updated `FileBrowser.tsx` where drag-drop events correctly read `event.payload.paths`.
+  **Outputs / deliverables**: Updated `check_model_downloaded` with timeout; new `#[test]` for timeout path (can use `cfg(not(windows))` guard if the subprocess approach differs).
 
   **Acceptance criteria**:
-  - Unit test (added in TASK-003) passes.
-  - Manual check on Windows 10: dragging a `.wav` or `.mp3` file onto the drop zone causes it to appear in the file list.
-  - No TypeScript compiler errors (`npx tsc --noEmit`).
+  - `cargo test` passes.
+  - The function signature, return type, and `#[tauri::command]` attribute are unchanged.
+  - Manual test: if Python is pointed at a script that sleeps 30 s, the command returns an error in ≈ 10 s.
 
-  **Dependencies**: TASK-001.
+  **Dependencies**: TASK-001 (so paths are consistent before adjusting the command).
 
   **Estimated complexity**: Low.
 
@@ -71,24 +105,95 @@ Root cause: In `src/components/file-browser/FileBrowser.tsx`, the Tauri v2 `list
 
 ---
 
-- [x] **TASK-003 — Add unit tests for FileBrowser drag-and-drop event handling**
+- [x] **TASK-003** — Expose GPU detection status as a lightweight Tauri query command
 
-  **Description**: In `src/components/file-browser/__tests__/FileBrowser.test.tsx` (create if absent):
+  **Description**: The frontend needs to know whether a GPU (CUDA or MPS) is available without waiting for the full `validate_environment` call, which can be slow. Add a new Tauri command `get_gpu_status() -> Result<GpuStatus, String>` that runs only the GPU-probing portion of `validate_environment` (i.e., calls `probe_pytorch_device()` and `probe_gpu_name()`). Define the return struct:
 
-  1. Mock `@tauri-apps/api/event`'s `listen` to capture handlers by event name.
-  2. Mock `@tauri-apps/api/core`'s `invoke` to return a fake `AudioFileMetadata` object for `get_audio_info`.
-  3. Write a test that simulates a `tauri://drag-drop` event by calling the captured handler with `{ payload: { paths: ['/tmp/test.wav'] } }` and asserts that the file appears in the rendered file list.
-  4. Write a second test confirming that a `tauri://drag-drop` event with `{ paths: ['/tmp/test.wav'] }` (old, wrong shape — no `payload` wrapper) does NOT add a file to the list (regression guard).
-  5. Write a test for `tauri://drag-enter` that asserts the drop zone gains the active/highlighted CSS class.
-  6. Write a test for `tauri://drag-leave` that asserts the drop zone loses the active class.
+  ```rust
+  #[derive(Debug, Clone, Serialize)]
+  #[serde(rename_all = "camelCase")]
+  pub struct GpuStatus {
+      pub gpu_present: bool,         // true if CUDA or MPS
+      pub gpu_device: Option<String>, // "cuda", "mps", or None
+      pub gpu_name:   Option<String>, // nvidia-smi name if available
+  }
+  ```
 
-  **Inputs**: `src/components/file-browser/FileBrowser.tsx`, Vitest + React Testing Library (already configured in `vitest.config.ts`).
+  Register the command in `src-tauri/src/lib.rs`. Add unit tests for the struct serialisation. If `environmentValidation` is already populated in the frontend store (from a prior `validate_environment` call) the frontend may read `computeEnvironmentReadiness` from the store instead of calling this command — the command exists as a fallback for when the store has not yet been populated.
 
-  **Outputs / deliverables**: `src/components/file-browser/__tests__/FileBrowser.test.tsx`.
+  **Inputs**: `src-tauri/src/commands/probe.rs`, `src-tauri/src/commands/mod.rs`, `src-tauri/src/lib.rs`
 
-  **Acceptance criteria**: `npx vitest run src/components/file-browser/__tests__/FileBrowser.test.tsx` passes all tests with 0 failures.
+  **Outputs / deliverables**: `GpuStatus` struct; `get_gpu_status` command; registered in `lib.rs`; serialisation unit test.
 
-  **Dependencies**: TASK-002.
+  **Acceptance criteria**:
+  - `cargo test` passes.
+  - Command appears in `src-tauri/gen/schemas/` after `cargo tauri build` or schema generation.
+  - Returns `{ gpuPresent: false, gpuDevice: null, gpuName: null }` on a machine without a GPU (or with CUDA unavailable).
+
+  **Dependencies**: TASK-001.
+
+  **Estimated complexity**: Low–Medium.
+
+  **Privilege / tooling requirements**: None.
+
+---
+
+### Phase 1 — Frontend: Type & Store Changes
+
+---
+
+- [x] **TASK-004** — Define `ModelCheckStatus` union type and update `ModelCardData`
+
+  **Description**: Add the following to `src/lib/types.ts`:
+
+  ```ts
+  /** Per-row availability state for the unified model panel. */
+  export type ModelCheckStatus =
+    | 'checking'      // sidecar call in-flight — show spinner
+    | 'available'     // model installed and selectable
+    | 'gpu-warning'   // model installed but gpu_required && no GPU detected
+    | 'unavailable';  // model not installed — show Download button
+  ```
+
+  Update `ModelCardData` (in `src/components/settings/ModelCard.tsx`) to replace the separate `isDownloaded: boolean` and `isChecking: boolean` props with a single `status: ModelCheckStatus` prop. Also fix BUG-11: change `ModelCardData.id` from `string` to `AIModel` so the cast in `handleSelect` is compile-time safe. Update all callers of `ModelCard` to pass `status` instead of the two boolean props.
+
+  **Inputs**: `src/lib/types.ts`, `src/components/settings/ModelCard.tsx`, `src/components/settings/UnifiedModelSection.tsx`
+
+  **Outputs / deliverables**: `ModelCheckStatus` type in `types.ts`; updated `ModelCardData` and `ModelCardProps` interfaces; no runtime behaviour change yet.
+
+  **Acceptance criteria**:
+  - `tsc --noEmit` passes with zero new errors.
+  - `vitest run` passes (existing tests may need minor mock updates — see TASK-009).
+  - `ModelCardData.id` is typed as `AIModel`.
+
+  **Dependencies**: None (pure type change).
+
+  **Estimated complexity**: Low.
+
+  **Privilege / tooling requirements**: None.
+
+---
+
+- [x] **TASK-005** — Add `modelCheckStatuses` state to `UnifiedModelSection` (local state, not store)
+
+  **Description**: In `UnifiedModelSection.tsx`, replace the current `checking: boolean` state with a per-model status map:
+
+  ```ts
+  const [modelStatuses, setModelStatuses] =
+    useState<Record<string, ModelCheckStatus>>({});
+  ```
+
+  On mount (and on `loadModels` refresh), after `get_models` returns the model list, initialise all entries to `'checking'` in a single `setModelStatuses` call — this causes the view to render immediately with all rows in the spinner state. Remove the old `loading` boolean gate that prevented the panel from rendering at all while `list_downloaded_models` was in-flight (replace with the per-row spinner pattern). Keep the full-panel spinner only for the brief window before `get_models` itself returns (i.e. before we know the model list).
+
+  **Inputs**: `src/components/settings/UnifiedModelSection.tsx`, `src/lib/types.ts`
+
+  **Outputs / deliverables**: Updated `UnifiedModelSection` state shape; `loading` replaced by per-row `modelStatuses`.
+
+  **Acceptance criteria**:
+  - After the change, if `get_models` returns in 50 ms and `check_model_downloaded` takes 3 s per model, the panel becomes visible in ≈ 50 ms with all rows showing spinners.
+  - `vitest run` passes (tests updated in TASK-009).
+
+  **Dependencies**: TASK-004.
 
   **Estimated complexity**: Medium.
 
@@ -96,513 +201,332 @@ Root cause: In `src/components/file-browser/FileBrowser.tsx`, the Tauri v2 `list
 
 ---
 
-### PHASE 2 — Bug Fix: Separation Process Exits with Code 1
+- [x] **TASK-006** — Implement parallel per-model availability checks in `UnifiedModelSection`
 
-Root cause analysis (multiple bugs in `python/stemgen_sidecar.py`, function `_run_demucs_model`):
+  **Description**: After `get_models` returns and `modelStatuses` is initialised to `{all → 'checking'}`, fire one `invoke('check_model_downloaded', { modelId })` call per model concurrently (do **not** `await` them sequentially). For each, on settlement:
 
-**Bug A**: `AudioFile(input_path).read(streams=0)` — In demucs 4.x the `read()` method's first positional keyword is `stems` (not `streams`) and it returns a `torch.Tensor` of shape `(channels, samples)` when resampled to `model.samplerate`. The call also omits the required `samplerate` and `channels` arguments, so the returned tensor may have the wrong sample rate and channel count for the model.
+  1. Read GPU presence from the Zustand store: `const { gpuStatus } = computeEnvironmentReadiness(useAppStore.getState().environmentValidation)`. If `environmentValidation` is still `null` (environment check not yet run), fall back to `invoke('get_gpu_status')` (TASK-003) and cache the result in a local ref.
+  2. Determine `ModelCheckStatus`:
+     - `check_model_downloaded` threw or returned `false` → `'unavailable'`
+     - returned `true` AND `model.gpu_required` AND `gpuStatus === 'cpu'` → `'gpu-warning'`
+     - returned `true` (all other cases) → `'available'`
+  3. Call `setModelStatuses(prev => ({ ...prev, [modelId]: newStatus }))` so each row updates independently as its check completes.
 
-**Bug B**: `mix = wav[0]` — `wav` is already a `(channels, samples)` tensor. `wav[0]` selects the first channel, producing a `(samples,)` 1-D tensor instead of the full stereo tensor.
+  Also keep the `downloadedModels` array in the `appStore` in sync: call `addDownloadedModel` when status becomes `'available'` or `'gpu-warning'`, and ensure `removeDownloadedModel` is still called from `deleteModel`.
 
-**Bug C**: `if mix.shape[0] > 2: mix = mix.mean(0)` — After Bug B, `mix.shape[0]` is the number of audio *samples* (e.g. 2 205 000), always >> 2. This mean collapses the entire audio to a scalar, destroying all signal.
+  Remove the call to `list_downloaded_models` entirely (it is superseded by the per-model checks). Remove the `listModelsError` state and its warning banner (the per-row status conveys the same information). Remove the `isChecking` prop from `ModelCard` calls (replaced by `status`).
 
-**Bug D**: `mix = torch.from_numpy(mix).to(run_device)` — `wav` from `AudioFile.read()` is already a `torch.Tensor`; calling `torch.from_numpy()` on a tensor raises a `TypeError`, which is the direct cause of `exit code: Some(1)`.
+  **Inputs**: `src/components/settings/UnifiedModelSection.tsx`, `src/stores/appStore.ts`, `src/lib/types.ts`
 
-**Bug E**: `mix = mix[None, None, ...]` — Even if Bugs A–D were fixed, this would produce shape `(1, 1, samples)`. `apply_model` requires `(batch=1, channels=2, samples)`. The correct form is `mix[None]` (adds one batch dimension to a `(channels, samples)` tensor).
+  **Outputs / deliverables**: Updated `loadModels` / mount logic; `list_downloaded_models` call removed; per-model check loop added.
 
-**Bug F**: `source_names = model.sources` is computed but never used; stem output is indexed against the hardcoded list `["drums", "bass", "other", "vocals"]` regardless of what the loaded model reports. This silently produces wrong results for models with non-standard source ordering.
+  **Acceptance criteria**:
+  - Opening the model panel shows all rows with spinners immediately.
+  - Each row transitions independently to its final colour as its check resolves.
+  - No row stays in `'checking'` state after 12 s (timeout from TASK-002 propagates).
+  - `vitest run` passes (tests updated in TASK-009).
 
-**Bug G (Rust side)**: In `src-tauri/src/commands/sidecar.rs`, `PYTHONUTF8=1` is set only when probing the Python version (`detect_python`), but **not** when spawning the actual separation subprocess. On Windows with non-ASCII file paths this can cause `UnicodeDecodeError` in the sidecar, another path to exit code 1.
+  **Dependencies**: TASK-002, TASK-003, TASK-004, TASK-005.
+
+  **Estimated complexity**: Medium–High.
+
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-004 — Fix `_run_demucs_model` audio loading (Bugs A, B, C, D, E)**
+### Phase 2 — Frontend: `ModelCard` Visual & Interaction Changes
 
-  **Description**: Replace the entire "Apply model" block in `_run_demucs_model` (lines roughly 119–139 of `python/stemgen_sidecar.py`) with the correct demucs 4.x API:
+---
 
-  ```python
-  # Load audio resampled to model's sample rate and channel count
-  wav = AudioFile(input_path).read(
-      stems=0,
-      samplerate=model.samplerate,
-      channels=model.audio_channels,
-  )
-  # wav is already a torch.Tensor of shape (channels, samples)
-  source = str(input_path.stem)
+- [ ] **TASK-007** — Rework `ModelCard` visual rendering for four states
 
-  emit({
-      "status": "progress",
-      "stage": "separating",
-      "progress": 0.3,
-      "message": "Running AI separation...",
-  })
+  **Description**: Update `src/components/settings/ModelCard.tsx` to consume `status: ModelCheckStatus` (from TASK-004) instead of `isDownloaded` / `isChecking`. Implement the four visual states:
 
-  with torch.no_grad():
-      # wav: (channels, samples) — move to device and normalise
-      wav = wav.to(run_device)
-      ref = wav.mean(0)
-      wav = (wav - ref.mean()) / (ref.std() + 1e-8)
-      # apply_model expects (batch, channels, samples)
-      sources = apply_model(
-          model, wav[None], device=run_device, shifts=shifts, progress=False
-      )[0]
-  ```
+  **Checking (spinner)**:
+  - Left icon area: animated spinner (CSS `animate-spin`, `rounded-full border-2 border-primary border-t-transparent`).
+  - Row border: `border-muted`.
+  - No action button rendered.
+  - `data-testid={`model-card-checking-${model.id}`}`.
 
-  Remove the now-redundant intermediate `mix` variable entirely.
+  **Available — green**:
+  - Left icon: `Check` icon in a green circle (`bg-green-500/20`, `text-green-500`); if this model is the currently selected default, use primary colour instead.
+  - Row border: `border-green-500/30 bg-green-500/5` (or `border-primary bg-primary/5` if selected).
+  - Action buttons: "Select" + Trash (existing behaviour).
+  - `data-testid={`model-card-available-${model.id}`}`.
 
-  **Inputs**: `python/stemgen_sidecar.py`
+  **GPU-Warning — orange**:
+  - Left icon: `AlertTriangle` from `lucide-react` in an orange circle (`bg-orange-500/20`, `text-orange-500`).
+  - Row border: `border-orange-500/30 bg-orange-500/5`.
+  - Below the description, add a small inline notice: *"GPU required — will use CPU (slower) or enable a cloud provider."*
+  - Action buttons: "Select" is shown but clicking it when `activeProvider === 'local'` opens a confirmation/tooltip (see TASK-008); Trash is shown.
+  - `data-testid={`model-card-gpu-warning-${model.id}`}`.
 
-  **Outputs / deliverables**: Updated `stemgen_sidecar.py`.
+  **Unavailable — red**:
+  - Left icon: `X` or `Download` icon in a red circle (`bg-red-500/20`, `text-red-500`).
+  - Row border: `border-red-500/30 bg-red-500/5` (or `border-muted` if neutral styling is preferred — match existing "not downloaded" style adjusted to red tint).
+  - Action button: one-click "Download" (existing `onDownload` callback).
+  - `data-testid={`model-card-unavailable-${model.id}`}`.
+
+  Remove the `isChecking`-driven skeleton/pulse block entirely (replaced by the spinner state above). The skeleton was a full-row replacement; the spinner is just the icon area while info is rendered normally.
+
+  **Inputs**: `src/components/settings/ModelCard.tsx`, `src/stores/settingsStore.ts` (for `activeProvider`).
+
+  **Outputs / deliverables**: Updated `ModelCard` component; all four `data-testid` variants present.
 
   **Acceptance criteria**:
-  - `python/tests/test_sidecar_cli.py` (updated in TASK-006) passes.
-  - Running `python stemgen_sidecar.py --model demucs --input tests/fixtures/audio/test-short.wav --output /tmp/stems --device cpu` in an environment with demucs installed exits with code 0 and produces four `.wav` files.
+  - Storybook (or vitest snapshot) shows the four distinct states.
+  - `tsc --noEmit` passes.
+  - No `isChecking` / `isDownloaded` prop references remain in `ModelCard`.
 
-  **Dependencies**: TASK-001.
+  **Dependencies**: TASK-004, TASK-006.
 
   **Estimated complexity**: Medium.
 
-  **Privilege / tooling requirements**: Requires a Python environment with `demucs`, `torch`, `torchaudio` installed to verify. Agent must stop and ask if these are not available in its sandbox.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-005 — Fix stem source-name mapping (Bug F)**
+- [ ] **TASK-008** — GPU-warning selection guard: prevent selecting a GPU model for local inference without a GPU
 
-  **Description**: In `_run_demucs_model`, replace the hardcoded `stem_names = ["drums", "bass", "other", "vocals"]` with `model.sources` so that the output files always match what the loaded model actually produced:
+  **Description**: In `ModelCard`, when the user clicks "Select" on an orange (`'gpu-warning'`) row and `activeProvider === 'local'`, do **not** silently call `setDefaultModel`. Instead show an inline warning panel directly below the "Select" button:
 
-  ```python
-  # Use model-reported source names instead of hardcoded list
-  stem_names = list(model.sources)
+  ```
+  ⚠ No GPU detected. This model will run on CPU and may be very slow.
+     [Select anyway]  [Cancel]
   ```
 
-  Also update the saving loop to zip `enumerate(stem_names)` directly rather than the old parallel-index pattern, to keep the model source index and output name in lock-step.
+  Implement this as a local `useState<boolean>` toggle (`showGpuConfirm`). "Select anyway" calls `setDefaultModel` and hides the panel. "Cancel" hides the panel without changing the model. If `activeProvider !== 'local'` (cloud inference is active), allow selection without the confirmation (the GPU is not needed for cloud runs).
 
-  If `model.sources` contains more or fewer than four stems, the saving loop should still succeed — the `stems` dict returned may have more or fewer keys. Document this in a code comment.
+  Add `data-testid="gpu-confirm-dialog"`, `data-testid="gpu-confirm-select"`, and `data-testid="gpu-confirm-cancel"` to the confirmation elements.
 
-  **Inputs**: `python/stemgen_sidecar.py`
+  **Inputs**: `src/components/settings/ModelCard.tsx`, `src/stores/settingsStore.ts`
 
-  **Outputs / deliverables**: Updated `stemgen_sidecar.py`.
+  **Outputs / deliverables**: GPU confirmation panel in `ModelCard`; `data-testid` attributes; no store changes.
 
-  **Acceptance criteria**: The output dict keys in the `done` JSON line exactly match `model.sources` for the loaded model. Verified by the test added in TASK-006.
+  **Acceptance criteria**:
+  - Clicking Select on an orange row with `activeProvider = 'local'` shows the confirmation panel (verified in TASK-011 unit test).
+  - Clicking "Select anyway" calls `setDefaultModel(model.id)`.
+  - Clicking "Cancel" does not change the model and hides the panel.
+  - Clicking Select on an orange row with `activeProvider = 'fal'` calls `setDefaultModel` directly with no confirmation.
+
+  **Dependencies**: TASK-007.
+
+  **Estimated complexity**: Low–Medium.
+
+  **Privilege / tooling requirements**: None.
+
+---
+
+### Phase 3 — Internationalisation
+
+---
+
+- [ ] **TASK-009** — Add i18n keys for all new model-status strings
+
+  **Description**: Add the following keys to `src/i18n/en.json` under the existing `"models"` section:
+
+  ```json
+  "checking": "Checking availability…",
+  "available": "Available",
+  "gpuWarning": "GPU required — will run on CPU (slower) or use a cloud provider.",
+  "unavailable": "Not installed",
+  "gpuConfirmTitle": "No GPU detected",
+  "gpuConfirmBody": "This model requires a GPU for good performance. Running on CPU may be very slow.",
+  "gpuConfirmSelectAnyway": "Select anyway",
+  "gpuConfirmCancel": "Cancel",
+  "downloadOneClick": "Download & Install"
+  ```
+
+  Add the German equivalents to `src/i18n/de.json`. Update `ModelCard` and `UnifiedModelSection` to use `t('models.xxx')` from the i18n hook instead of hardcoded English strings for all new copy. Existing hardcoded strings in `ModelCard` that are not yet translated (e.g. "GPU Required" badge, "Selected" badge, download progress text) should also be migrated in this task.
+
+  **Inputs**: `src/i18n/en.json`, `src/i18n/de.json`, `src/components/settings/ModelCard.tsx`, `src/components/settings/UnifiedModelSection.tsx`
+
+  **Outputs / deliverables**: Updated JSON files; ModelCard and UnifiedModelSection using i18n for all new strings.
+
+  **Acceptance criteria**:
+  - `vitest run` (i18n tests in `src/i18n/__tests__/index.test.ts`) passes and covers the new keys.
+  - All new keys present in both `en.json` and `de.json`.
+  - No hardcoded English model-status strings remain in the two component files.
+
+  **Dependencies**: TASK-007, TASK-008.
+
+  **Estimated complexity**: Low.
+
+  **Privilege / tooling requirements**: None.
+
+---
+
+### Phase 4 — Tests
+
+---
+
+- [ ] **TASK-010** — Create `ModelCard.test.tsx` with full coverage of all four status states
+
+  **Description**: Create `src/components/settings/__tests__/ModelCard.test.tsx`. Mock `@tauri-apps/api/core` (for `invoke`), `@/stores/settingsStore`, and `lucide-react`. Write the following test cases:
+
+  1. **`status = 'checking'`**: renders spinner (`data-testid` contains `animate-spin`), renders model name and description, renders no action button.
+  2. **`status = 'available'`, not selected**: renders green Check icon area, renders "Select" and Delete buttons, does not render the GPU confirmation panel.
+  3. **`status = 'available'`, selected**: renders primary-coloured icon, renders "Selected" badge, renders only Delete button (no "Select").
+  4. **`status = 'gpu-warning'`, `activeProvider = 'local'`**: renders orange AlertTriangle icon, clicking "Select" shows `data-testid="gpu-confirm-dialog"`, clicking "Select anyway" calls `setDefaultModel`, clicking "Cancel" hides the dialog.
+  5. **`status = 'gpu-warning'`, `activeProvider = 'fal'`**: clicking "Select" calls `setDefaultModel` directly without showing confirmation.
+  6. **`status = 'unavailable'`**: renders red icon, renders "Download & Install" button, clicking it calls `onDownload(model.id)`.
+  7. **Download in progress**: `isDownloading = true` renders progress bar and "Cancel" button.
+  8. **`downloadError` present**: renders error message and Retry button; clicking Retry calls `onRetry(model.id)`.
+  9. **BS-RoFormer selected warning**: when `model.id === 'bs_roformer'`, `status = 'available'`, selected — renders the unsupported-local-inference warning banner.
+
+  **Inputs**: `src/components/settings/ModelCard.tsx`, `src/stores/settingsStore.ts`
+
+  **Outputs / deliverables**: `src/components/settings/__tests__/ModelCard.test.tsx` with ≥ 9 test cases, all passing.
+
+  **Acceptance criteria**:
+  - `vitest run --reporter=verbose` shows all 9 tests green.
+  - Coverage for `ModelCard.tsx` ≥ 85 % lines.
+
+  **Dependencies**: TASK-007, TASK-008.
+
+  **Estimated complexity**: Medium.
+
+  **Privilege / tooling requirements**: None.
+
+---
+
+- [ ] **TASK-011** — Update `UnifiedModelSection.test.tsx` for per-model async checking
+
+  **Description**: Rewrite the existing `UnifiedModelSection.test.tsx` to reflect the new per-model checking architecture. The `ModelCard` mock should now accept `status: ModelCheckStatus` instead of `isDownloaded`/`isChecking`, and expose `data-testid={`status-${model.id}`}` that renders the status string for easy assertion.
+
+  Required test cases (replace or extend existing 8):
+
+  1. **Instant render**: the panel and all model rows appear immediately (before `check_model_downloaded` resolves) — all rows show `status="checking"`.
+  2. **Full panel spinner before `get_models` resolves**: the global `models-loading-spinner` is visible until `get_models` returns.
+  3. **Per-model green**: when `check_model_downloaded('demucs')` returns `true` and GPU is unavailable, the Demucs row becomes `status="available"` (CPU model, no GPU needed).
+  4. **Per-model green with GPU**: when `check_model_downloaded('bs_roformer')` returns `true` and GPU is available (`gpuStatus = 'cuda'`), the row becomes `status="available"`.
+  5. **Per-model orange**: when `check_model_downloaded('bs_roformer')` returns `true` and GPU is unavailable (`gpuStatus = 'cpu'`), the row becomes `status="gpu-warning"`.
+  6. **Per-model red**: when `check_model_downloaded('htdemucs')` returns `false`, the row becomes `status="unavailable"`.
+  7. **Per-model error → red**: when `check_model_downloaded` rejects (sidecar error), the row becomes `status="unavailable"`.
+  8. **Independent transitions**: model A resolves to green while model B is still checking — only model A's status changes.
+  9. **Download triggers `download_model` invoke**.
+  10. **Error banner when `get_models` fails**.
+  11. **Refresh button reruns all per-model checks and resets statuses to `'checking'`**.
+  12. **Sidecar missing guard** — download blocked with correct error message.
+
+  **Inputs**: `src/components/settings/__tests__/UnifiedModelSection.test.tsx`, `src/components/settings/UnifiedModelSection.tsx`
+
+  **Outputs / deliverables**: Updated test file, all ≥ 12 tests passing.
+
+  **Acceptance criteria**:
+  - `vitest run --reporter=verbose` shows all 12 tests green.
+  - No test imports `list_downloaded_models` as an expected invoke call (it has been removed).
+
+  **Dependencies**: TASK-006, TASK-010.
+
+  **Estimated complexity**: Medium–High.
+
+  **Privilege / tooling requirements**: None.
+
+---
+
+- [ ] **TASK-012** — Add Rust unit tests for `check_model_downloaded` timeout and path consistency
+
+  **Description**: In `src-tauri/src/commands/models.rs` tests module, add:
+
+  1. **`test_check_model_downloaded_timeout`**: spawn a child process that sleeps for 30 s (use `std::process::Command::new("sleep").arg("30")` on Unix or the equivalent no-op on Windows), wrap it in the same 10 s timeout pattern used in the production code, assert the `Err` string contains `"timed out"`. Guard with `#[cfg(unix)]`.
+  2. **`test_models_dir_matches_model_directory`**: call both `get_models_dir()` (from `models.rs`) and `get_models_dir()` (the consolidated function from TASK-001 in `probe.rs`) and assert they resolve to the same path with `assert_eq!`.
+
+  **Inputs**: `src-tauri/src/commands/models.rs`, `src-tauri/src/commands/probe.rs`
+
+  **Outputs / deliverables**: Two new `#[test]` functions; `cargo test` passes.
+
+  **Acceptance criteria**:
+  - Both tests pass in CI.
+  - The timeout test completes in ≤ 12 s wall time.
+
+  **Dependencies**: TASK-001, TASK-002.
+
+  **Estimated complexity**: Low.
+
+  **Privilege / tooling requirements**: None.
+
+---
+
+- [ ] **TASK-013** — Add `ModelCheckStatus` type tests to `src/lib/__tests__/constants.test.ts` or a new `types.test.ts`
+
+  **Description**: Create `src/lib/__tests__/types.test.ts` (or extend `constants.test.ts`) with tests confirming:
+
+  1. `ModelCheckStatus` admits exactly the four expected literal values and rejects a fifth (TypeScript compile-time check via `@ts-expect-error`).
+  2. `hasPackageStatusKey` correctly handles the bare-string `"available"` form (unit variant) and the object `{ available: null }` form, and returns `false` for an empty object, `null`, and `undefined`.
+  3. `computeEnvironmentReadiness(null)` returns `gpuStatus: 'unknown'`.
+  4. `computeEnvironmentReadiness({ cuda: 'available', ... })` returns `gpuStatus: 'cuda'`.
+  5. `computeEnvironmentReadiness({ cuda: { unavailable: '...' }, python: { available: null }, pythonVersion: '3.11' })` returns `gpuStatus: 'cpu'`.
+
+  **Inputs**: `src/lib/types.ts`, `src/stores/appStore.ts` (for `computeEnvironmentReadiness`)
+
+  **Outputs / deliverables**: `src/lib/__tests__/types.test.ts` with ≥ 5 test cases.
+
+  **Acceptance criteria**:
+  - `vitest run` passes; all 5 assertions green.
 
   **Dependencies**: TASK-004.
 
   **Estimated complexity**: Low.
 
-  **Privilege / tooling requirements**: None beyond TASK-004 environment.
+  **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-006 — Add Python sidecar unit tests for demucs audio-loading path**
-
-  **Description**: In `python/tests/test_sidecar_cli.py`, add a new test class `TestRunDemucsModel` with the following tests:
-
-  1. `test_audio_file_read_returns_tensor` — mock `demucs.audio.AudioFile` to return a `torch.zeros(2, 44100)` tensor (stereo, 1 s) and assert that after the loading block, the variable is still a `torch.Tensor` (not a numpy array). This guards against regression of Bug D.
-  2. `test_mix_shape_is_batch_channels_samples` — after the loading and normalisation block, assert that the tensor passed to `apply_model` has ndim == 3 and shape[1] == `model.audio_channels`. This guards against Bugs B, C, and E.
-  3. `test_stem_names_match_model_sources` — mock `model.sources` as `["drums", "bass", "other", "vocals"]` and assert the returned `stems` dict has exactly those keys.
-  4. `test_sidecar_cli_cpu_exit_zero` — an integration test that calls `stemgen_sidecar.py` as a subprocess with `--model demucs --input python/tests/fixtures/test-short.wav --output <tmpdir> --device cpu` and asserts exit code 0 and the existence of four `.wav` output files. Mark with `@pytest.mark.integration` so it can be skipped in CI environments without a GPU/model cache.
-
-  **Inputs**: `python/tests/test_sidecar_cli.py`, `python/pytest.ini`, fixture audio files in `tests/fixtures/audio/`.
-
-  **Outputs / deliverables**: Updated `test_sidecar_cli.py`; updated `pytest.ini` to register the `integration` marker.
-
-  **Acceptance criteria**: `pytest python/tests/test_sidecar_cli.py -m "not integration"` passes. Integration test passes in an environment with demucs installed.
-
-  **Dependencies**: TASK-004, TASK-005.
-
-  **Estimated complexity**: Medium.
-
-  **Privilege / tooling requirements**: Integration test requires `demucs`. Agent must skip/mark the integration test rather than block if not available.
+### Phase 5 — Cleanup & Polish
 
 ---
 
-- [x] **TASK-007 — Set `PYTHONUTF8=1` on the sidecar spawn command (Bug G)**
+- [ ] **TASK-014** — Remove dead `isChecking` / `isDownloaded` props and `list_downloaded_models` call-site
 
-  **Description**: In `src-tauri/src/commands/sidecar.rs`, add `.env("PYTHONUTF8", "1")` to the `Command` builder that spawns the actual separation subprocess (the block starting at `let mut cmd = Command::new(python_path)`), immediately before the `.no_window()` call. This mirrors the existing env-var already set during `detect_python` version probing. The env var forces Python's stdout/stderr to UTF-8 regardless of the Windows system locale, preventing `UnicodeDecodeError` on paths containing non-ASCII characters (e.g. accented folder names).
+  **Description**: After all prior tasks are complete, do a final sweep:
 
-  **Inputs**: `src-tauri/src/commands/sidecar.rs`
+  1. Confirm `isChecking: boolean` and `isDownloaded: boolean` no longer appear in `ModelCardProps` (replaced by `status: ModelCheckStatus`).
+  2. Confirm `list_downloaded_models` is no longer invoked from `UnifiedModelSection`.
+  3. Confirm `listModelsError` state and its warning banner are removed from `UnifiedModelSection`.
+  4. Confirm the old skeleton/pulse animation block in `ModelCard` is removed.
+  5. Run `grep -rn "isChecking\|isDownloaded\|listModelsError\|list_downloaded_models" src/` and assert zero results in the component files (the Tauri command itself may remain in `models.rs` but should not be called from the frontend).
+  6. If `list_downloaded_models` Tauri command is now unused, add a `// TODO: remove if unused after v1.x` comment or remove it entirely (check whether the command is referenced in any other frontend code first).
 
-  **Outputs / deliverables**: Updated `sidecar.rs`.
+  **Inputs**: `src/components/settings/UnifiedModelSection.tsx`, `src/components/settings/ModelCard.tsx`
+
+  **Outputs / deliverables**: Clean component files; grep sweep passes.
 
   **Acceptance criteria**:
-  - `cargo test` in `src-tauri/` passes.
-  - Processing a file located at a path with accented or CJK characters (e.g. `C:\Musique\été\track.wav`) does not produce a sidecar error related to encoding. Verified by the test added in TASK-008.
+  - `grep` sweep returns zero hits in component files.
+  - `tsc --noEmit` clean.
+  - `vitest run` passes.
 
-  **Dependencies**: TASK-001.
-
-  **Estimated complexity**: Low.
-
-  **Privilege / tooling requirements**: Rust toolchain.
-
----
-
-- [x] **TASK-008 — Add Rust test for UTF-8 env var presence on sidecar spawn**
-
-  **Description**: In `src-tauri/src/commands/sidecar.rs`'s `#[cfg(test)]` block, add a test `test_sidecar_spawn_sets_pythonutf8` that:
-
-  1. Constructs a `Command` using the same builder pattern as `run_separation`.
-  2. On non-Windows platforms, spawns `env` (prints environment variables) and asserts `PYTHONUTF8=1` appears in stdout.
-  3. On Windows, spawns `cmd /C set PYTHONUTF8` and asserts the output contains `PYTHONUTF8=1`.
-
-  Additionally, add a test `test_sidecar_error_message_surfaced` that runs the sidecar with a non-existent input file and asserts that the `Err` string returned by `run_separation` is non-empty and contains a meaningful message (not just an exit code).
-
-  **Inputs**: `src-tauri/src/commands/sidecar.rs`
-
-  **Outputs / deliverables**: Updated `sidecar.rs` test module.
-
-  **Acceptance criteria**: `cargo test -p stemgen-gui` passes.
-
-  **Dependencies**: TASK-007.
+  **Dependencies**: TASK-006, TASK-007, TASK-011.
 
   **Estimated complexity**: Low.
-
-  **Privilege / tooling requirements**: Rust toolchain.
-
----
-
-### PHASE 3 — General Quality & Test Coverage
-
----
-
-- [x] **TASK-009 — Add error-display tests for separation failure in appStore**
-
-  **Description**: In `src/stores/__tests__/appStore.test.ts`, add tests that verify the processing pipeline surfaces errors to the UI:
-
-  1. Mock `invoke('start_separation')` to reject with `"Separation process failed with exit code: Some(1)"`.
-  2. Start processing and assert that the job's `status` becomes `"failed"` and `error_message` is non-empty.
-  3. Assert the error text is exposed on the `ProcessingJob` object (not silently swallowed).
-  4. Assert that after failure, `isProcessing` becomes `false` and the button re-enables.
-
-  **Inputs**: `src/stores/__tests__/appStore.test.ts`, `src/stores/appStore.ts`
-
-  **Outputs / deliverables**: Extended `appStore.test.ts`.
-
-  **Acceptance criteria**: `npx vitest run src/stores/__tests__/appStore.test.ts` passes.
-
-  **Dependencies**: TASK-001.
-
-  **Estimated complexity**: Medium.
 
   **Privilege / tooling requirements**: None.
 
 ---
 
-- [x] **TASK-010 — Add ProcessingQueue component tests for error state display**
+- [ ] **TASK-015** — Update `CHANGELOG.md` and bump the version
 
-  **Description**: Create `src/components/processing/__tests__/ProcessingQueue.test.tsx`:
+  **Description**: Add a new `## [Unreleased]` or version section to `CHANGELOG.md` that documents:
 
-  1. Render `ProcessingQueue` with a job in `"failed"` status and a non-empty `error_message`.
-  2. Assert that the error message text is visible in the rendered output.
-  3. Assert that the "Start Processing" button is re-enabled (not disabled) after all jobs are failed/completed.
-  4. Assert that a job in `"processing"` state shows a loading indicator.
-  5. Assert that the `"Cancel All"` button appears only while `isProcessing` is `true`.
+  - **New feature**: Per-model async availability checking with individual loading spinners.
+  - **New feature**: Three-colour model status (green / orange / red) with GPU-aware selection guard.
+  - **New feature**: One-click model download button for unavailable (red) models.
+  - **Bug fix (BUG-09)**: Added 10 s timeout to `check_model_downloaded` to prevent indefinite hangs.
+  - **Bug fix (BUG-10)**: Consolidated `get_models_dir()` / `get_model_directory()` into a single authoritative helper.
+  - **Bug fix (BUG-11)**: Fixed dead `AIModel` type cast in `ModelCard`.
+  - **Bug fix (BUG-12)**: Fixed misleading "sidecar missing" error when `environmentValidation` is not yet loaded.
+  - **i18n**: Added 9 new model-status keys to `en.json` and `de.json`.
 
-  **Inputs**: `src/components/processing/ProcessingQueue.tsx`, `src/stores/appStore.ts`
+  Bump `version` in `package.json` and `src-tauri/tauri.conf.json` by one patch or minor increment (coordinate with the project's versioning policy).
 
-  **Outputs / deliverables**: `src/components/processing/__tests__/ProcessingQueue.test.tsx`.
+  **Inputs**: `CHANGELOG.md`, `package.json`, `src-tauri/tauri.conf.json`
 
-  **Acceptance criteria**: All tests pass via `npx vitest run`.
-
-  **Dependencies**: TASK-001.
-
-  **Estimated complexity**: Medium.
-
-  **Privilege / tooling requirements**: None.
-
----
-
-- [x] **TASK-011 — Improve error message forwarded from sidecar stderr to UI**
-
-  **Description**: Currently, when the sidecar exits non-zero, `sidecar.rs` returns `"Separation process failed with exit code: Some(1)"` — the raw exit code with no additional context. Improve this by:
-
-  1. In `sidecar.rs`, collect the last 20 lines of sidecar stderr into a `String` buffer (a `Vec<String>` appended to in the stderr-reading `tokio::spawn` task, shared via `Arc<Mutex<Vec<String>>>`).
-  2. When the process exits non-zero, include those stderr lines in the `anyhow` error message: `"Separation failed (exit {code}): {stderr_tail}"`.
-  3. In `separation.rs` (`start_separation`), forward the full error string returned by `sidecar.run_separation` as-is — do not truncate or wrap it.
-  4. In `src/stores/appStore.ts`, store the full error string on the failed `ProcessingJob` as `error_message`.
-  5. In `ProcessingQueue.tsx`, render `job.error_message` below the failed job row (collapsed by default, expandable with a "Details" toggle button).
-
-  **Inputs**: `src-tauri/src/commands/sidecar.rs`, `src-tauri/src/commands/separation.rs`, `src/stores/appStore.ts`, `src/components/processing/ProcessingQueue.tsx`
-
-  **Outputs / deliverables**: Updated files across Rust and TypeScript layers; a visible error-detail UI in the processing queue.
+  **Outputs / deliverables**: Updated `CHANGELOG.md`; bumped version in both config files.
 
   **Acceptance criteria**:
-  - When a separation fails, the GUI shows a human-readable error (including Python traceback tail if available) instead of a bare exit code.
-  - `cargo test` and `npx vitest run` both pass.
-
-  **Dependencies**: TASK-007.
-
-  **Estimated complexity**: High.
-
-  **Privilege / tooling requirements**: None beyond Rust toolchain.
-
----
-
-- [x] **TASK-012 — Add Python sidecar dependency-check integration test**
-
-  **Description**: In `python/tests/test_sidecar_cli.py`, add a test `test_check_dependencies_passes_when_packages_present` that:
-
-  1. Imports `stemgen_sidecar` and calls `check_dependencies()` directly.
-  2. In environments where `torch`, `torchaudio`, and `demucs` are installed, asserts the function returns `True`.
-  3. In environments where one package is missing (mocked via `sys.modules` manipulation), asserts `False` is returned and the emitted JSON contains `"status": "error"` with a non-empty `"error"` key.
-
-  **Inputs**: `python/stemgen_sidecar.py`, `python/tests/test_sidecar_cli.py`
-
-  **Outputs / deliverables**: Extended test file.
-
-  **Acceptance criteria**: `pytest python/tests/` passes (with integration tests skipped if packages absent).
-
-  **Dependencies**: TASK-001.
-
-  **Estimated complexity**: Low.
-
-  **Privilege / tooling requirements**: None.
-
----
-
-- [x] **TASK-013 — Add Rust unit tests for `collect_stems` edge cases**
-
-  **Description**: In `src-tauri/src/commands/sidecar.rs` test block, add tests for `SidecarManager::collect_stems`:
-
-  1. `test_collect_stems_returns_only_existing_files` — create a temp dir, write only `test_drums.wav` and `test_vocals.wav`, call `collect_stems`, assert exactly 2 stems returned and no error.
-  2. `test_collect_stems_errors_when_empty` — call `collect_stems` on an empty temp dir, assert it returns `Err` containing "No stem files were generated".
-  3. `test_collect_stems_handles_unicode_source_name` — write `été_drums.wav` etc., assert they are found. (Guards TASK-007 regression.)
-
-  **Inputs**: `src-tauri/src/commands/sidecar.rs`
-
-  **Outputs / deliverables**: Extended test module.
-
-  **Acceptance criteria**: `cargo test` passes.
-
-  **Dependencies**: TASK-001.
-
-  **Estimated complexity**: Low.
-
-  **Privilege / tooling requirements**: Rust toolchain.
-
----
-
-- [x] **TASK-014 — Extend CI pipeline to run Python sidecar tests**
-
-  **Description**: In `.github/workflows/ci.yml`, add a `python-tests` job that:
-
-  1. Runs on `ubuntu-latest`.
-  2. Sets up Python 3.11 via `actions/setup-python`.
-  3. Installs `pip install -r python/requirements-dev.txt`.
-  4. Runs `pytest python/tests/ -m "not integration" --tb=short` and fails the job on non-zero exit.
-  5. Uploads pytest output as an artifact on failure.
-
-  Ensure the job is listed as a required check so that PRs cannot be merged if Python tests fail.
-
-  **Inputs**: `.github/workflows/ci.yml`
-
-  **Outputs / deliverables**: Updated `ci.yml`.
-
-  **Acceptance criteria**: Pushing the branch triggers the new job in GitHub Actions; it passes on a clean run.
-
-  **Dependencies**: TASK-006, TASK-012.
-
-  **Estimated complexity**: Low.
-
-  **Privilege / tooling requirements**: GitHub Actions access to edit workflow files. No secrets required for the non-integration tests.
-
----
-
-- [x] **TASK-015 — Add E2E test for file import via Open Files dialog**
-
-  **Description**: In `src/__tests__/e2e/binary/file-import.spec.ts`, add a test `should add file via open-files dialog` that:
-
-  1. Launches the packaged app.
-  2. Clicks the "Open Files" button (`data-testid="open-files-btn"`).
-  3. Selects the fixture file `tests/fixtures/audio/test-short.wav` via the native dialog (use `wdio` or Playwright automation for the OS dialog, as already configured in `wdio.conf.ts`).
-  4. Asserts that the file list (`data-testid="file-list"`) contains one entry with the filename `test-short.wav`.
-  5. Asserts the "Start Processing (1 file)" button is enabled.
-
-  **Inputs**: `src/__tests__/e2e/binary/file-import.spec.ts`, `wdio.conf.ts`, `tests/fixtures/audio/test-short.wav`
-
-  **Outputs / deliverables**: Extended E2E spec.
-
-  **Acceptance criteria**: Test passes in the E2E suite (`npm run test:e2e` or equivalent).
-
-  **Dependencies**: TASK-002.
-
-  **Estimated complexity**: Medium.
-
-  **Privilege / tooling requirements**: Packaged binary must be available; agent must stop and ask if binary build is not possible in sandbox.
-
----
-
-### PHASE 4 — Installer Dependency Check Wizard (Windows)
-
-The goal is to add a **dependency-check page** to the Windows NSIS installer that detects missing prerequisites and offers to install them automatically via `winget` or `choco`. A parallel "first-run" in-app check already exists (`FirstRunWizard.tsx`) but does not trigger during installation.
-
----
-
-- [x] **TASK-016 — Research and document NSIS custom-page approach for Tauri**
-
-  **Description**: Before writing NSIS script code, the agent must:
-
-  1. Read `src-tauri/tauri.conf.json` and `.github/workflows/release.yml` to understand exactly how the NSIS bundle is generated (via `tauri build --bundles nsis`).
-  2. Determine whether Tauri's NSIS bundler supports a `preinstall_script` hook or custom NSIS pages (check Tauri documentation at https://tauri.app and Tauri's NSIS plugin docs — **agent must use web search**).
-  3. Identify the correct mechanism: either a Tauri-supported NSIS script hook or a post-build step that patches the generated `.nsi` script before compilation.
-  4. Write a short design note (added as `docs/INSTALLER_DEPENDENCY_CHECK.md`) describing the chosen approach, the NSIS page sequence, and any limitations.
-
-  **Inputs**: `src-tauri/tauri.conf.json`, `.github/workflows/release.yml`, Tauri documentation (via web).
-
-  **Outputs / deliverables**: `docs/INSTALLER_DEPENDENCY_CHECK.md`.
-
-  **Acceptance criteria**: The design note is reviewed and approved before TASK-017 begins. Agent must stop and present the note for human approval before proceeding.
-
-  **Dependencies**: TASK-001.
-
-  **Estimated complexity**: Medium.
-
-  **Privilege / tooling requirements**: Web search access to read current Tauri docs. **Agent must pause and present findings before continuing.**
-
----
-
-- [x] **TASK-017 — Implement NSIS dependency-check page or post-install launcher**
-
-  **Description**: Based on the approved approach from TASK-016, implement the dependency-check mechanism. The canonical implementation (assuming Tauri's NSIS hook support or a post-build script) must:
-
-  1. **Detect Python**: Run `python --version` (or `py --version`) silently; if exit code is non-zero, flag as missing.
-  2. **Detect FFmpeg**: Run `ffmpeg -version` silently; if exit code is non-zero, flag as missing.
-  3. **Show a summary page** listing detected and missing dependencies with coloured status indicators (green tick / red cross).
-  4. **Offer auto-install**: For each missing dependency, show a checkbox (pre-checked) and a "Install Missing" button. When clicked, attempt install via `winget install --id <package> --silent --accept-package-agreements --accept-source-agreements` (preferred) or `choco install <package> -y` (fallback). Use the same `install_manifest.json` package IDs already defined in `src-tauri/resources/install_manifest.json`.
-  5. **Re-check after install**: After the install commands complete, re-run the detection commands and update the status display.
-  6. **Allow skip**: Provide a "Skip for now" button that proceeds to the standard completion page without blocking installation.
-  7. **Log outcome**: Write a brief install log to `%TEMP%\stemgen-setup-deps.log`.
-
-  If the Tauri NSIS hook is not available, implement this as a `post-install-check.ps1` PowerShell script bundled with the installer that is registered as a `Run` key in `HKCU` for single execution on first login, and update `release.yml` to include the script in the bundle.
-
-  **Inputs**: `src-tauri/resources/install_manifest.json`, `src-tauri/tauri.conf.json`, `.github/workflows/release.yml`, `docs/INSTALLER_DEPENDENCY_CHECK.md`.
-
-  **Outputs / deliverables**: NSIS script fragment or PowerShell post-install script; updated `tauri.conf.json` or `release.yml` as needed.
-
-  **Acceptance criteria**:
-  - On a clean Windows 10 VM without Python or FFmpeg, running the installer shows the dependency page and successfully installs the missing tools when the user clicks "Install Missing".
-  - Clicking "Skip for now" completes the installation without error.
-  - The installer does not hang or crash if `winget` is unavailable.
-
-  **Dependencies**: TASK-016.
-
-  **Estimated complexity**: High.
-
-  **Privilege / tooling requirements**: Windows 10 VM or CI runner with NSIS toolchain. **Agent must stop and ask for a Windows build environment if not available.**
-
----
-
-- [x] **TASK-018 — Expose dependency-install status to the in-app FirstRunWizard**
-
-  **Description**: When the installer has already installed dependencies (TASK-017), the `FirstRunWizard` shown on first app launch should reflect that — it should not re-prompt for dependencies that were installed at setup time.
-
-  1. After a successful installer dependency check, write a marker file `%APPDATA%\Roaming\stemgen-gui\installer_deps_checked.json` containing `{ "python": true/false, "ffmpeg": true/false, "timestamp": "<ISO8601>" }`.
-  2. In `FirstRunWizard.tsx`, read this marker file at wizard startup (via a new Tauri command `read_installer_dep_marker` or via the existing `validate_environment` invoke). If the marker is present and both flags are `true`, skip the dependency-check step and go directly to the "ready" step.
-  3. If the marker indicates a dependency failed installer-time install, show a specific warning rather than a generic "missing" status.
-
-  **Inputs**: `src/components/setup/FirstRunWizard.tsx`, `src-tauri/src/commands/mod.rs` (to add the new Tauri command if needed), installer script from TASK-017.
-
-  **Outputs / deliverables**: Updated `FirstRunWizard.tsx`; optional new Tauri command; updated installer script.
-
-  **Acceptance criteria**:
-  - After a full install with dependencies pre-installed, the wizard completes the dependency check step automatically without user interaction.
-  - `npx vitest run src/components/setup/__tests__/FirstRunWizard.test.tsx` passes (add a test case for the "marker present" path).
-
-  **Dependencies**: TASK-017.
-
-  **Estimated complexity**: Medium.
-
-  **Privilege / tooling requirements**: None beyond TASK-017 environment.
-
----
-
-- [x] **TASK-019 — Add unit tests for FirstRunWizard installer-marker path**
-
-  **Description**: In `src/components/setup/__tests__/FirstRunWizard.test.tsx`:
-
-  1. Add a test where the mocked `read_installer_dep_marker` Tauri command returns `{ python: true, ffmpeg: true }` — assert the wizard shows "Ready" status for both without running the full check.
-  2. Add a test where the marker returns `{ python: false, ffmpeg: true }` — assert Python shows a warning state.
-  3. Add a test where the marker is absent (command throws) — assert the wizard falls back to the existing dependency-check flow.
-
-  **Inputs**: `src/components/setup/__tests__/FirstRunWizard.test.tsx`, `src/components/setup/FirstRunWizard.tsx`.
-
-  **Outputs / deliverables**: Extended test file.
-
-  **Acceptance criteria**: `npx vitest run src/components/setup/__tests__/FirstRunWizard.test.tsx` passes.
-
-  **Dependencies**: TASK-018.
-
-  **Estimated complexity**: Low.
-
-  **Privilege / tooling requirements**: None.
-
----
-
-### PHASE 5 — Cross-Cutting Quality
-
----
-
-- [x] **TASK-020 — Fix TypeScript strict-mode gaps identified during audit**
-
-  **Description**: Run `npx tsc --noEmit --strict` and fix all newly surfaced type errors introduced by the changes in TASK-002 through TASK-019 (e.g. incorrect event types, optional fields accessed without null guards). Do not introduce new `// @ts-ignore` suppressions. Existing pre-audit suppressions may remain unchanged.
-
-  **Inputs**: Entire `src/` TypeScript tree.
-
-  **Outputs / deliverables**: Zero TypeScript errors under `--strict`.
-
-  **Acceptance criteria**: `npx tsc --noEmit --strict` exits 0.
-
-  **Dependencies**: TASK-002, TASK-018.
-
-  **Estimated complexity**: Medium.
-
-  **Privilege / tooling requirements**: None.
-
----
-
-- [x] **TASK-021 — Add regression test for non-ASCII source file paths**
-
-  **Description**: In `python/tests/test_sidecar_cli.py`, add a test `test_sidecar_handles_accented_path` that:
-
-  1. Copies `tests/fixtures/audio/test-accented-eau.wav` (already present at `tests/fixtures/audio/test-accented-eau.wav`) to a temp dir path containing accented characters (e.g. `<tmpdir>/été/test-accented-eau.wav`).
-  2. Invokes the sidecar subprocess with that path and `--device cpu`.
-  3. Asserts exit code 0 and four output `.wav` files.
-  4. Mark as `@pytest.mark.integration`.
-
-  **Inputs**: `python/tests/test_sidecar_cli.py`, `tests/fixtures/audio/test-accented-eau.wav`.
-
-  **Outputs / deliverables**: Extended test file.
-
-  **Acceptance criteria**: Test passes with demucs installed; is skipped gracefully without it.
-
-  **Dependencies**: TASK-007.
-
-  **Estimated complexity**: Low.
-
-  **Privilege / tooling requirements**: None (non-integration path requires no packages).
-
----
-
-- [ ] **TASK-022 — Update CHANGELOG and bump version**
-
-  **Description**:
-
-  1. Add a new `## [Unreleased]` or `## [1.4.2]` section to `CHANGELOG.md` documenting:
-     - **Fixed**: Drag-and-drop file import broken due to incorrect Tauri v2 event payload access.
-     - **Fixed**: Stem separation always exiting with code 1 (five bugs in `_run_demucs_model` audio-loading code).
-     - **Fixed**: Non-ASCII file paths causing `UnicodeDecodeError` in the Python sidecar on Windows.
-     - **Fixed**: Separation error messages now include Python stderr tail instead of just exit code.
-     - **Added**: Dependency check and auto-install step in the Windows installer wizard.
-     - **Added**: FirstRunWizard now reads installer dependency-check results to skip redundant checks.
-     - **Improved**: Test coverage for drag-and-drop, separation pipeline, sidecar error handling, and installer wizard.
-  2. Bump `version` in `src-tauri/Cargo.toml` (and the workspace root `Cargo.toml` if it defines the version) from `1.4.1` to `1.4.2`.
-  3. Bump `version` in `package.json` to `1.4.2`.
-  4. Run `cargo build` to update `Cargo.lock`.
-
-  **Inputs**: `CHANGELOG.md`, `src-tauri/Cargo.toml`, `Cargo.toml`, `package.json`.
-
-  **Outputs / deliverables**: Updated changelog and version files.
-
-  **Acceptance criteria**: All three version fields read `1.4.2`; changelog entry is present and accurate.
+  - Version strings in `package.json` and `tauri.conf.json` match.
+  - `CHANGELOG.md` has a new dated entry covering all items above.
 
   **Dependencies**: All prior tasks.
 
@@ -614,30 +538,25 @@ The goal is to add a **dependency-check page** to the Windows NSIS installer tha
 
 ## Verification & Release
 
-1. **End-to-end smoke test (Windows 10)**: Install the freshly built NSIS installer on a clean Windows 10 VM without Python or FFmpeg pre-installed. Confirm the installer dependency-check page appears, successfully installs both tools via `winget`, and the app launches without the FirstRunWizard prompting for dependencies again. Then drag-and-drop a `.wav` file onto the file browser, confirm it appears, start processing with DEMUCS on CPU, and confirm the job completes with four stem `.wav` files produced.
-
-2. **End-to-end smoke test (macOS / Linux)**: On macOS and Linux, open the app, use "Open Files" to select `tests/fixtures/audio/test-short.wav`, start processing with DEMUCS on CPU, and confirm a successful result. Confirm drag-and-drop also works (where supported by the OS).
-
-3. **GUI verification**: Open the app and verify the following edge cases render correctly: a file with a non-ASCII name (e.g. `été.wav`), a very long file path (>200 characters), a failed processing job showing the expanded error-detail message, and the FirstRunWizard in "all dependencies present" state.
-
-4. **Regression sweep**: Run the full existing test suite (`npx vitest run`, `cargo test`, `pytest python/tests/ -m "not integration"`) and confirm no previously passing tests are now broken.
-
-5. **CI pipeline green**: Push `fix/bugs-quality-installer` to `origin` and confirm all CI jobs (Rust tests, TypeScript tests, Python tests, lint) pass in GitHub Actions.
-
-6. **Update changelog and bump the version** to `1.4.2` (TASK-022) if not already done.
-
-7. **General release preparation**: Run `scripts/release-prep.js` (if applicable) to validate version consistency across `package.json`, `Cargo.toml`, and `CHANGELOG.md`. Build release artifacts for all three platforms via the release workflow.
-
-8. **Tag the release**: Create and push `git tag v1.4.2`. Publish release notes summarising all five bug fixes, the new installer dependency wizard, and the expanded test coverage.
-
-9. **Verification on GitHub**: Confirm both the CI pipeline and the CD (release) pipeline complete successfully in the GitHub Actions tab. If either fails, iterate on the failing job before merging. Only merge `fix/bugs-quality-installer` → `main` once both pipelines are green.
+1. **Full Rust test suite**: run `cargo test --workspace` in `src-tauri/` and confirm all tests pass, including the new timeout and path-consistency tests.
+2. **Full frontend test suite**: run `vitest run` from the project root and confirm all tests pass, including the new `ModelCard.test.tsx` and updated `UnifiedModelSection.test.tsx`. Coverage for `ModelCard.tsx` must be ≥ 85 % lines.
+3. **End-to-end smoke test (model panel)**: open the GUI with a fresh environment (no models downloaded). Confirm: panel renders instantly with all rows showing spinners; rows resolve one-by-one; red rows show "Download & Install"; green rows show "Select" / Delete; orange rows show the GPU warning badge.
+4. **GPU-warning guard test**: on a machine without a GPU (or with CUDA disabled), select an orange model row with local inference active — confirm the confirmation dialog appears; confirm "Cancel" dismisses it without changing the default model; confirm "Select anyway" sets the model.
+5. **Download flow test**: click "Download & Install" on a red row; confirm the progress bar appears; confirm the row transitions to green on completion; confirm cancellation via the "Cancel" button works and the row returns to red.
+6. **i18n verification**: switch the OS locale to German, reopen the model panel, confirm all model-status strings appear in German.
+7. **Regression sweep**: confirm no previously passing tests are broken (`vitest run` and `cargo test` both clean).
+8. **Type-check**: `tsc --noEmit` produces zero errors.
+9. **Lint**: `eslint --max-warnings 0` produces no new warnings.
+10. **Update changelog and confirm version bump** — `package.json` and `tauri.conf.json` both contain the new version string.
+11. **Tag the release** with `git tag v<new-version>` and push; publish release notes referencing all new feature items and bug IDs BUG-09 through BUG-13.
+12. **Verify GitHub CI/CD pipelines** — confirm both the `ci.yml` and `release.yml` workflows succeed on the tagged commit. If either fails, iterate until both are green before considering the release complete.
 
 ---
 
 ## Operational Constraints
 
-- **Pause-and-ask policy**: If at any point the AI agent needs elevated privileges, access to external services, new library installations, additional MCP server connections, API keys (e.g., for a remote model-version feed), a Windows build environment for NSIS, or anything beyond its current sandbox capabilities, it must **immediately stop execution, clearly describe what it needs and why, and wait for explicit approval** before continuing.
-- **Incremental commits**: each task should be committed separately with a descriptive commit message referencing the Task ID (e.g. `fix(drag-drop): TASK-002 correct Tauri v2 event payload access`), so progress is reviewable and reversible.
-- **No silent failures**: any error must surface explicitly in the GUI and logs — never silently swallowed or defaulted to empty.
-- **No new `// @ts-ignore` suppressions**: TypeScript type errors introduced by these changes must be fixed properly.
-- **Integration tests must be skippable**: any test requiring demucs, PyTorch, a packaged binary, or a Windows VM must be marked with a pytest marker or Playwright condition so it can be skipped in restricted CI environments without failing the suite.
+- **Pause-and-ask policy**: If at any point the AI agent needs elevated privileges, access to external services, new library installations, additional MCP server connections, API keys (e.g., for a remote model-version feed), or anything beyond its current sandbox capabilities, it must **immediately stop execution, clearly describe what it needs and why, and wait for explicit approval** before continuing.
+- **Incremental commits**: each task should be committed separately with a descriptive commit message referencing the Task ID (e.g. `fix(models): add 10s timeout to check_model_downloaded [TASK-002]`), so progress is reviewable and reversible.
+- **No silent failures**: any error in a per-model check must surface explicitly as a red row in the GUI and be logged — never silently swallowed or left in `'checking'` state indefinitely.
+- **Backwards compatibility**: the `check_model_downloaded` Tauri command signature must remain unchanged (same name, same arguments, same return type) so that any external integration or script that calls it continues to work.
+- **GPU detection dependency order**: TASK-006 relies on `environmentValidation` being available in the store. If it is not yet populated, TASK-006 must fall back to the lightweight `get_gpu_status` command (TASK-003) — do not assume `environmentValidation` is always present.

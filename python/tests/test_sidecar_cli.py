@@ -432,6 +432,76 @@ class TestCheckModel:
             assert "id" in item
             assert "available" in item
 
+    def test_list_models_returns_all_models_with_available_false_when_none_downloaded(self, monkeypatch, capsys):
+        """--list-models returns all models with available=false when none are downloaded."""
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        # Mock get_model to always raise FileNotFoundError (no models cached)
+        def raise_not_found(*args, **kwargs):
+            raise FileNotFoundError("Model not found in cache")
+
+        mock_get_model = MagicMock(side_effect=raise_not_found)
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--list-models"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert isinstance(parsed, list)
+        # All models should be returned with available=False
+        for item in parsed:
+            assert item["available"] is False
+
+    def test_check_model_unknown_model_returns_available_false(self, monkeypatch, capsys):
+        """--check-model with unknown model ID returns { available: false } without exception."""
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        def raise_not_found(*args, **kwargs):
+            raise FileNotFoundError("Unknown model")
+
+        mock_get_model = MagicMock(side_effect=raise_not_found)
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--check-model", "unknown_model_xyz"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert parsed["available"] is False
+        assert parsed["model_id"] == "unknown_model_xyz"
+
+    def test_download_model_invalid_id_exits_nonzero(self, monkeypatch, capsys):
+        """--download-model with invalid model ID exits non-zero with error message to stderr."""
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        def raise_not_found(*args, **kwargs):
+            raise FileNotFoundError("Model not found")
+
+        mock_get_model = MagicMock(side_effect=raise_not_found)
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "invalid_model_xyz"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code != 0
+        captured = capsys.readouterr()
+        # Error is printed to stderr, not JSON
+        assert "Download failed" in captured.err or "not found" in captured.err.lower()
+
 
 # ----------------------------------------------------------------------------------------------
 # Tests for DEMUCS_PRETRAINED_NAME mapping (TASK-02)
@@ -777,3 +847,187 @@ class TestNonAsciiPaths:
         )
         wav_files = list(output_dir.glob("*.wav"))
         assert len(wav_files) == 4, f"Expected 4 WAV files, found {len(wav_files)}: {wav_files}"
+
+
+# ----------------------------------------------------------------------------------------------
+# Tests for TASK-012: Python unit tests for all bug-fix paths
+# ----------------------------------------------------------------------------------------------
+
+
+class TestBugFixPaths:
+    """Tests for all bug-fix paths in stemgen_sidecar.py (TASK-012)."""
+
+    def test_run_bs_roformer_import_error_emits_structured_json(self, capsys, tmp_path):
+        """(a) run_bs_roformer emits structured JSON error when bs_roformer package is absent."""
+        import stemgen_sidecar
+        from unittest.mock import patch
+
+        # Mock bs_roformer to raise ImportError
+        def raise_import_error(*args, **kwargs):
+            raise ImportError("No module named 'bs_roformer'")
+
+        with patch.dict(sys.modules, {"bs_roformer": None}):
+            with pytest.raises(SystemExit) as exc_info:
+                stemgen_sidecar.run_bs_roformer(
+                    Path("/tmp/test.wav"), tmp_path, "cpu"
+                )
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        # Should output JSON to stdout, not traceback to stderr
+        lines = [l.strip() for l in captured.out.strip().split("\n") if l.strip()]
+        assert len(lines) > 0, "Expected JSON output to stdout"
+        parsed = json.loads(lines[-1])
+        assert parsed["status"] == "error"
+        assert parsed.get("model_id") == "bs_roformer"
+        assert "not yet supported" in parsed["error"].lower()
+
+    def test_check_dependencies_bs_roformer_missing_soundfile(self, capsys):
+        """(c) check_dependencies(model="bs_roformer") returns False when soundfile is missing."""
+        import stemgen_sidecar
+        from unittest.mock import patch
+
+        # Mock bs_roformer to be available but soundfile to be missing
+        mock_bs_roformer = type(sys)("bs_roformer")
+        with patch.dict(sys.modules, {
+            "bs_roformer": mock_bs_roformer,
+            "soundfile": None,
+        }):
+            result = stemgen_sidecar.check_dependencies(model="bs_roformer")
+
+        assert result is False
+        captured = capsys.readouterr()
+        lines = [l.strip() for l in captured.out.strip().split("\n") if l.strip()]
+        assert len(lines) > 0, "Expected JSON output"
+        parsed = json.loads(lines[-1])
+        assert parsed["status"] == "error"
+        assert "soundfile" in parsed["error"].lower()
+
+    def test_check_dependencies_demucs_returns_true_when_all_present(self):
+        """(d) check_dependencies(model="demucs") returns True when torch, torchaudio, demucs are present."""
+        import stemgen_sidecar
+
+        # Only run if the packages are actually available
+        try:
+            import torch  # noqa: F401
+            import torchaudio  # noqa: F401
+            from demucs.pretrained import get_model  # noqa: F401
+        except ImportError:
+            pytest.skip("Required packages not installed")
+
+        result = stemgen_sidecar.check_dependencies(model="demucs")
+        assert result is True
+
+    def test_run_demucs_model_uses_model_samplerate(self, tmp_path):
+        """(e) _run_demucs_model calls torchaudio.save with model.samplerate, not hardcoded 44100."""
+        torch = pytest.importorskip("torch")
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+        import types
+
+        # Create a model with non-standard samplerate
+        fake_model = MagicMock()
+        fake_model.samplerate = 48000  # Non-standard sample rate
+        fake_model.audio_channels = 2
+        fake_model.sources = ["drums", "bass", "other", "vocals"]
+        fake_model.to.return_value = fake_model
+
+        fake_wav = torch.zeros(2, 48000)
+        num_sources = len(fake_model.sources)
+
+        mock_audio_instance = MagicMock()
+        mock_audio_instance.read.return_value = fake_wav
+        mock_audio_file_cls = MagicMock(return_value=mock_audio_instance)
+
+        mock_apply = MagicMock(return_value=[torch.zeros(num_sources, 2, 48000)])
+        mock_get_model = MagicMock(return_value=fake_model)
+        mock_ta_save = MagicMock()
+
+        demucs_audio_mod = types.ModuleType("demucs.audio")
+        demucs_audio_mod.AudioFile = mock_audio_file_cls
+        demucs_apply_mod = types.ModuleType("demucs.apply")
+        demucs_apply_mod.apply_model = mock_apply
+        demucs_pretrained_mod = types.ModuleType("demucs.pretrained")
+        demucs_pretrained_mod.get_model = mock_get_model
+        demucs_mod = types.ModuleType("demucs")
+        demucs_mod.audio = demucs_audio_mod
+        demucs_mod.apply = demucs_apply_mod
+        demucs_mod.pretrained = demucs_pretrained_mod
+
+        fake_torchaudio = MagicMock()
+        fake_torchaudio.save = mock_ta_save
+
+        modules_patch = {
+            "demucs": demucs_mod,
+            "demucs.audio": demucs_audio_mod,
+            "demucs.apply": demucs_apply_mod,
+            "demucs.pretrained": demucs_pretrained_mod,
+            "torchaudio": fake_torchaudio,
+        }
+
+        with patch.dict(sys.modules, modules_patch):
+            input_path = tmp_path / "test.wav"
+            input_path.write_bytes(b"fake")
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
+
+            stemgen_sidecar._run_demucs_model(
+                input_path, output_dir, device="cpu", model_name="htdemucs"
+            )
+
+            # Verify torchaudio.save was called with model.samplerate (48000), not hardcoded 44100
+            assert mock_ta_save.called
+            for call in mock_ta_save.call_args_list:
+                # torchaudio.save(path, tensor, sample_rate)
+                sample_rate_arg = call[0][2] if len(call[0]) > 2 else call[1].get("sample_rate")
+                assert sample_rate_arg == 48000, (
+                    f"Expected torchaudio.save to be called with sample_rate=48000, got {sample_rate_arg}"
+                )
+
+    def test_check_model_bs_roformer_returns_not_implemented(self, monkeypatch, capsys):
+        """(f) --check-model bs_roformer outputs JSON with available=false and exits 0."""
+        import stemgen_sidecar
+
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--check-model", "bs_roformer"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert parsed["available"] is False
+        assert parsed.get("reason") == "not_implemented"
+
+    def test_main_demucs_missing_deps_references_demucs_not_bs_roformer(self, capsys, monkeypatch, tmp_path):
+        """(g) main() with model=demucs and all deps missing emits error referencing 'demucs', not 'bs_roformer'."""
+        import stemgen_sidecar
+        from unittest.mock import patch
+
+        input_file = tmp_path / "test.wav"
+        input_file.write_bytes(b"fake")
+
+        # Mock all dependencies to be missing
+        with patch.dict(sys.modules, {
+            "torch": None,
+            "torchaudio": None,
+            "demucs": None,
+            "demucs.pretrained": None,
+        }):
+            monkeypatch.setattr(
+                sys, "argv",
+                ["stemgen_sidecar", "--model", "demucs",
+                 "--input", str(input_file), "--output", str(tmp_path),
+                 "--device", "cpu"],
+            )
+            with pytest.raises(SystemExit):
+                stemgen_sidecar.main()
+
+        captured = capsys.readouterr()
+        lines = [l.strip() for l in captured.out.strip().split("\n") if l.strip()]
+        assert len(lines) > 0, "Expected JSON output"
+        parsed = json.loads(lines[-1])
+        assert parsed["status"] == "error"
+        # Error should reference demucs, not bs_roformer
+        assert "demucs" in parsed["error"].lower()
+        assert "bs_roformer" not in parsed["error"].lower()

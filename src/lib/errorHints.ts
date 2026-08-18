@@ -3,7 +3,7 @@
  * Extracted from appStore.ts for testability.
  */
 
-const SETUP_WIZARD_HINT = ' — Open Setup Wizard to install missing dependencies.';
+export const SETUP_WIZARD_HINT = ' — Open Setup Wizard to install missing dependencies.';
 
 /** Keywords in error messages that indicate missing Python deps. */
 const DEPENDENCY_KEYWORDS = [
@@ -14,6 +14,7 @@ const DEPENDENCY_KEYWORDS = [
   'python3: can\'t open file',
   'torch',
   'demucs',
+  'soundfile',
 ];
 
 /**

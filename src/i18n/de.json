@@ -55,7 +55,9 @@
     "demucs": "Demucs",
     "bs_roformer": "BS-RoFormer",
     "htdemucs": "HT-Demucs",
-    "htdemucs_ft": "HT-Demucs FT"
+    "htdemucs_ft": "HT-Demucs FT",
+    "loadError": "Modelle konnten nicht geladen werden. Überprüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+    "listWarning": "Heruntergeladene Modelle konnten nicht überprüft werden — Python oder Sidecar nicht verfügbar."
   },
   "status": {
     "ready": "Bereit",
@@ -66,7 +68,9 @@
     "ffmpeg": "FFmpeg",
     "python": "Python",
     "gpu": "GPU",
-    "models": "Modelle"
+    "models": "Modelle",
+    "couldNotCheck": "Abhängigkeit konnte nicht überprüft werden",
+    "allInstalled": "Alle Abhängigkeiten sind installiert."
   },
   "quality": {
     "draft": "Entwurf",

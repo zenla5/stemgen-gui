@@ -75,7 +75,11 @@ test.describe('First Run Wizard', () => {
     await navigateWithWizard(page);
 
     await page.click('button:has-text("Start Check")');
-    await expect(page.locator('text=Checking dependencies')).toBeVisible({ timeout: 10000 });
+    // Accept either the brief "checking" state or the results state — with onCheckComplete the
+    // wizard may transition through 'check' faster than the browser paints the heading in CI.
+    await expect(
+      page.locator('text=Checking dependencies').or(page.locator('text=Dependency Check Complete'))
+    ).toBeVisible({ timeout: 10000 });
     await takeScreenshot(page, 'wizard-checking');
   });
 
@@ -121,5 +125,31 @@ test.describe('First Run Wizard', () => {
     await page.click('[data-testid="wizard-skip"]');
     await expect(page.locator('[data-testid="nav-files"]')).toBeVisible({ timeout: 10000 });
     await takeScreenshot(page, 'wizard-skipped-to-app');
+  });
+
+  test('wizard shows coloured dep indicators after check', async ({ page }) => {
+    const state = readBinaryState();
+    test.skip(!state?.available, state?.reason || 'Binary not available');
+    test.skip(!!process.env.CI && process.platform === 'win32', 'validate_environment hangs on Windows CI (no Python); WebView2 throttles setTimeout in background');
+
+    await navigateWithWizard(page);
+
+    await page.click('button:has-text("Start Check")');
+
+    // Wait for all status elements to contain non-empty text (not blank pending state)
+    const statusElements = page.locator('[data-testid="wizard-dep-status"]');
+    await expect(statusElements.first()).not.toHaveText('', { timeout: 60000 });
+
+    // Wait for dependency check to complete
+    await expect(page.locator('text=Dependency Check Complete')).toBeVisible({ timeout: 60000 });
+
+    // Assert that at least one dep-status element has a non-grey colour
+    // (green-600, red-600, or yellow-600)
+    const colouredStatus = page.locator('[data-testid="wizard-dep-status"]').filter({
+      has: page.locator('.text-green-600, .text-red-600, .text-yellow-600'),
+    });
+    await expect(colouredStatus.first()).toBeVisible();
+
+    await takeScreenshot(page, 'wizard-coloured-indicators');
   });
 });

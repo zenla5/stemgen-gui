@@ -100,4 +100,34 @@ test.describe('Settings', () => {
   test('system status section is present', async ({ page }) => {
     await expect(page.locator('text=System Status')).toBeVisible();
   });
+
+  test('AI Models section loads without indefinite spinner', async ({ page }) => {
+    const state = readBinaryState();
+    test.skip(!state?.available, state?.reason || 'Binary not available');
+
+    // Navigate to settings — wait for a Settings-specific element to confirm the view loaded.
+    // The 100ms in navigateToView may not be enough on slow CI runners.
+    await expect(page.locator('[data-testid="refresh-env-btn"]')).toBeVisible({ timeout: 10000 });
+
+    // Locate the AI Models section
+    await expect(page.locator('text=AI Models')).toBeVisible();
+
+    // Wait for the AI Models loading spinner specifically to disappear.
+    // Using data-testid to avoid false positives from other spinners on the page.
+    // Generous timeout because environment probes can delay the Tauri IPC on CI.
+    const spinner = page.locator('[data-testid="models-loading-spinner"]');
+    await expect(spinner).not.toBeVisible({ timeout: 30000 });
+
+    // Assert that either model cards are visible OR an error/warning banner is visible
+    const modelCards = page.locator('[data-testid^="model-card-"]');
+    const errorBanner = page.locator('[data-testid="models-load-error"]');
+    const warningBanner = page.locator('[data-testid="models-list-warning"]');
+
+    // At least one of these should be visible
+    const hasModelCards = await modelCards.first().isVisible().catch(() => false);
+    const hasErrorBanner = await errorBanner.isVisible().catch(() => false);
+    const hasWarningBanner = await warningBanner.isVisible().catch(() => false);
+
+    expect(hasModelCards || hasErrorBanner || hasWarningBanner).toBe(true);
+  });
 });
