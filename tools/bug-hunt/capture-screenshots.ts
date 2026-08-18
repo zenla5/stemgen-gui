@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOT_DIR = join(__dirname, 'screenshots');
-const ROOT_DIR = resolve(__dirname, '..');
+const ROOT_DIR = resolve(__dirname, '../..'); // repo root (bug_hunt.sh drives `npm run dev` from here)
 mkdirSync(SHOT_DIR, { recursive: true });
 
 const BASE_URL = process.env.BUG_HUNT_BASE_URL ?? 'http://localhost:1420';

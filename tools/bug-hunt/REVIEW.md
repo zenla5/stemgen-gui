@@ -10,7 +10,8 @@ You are reviewing the **bug-hunt & visual QA harness** PR for `stemgen-gui`.
 It is *test/QA tooling only* — it must not alter any app feature behavior.
 
 ## Scope of the diff
-- `tools/bug-hunt/` (bug_hunt.sh, capture-screenshots.ts, README.md, docs, .gitignore)
+- `tools/bug-hunt/` (bug_hunt.sh, capture-screenshots.ts, playwright.bughunt.config.ts, README.md, docs, .gitignore)
+- `.opencode/opencode.json` (defines the `bug-hunter` + `vision-review` agents for the harness)
 - `.github/workflows/bug-hunt.yml`
 - `package.json` / `package-lock.json` (added `tsx` devDependency only)
 

@@ -139,6 +139,13 @@ this format, one entry per finding:
 If every screenshot looks clean, output exactly: [CLEAN]"
   "$oc" run "$prompt" "${files[@]}" --agent vision-review \
     >>"$INPUT" 2>>"$LOG"
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    # A failing vision pass must not collapse to a false-clean: record it so the
+    # definition of done cannot be met until the review runs successfully.
+    log "vision-review returned rc=$rc — recording finding (no false-clean)"
+    printf '[SEVERITY] critical\n[SCREEN] vision\n[FILE] n/a\n[CATEGORY] crash\n[DESCRIPTION] vision-review (opencode run --agent vision-review) exited rc=%s instead of reporting clean; the screenshots cannot be trusted as defect-free\n[REPRO] re-run the harness to retry the multimodal vision review\n\n' "$rc" >> "$INPUT"
+  fi
 }
 
 # ---------------------------------------------------------------------------
