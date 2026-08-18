@@ -1,0 +1,10 @@
+# Bug-hunt harness — generated artifacts (never commit these)
+bug_hunt.log
+hunt-input.txt
+summary.txt
+gate-fail.txt
+smoke.log
+.scratch-branch
+_gates/
+screenshots/
+ci-hunt.log
