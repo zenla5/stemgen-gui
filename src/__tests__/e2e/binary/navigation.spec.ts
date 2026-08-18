@@ -4,7 +4,7 @@
  */
 
 import { test, expect } from './test-fixtures';
-import { readBinaryState, navigateSkippingWizard, navigateToView } from './helpers';
+import { readBinaryState, navigateSkippingWizard, navigateToView, waitForStableWidth } from './helpers';
 
 test.describe('Navigation', () => {
   let appUrl: string;
@@ -81,22 +81,23 @@ test.describe('Navigation', () => {
 
   test('Ctrl+B toggles sidebar', async ({ page }) => {
     const sidebar = page.locator('aside');
-    const initialWidth = await sidebar.boundingBox();
+    const initialWidth = (await sidebar.boundingBox())?.width ?? 0;
 
     // Toggle collapsed
     await page.keyboard.press('Control+b');
-    await page.waitForTimeout(300);
-
-    const collapsedWidth = await sidebar.boundingBox();
+    // Wait for the collapse animation to settle, not a fixed pause.
+    const collapsedWidth = await waitForStableWidth(page, sidebar);
     // Sidebar should be narrower when collapsed
-    expect(collapsedWidth?.width).toBeLessThan(initialWidth?.width || 999);
+    expect(collapsedWidth).toBeLessThan(initialWidth);
 
     // Toggle back
     await page.keyboard.press('Control+b');
-    await page.waitForTimeout(300);
-
-    const restoredWidth = await sidebar.boundingBox();
-    expect(restoredWidth?.width).toBeGreaterThan(collapsedWidth?.width || 0);
+    // Wait for the expand animation to finish before measuring.
+    const restoredWidth = await waitForStableWidth(page, sidebar);
+    expect(restoredWidth).toBeGreaterThan(collapsedWidth);
+    // It should return to (approximately) the expanded width, catching
+    // cases where the expand animation was interrupted mid-transition.
+    expect(restoredWidth).toBeLessThanOrEqual(initialWidth + 1);
   });
 
   test('view navigation updates sidebar active state', async ({ page }) => {

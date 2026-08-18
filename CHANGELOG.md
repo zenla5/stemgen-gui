@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — CI Hardening
+
+### Fixed
+- **[CI-E2E-LINUX]** Binary E2E `Ctrl+B` sidebar test no longer samples the expand/collapse width at a fixed instant; it now waits for the width to stabilize, eliminating animation-timing flakes on loaded CI runners.
+- **[CI-E2E-WINDOWS]** Replaced the flaky Playwright+CDP binary E2E harness on Windows with the tauri-driver + WebdriverIO setup already used on Linux, removing the "CDP not available" failure mode.
+
+### Internal
+- **[CI-E2E-DRIVER]** `wdio.conf.ts` now discovers `tauri-driver` correctly on Windows (`USERPROFILE` + `.exe` candidates); Windows CI provisions `msedgedriver` via the `edgedriver` package and runs `wdio.windows.conf.ts`.
+
 ## [1.4.4] — 2026-04-11 — Separation Pipeline Fixes, CI Hardening & UI Warnings
 
 ### Fixed

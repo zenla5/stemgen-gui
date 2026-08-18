@@ -345,17 +345,26 @@ jobs:
         env:
           CI: true
 
-      # Windows: Playwright + CDP
-      - name: Install Playwright browsers (Windows)
+      # Windows: WebdriverIO + tauri-driver (same setup as Linux)
+      - name: Install tauri-driver (Windows)
         if: runner.os == 'Windows'
-        run: npx playwright install --with-deps chromium
+        run: cargo install tauri-driver --locked
 
       - name: Run binary E2E tests (Windows)
         if: runner.os == 'Windows'
-        run: npx playwright test --project=binary
+        shell: pwsh
+        run: |
+          $driverDir = Join-Path $env:GITHUB_WORKSPACE 'edge-driver-cache'
+          $env:EDGEDRIVER_CACHE_DIR = $driverDir
+          node -e "require('edgedriver').download()" | Out-Host
+          if (-not (Test-Path (Join-Path $driverDir 'msedgedriver.exe'))) {
+            Write-Error 'msedgedriver.exe was not provisioned for tauri-driver'
+            exit 1
+          }
+          echo "$driverDir" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          npx wdio run wdio.windows.conf.ts
         env:
-          CI: true
-          CDP_PORT: 9515
+          CI: 'true'
 
       - name: Upload binary test results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

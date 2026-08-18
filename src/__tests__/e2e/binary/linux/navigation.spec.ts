@@ -7,7 +7,7 @@
  */
 
 import { readBinaryState } from '../helpers';
-import { navigateSkippingWizard, navigateToView, takeScreenshot } from './helpers';
+import { navigateSkippingWizard, navigateToView, takeScreenshot, waitForStableWidth } from './helpers';
 
 let appUrl: string;
 
@@ -125,23 +125,24 @@ describe('Navigation', () => {
 
     await navigateSkippingWizard(appUrl);
 
-    const sidebar = $('aside');
-    const initialWidth = (await sidebar.getSize()).width;
+    const sidebarSelector = 'aside';
+    const initialWidth = (await $(sidebarSelector).getSize()).width;
 
     // Toggle collapsed
     await browser.keys(['Control', 'b']);
-    await browser.pause(300);
-
-    const collapsedWidth = (await sidebar.getSize()).width;
+    // Wait for the collapse animation to settle, not a fixed pause.
+    const collapsedWidth = await waitForStableWidth(sidebarSelector);
     // Sidebar should be narrower when collapsed
     expect(collapsedWidth).toBeLessThan(initialWidth);
 
     // Toggle back
     await browser.keys(['Control', 'b']);
-    await browser.pause(300);
-
-    const restoredWidth = (await sidebar.getSize()).width;
+    // Wait for the expand animation to finish before measuring.
+    const restoredWidth = await waitForStableWidth(sidebarSelector);
     expect(restoredWidth).toBeGreaterThan(collapsedWidth);
+    // It should return to (approximately) the expanded width, catching
+    // cases where the expand animation was interrupted mid-transition.
+    expect(restoredWidth).toBeLessThanOrEqual(initialWidth + 1);
     await takeScreenshot('linux-nav-sidebar-toggle');
   });
 

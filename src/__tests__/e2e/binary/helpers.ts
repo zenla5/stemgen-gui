@@ -253,6 +253,42 @@ export async function navigateToView(
 }
 
 /**
+ * Wait until a locator's bounding width stabilizes across consecutive reads.
+ *
+ * Playwright counterpart to the WebdriverIO `waitForStableWidth` in the Linux
+ * harness: never sample an animated layout at a fixed instant, because under
+ * CI load the CSS transition may not be finished. Poll until the width is
+ * unchanged for `stableReads` consecutive samples, then resolve with it.
+ */
+export async function waitForStableWidth(
+  page: Page,
+  locator: ReturnType<Page['locator']>,
+  opts: { timeoutMs?: number; intervalMs?: number; stableReads?: number } = {}
+): Promise<number> {
+  const { timeoutMs = 8000, intervalMs = 80, stableReads = 3 } = opts;
+  const start = Date.now();
+  let lastWidth: number | null = null;
+  let stable = 0;
+
+  while (Date.now() - start < timeoutMs) {
+    const width = (await locator.boundingBox())?.width ?? -1;
+    if (lastWidth !== null && width === lastWidth) {
+      stable += 1;
+    } else {
+      stable = 0;
+    }
+    lastWidth = width;
+    if (stable >= stableReads) return width;
+    await page.waitForTimeout(intervalMs);
+  }
+
+  throw new Error(
+    `Locator width did not stabilize within ${timeoutMs}ms ` +
+      `(last width: ${lastWidth ?? 'n/a'})`
+  );
+}
+
+/**
  * Capture the most recent toast/notification message.
  * Uses sonner's data attributes.
  */

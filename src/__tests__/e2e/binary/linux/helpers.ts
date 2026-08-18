@@ -93,6 +93,42 @@ export async function navigateToView(
 }
 
 /**
+ * Wait until an element's width stabilizes across consecutive reads.
+ *
+ * WebdriverIO has no built-in "wait for a CSS transition to finish", so an
+ * animated layout (e.g. the sidebar expand/collapse) must not be sampled at a
+ * fixed instant — under CI load the width can be mid-animation. This polls the
+ * element's width and treats it as settled once unchanged for `stableReads`
+ * consecutive samples. Resolves with the final settled width.
+ */
+export async function waitForStableWidth(
+  selector: string,
+  opts: { timeoutMs?: number; intervalMs?: number; stableReads?: number } = {}
+): Promise<number> {
+  const { timeoutMs = 8000, intervalMs = 80, stableReads = 3 } = opts;
+  const start = Date.now();
+  let lastWidth: number | null = null;
+  let stable = 0;
+
+  while (Date.now() - start < timeoutMs) {
+    const width = (await $(selector).getSize()).width;
+    if (lastWidth !== null && width === lastWidth) {
+      stable += 1;
+    } else {
+      stable = 0;
+    }
+    lastWidth = width;
+    if (stable >= stableReads) return width;
+    await browser.pause(intervalMs);
+  }
+
+  throw new Error(
+    `Element "${selector}" width did not stabilize within ${timeoutMs}ms ` +
+      `(last width: ${lastWidth ?? 'n/a'})`
+  );
+}
+
+/**
  * Capture the most recent toast/notification message.
  */
 export async function getToastMessage(): Promise<string | null> {
