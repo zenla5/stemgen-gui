@@ -350,6 +350,49 @@ jobs:
         if: runner.os == 'Windows'
         run: cargo install tauri-driver --locked
 
+      - name: Diagnose WebView2 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Ground truth for why a WebDriver session can't reach WebView2 DevTools.
+          $guid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          foreach ($root in 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients','HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients','HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients') {
+            $item = Get-ItemProperty (Join-Path $root $guid) -ErrorAction SilentlyContinue
+            if ($item) { Write-Host "WebView2 Runtime version: $($item.pv)" }
+          }
+          Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\Microsoft Edge' -ErrorAction SilentlyContinue | Select-Object pv, name | Format-List
+
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9222'
+          $stderr = Join-Path $env:GITHUB_WORKSPACE 'app-stderr.log'
+          try {
+            $p = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE 'target\release\stemgen-gui.exe') -PassThru `
+                 -RedirectStandardError $stderr -RedirectStandardOutput (Join-Path $env:GITHUB_WORKSPACE 'app-stdout.log')
+            Start-Sleep -Seconds 20
+            $p.Refresh()
+            Write-Host "Direct app launch: HasExited=$($p.HasExited) ExitCode=$(if($p.HasExited){$p.ExitCode}else{'still-running'})"
+          } catch {
+            Write-Host "Direct app launch FAILED: $($_.Exception.Message)"
+          }
+
+          # Try to reach the CDP endpoint of the directly-launched app.
+          try {
+            $r = Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing -TimeoutSec 5
+            Write-Host "Direct app CDP reachable: HTTP $($r.StatusCode)"
+          } catch {
+            Write-Host "Direct app CDP NOT reachable: $($_.Exception.Message)"
+          }
+
+          # Look for any DevToolsActivePort file under the app data dirs.
+          Get-ChildItem -Path $env:LOCALAPPDATA -Recurse -Filter 'DevToolsActivePort' -ErrorAction SilentlyContinue |
+            Select-Object -First 10 FullName | Format-List
+
+          # Dump the app's stderr AND its own log file for crash diagnostics.
+          if (Test-Path $stderr) { Write-Host '--- app-stderr.log ---'; Get-Content $stderr -Tail 60 }
+          $log = Get-ChildItem -Path $env:LOCALAPPDATA -Recurse -Filter 'stemgen-gui.log' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($log) { Write-Host "--- $($log.FullName) ---"; Get-Content $log.FullName -Tail 60 -ErrorAction SilentlyContinue }
+
+          Stop-Process -Name stemgen-gui -Force -ErrorAction SilentlyContinue
+
       - name: Run binary E2E tests (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
