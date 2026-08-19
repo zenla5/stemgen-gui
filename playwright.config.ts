@@ -29,7 +29,7 @@ export default defineConfig({
       // Binary project: tests against compiled Tauri binary via CDP
       name: 'binary',
       testDir: './src/__tests__/e2e/binary',
-      testIgnore: '**/linux/**', // Linux uses WebdriverIO instead
+      testIgnore: ['**/linux/**', '**/windows/**'], // Linux uses WebdriverIO; windows/ is the smoke project
       fullyParallel: false, // Shared binary process, must run serially
       timeout: 120000, // Binary tests may be slower
       expect: { timeout: 15000 },
@@ -40,9 +40,26 @@ export default defineConfig({
         screenshot: 'on',
       },
     },
+    {
+      // Windows binary smoke: a reduced subset of the compiled-binary suite.
+      // WebView2 is too slow on CI for the full suite to finish within a job
+      // timeout, so Windows runs this small representative set; Linux runs the
+      // full suite via WebdriverIO.
+      name: 'binary-smoke',
+      testDir: './src/__tests__/e2e/binary/windows',
+      fullyParallel: false,
+      timeout: 120000,
+      expect: { timeout: 15000 },
+      retries: 0,
+      outputDir: './test-results/binary-screenshots',
+      use: {
+        trace: 'on-first-retry',
+        screenshot: 'on',
+      },
+    },
   ],
   // Skip webServer for binary-only runs — the Tauri binary serves its own app
-  webServer: process.argv.includes('--project=binary')
+  webServer: process.argv.some((a) => a.startsWith('--project=binary'))
     ? undefined
     : {
         command: 'npm run dev',

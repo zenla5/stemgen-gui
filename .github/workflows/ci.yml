@@ -408,7 +408,10 @@ jobs:
           # clean stale processes before opening a fresh CDP session.
           Stop-Process -Name msedge,msedgewebview2,msedgewebview2rt -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 2
-          npx playwright test --project=binary
+          # Full Playwright suite is too slow to finish on WebView2 within the job
+          # timeout, so Windows runs the reduced smoke suite (Linux runs the full
+          # suite via WebdriverIO).
+          npx playwright test --project=binary-smoke
         env:
           CI: 'true'
 
