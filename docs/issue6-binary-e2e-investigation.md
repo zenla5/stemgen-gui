@@ -162,3 +162,39 @@ Key CI runs (branch `fix/ci-binary-e2e-flaky`):
 ```
 
 Prior-art reference: `docs/BINARY_E2E_FIX_LOG.md` (esp. Sessions 6–7 proving Windows CDP E2E passed on GitHub runners in April 2026).
+
+---
+
+## 8. Phase C — WebView2 runtime-regression diagnostic (conclusive)
+
+**Commit**: `4c9d008` on throwaway branch `ci/pin-windows-diagnose` (NOT merged).
+**Method**: pinned the Windows `e2e-binary` cell from `windows-latest` to the older image `windows-2022`, kept the unchanged wdio harness, and read the "Diagnose WebView2" step output.
+**Run**: `32256076101`.
+
+| Runner image | WebView2 Runtime | Direct-launch CDP (env var) |
+|---|---|---|
+| `windows-2022` | **131.0.2903.86** | **HTTP 200 — reachable** ✅ |
+| `windows-latest` (current) | 151.0.4129.72 | NOT reachable ❌ |
+
+### Conclusion
+- **Root cause is CONFIRMED as a WebView2 Evergreen runtime regression.** The
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port` env-var CDP
+  mechanism works on WebView2 **131** (`windows-2022`) and regressed on **151**
+  (`windows-latest`). The previous agent's "WebView2 151 regression" hypothesis
+  was correct.
+- The windows-2022 job *status* was still red only because the then-current
+  wdio/`msedgedriver` harness downloads the newest **msedgedriver 151**, which
+  refuses to drive the older Edge/WebView2 on the 2022 image
+  (`session not created: only supports Microsoft Edge version 151`) — a
+  harness/version mismatch, unrelated to the CDP question.
+- This proves the env-var mechanism is **unreliable by design** here (it is
+  coupled to whatever Evergreen runtime the runner happens to carry), so the
+  durable fix must not depend on it.
+
+### Adopted fix (Phase A, branch `fix/ci-binary-e2e-flaky`, commit `269dd65`)
+Bake the CDP port **in-code** via `additional_browser_args` on the WebView2
+window, gated to `devtools` builds + Windows (the only mechanism settable at
+WebView creation that is independent of the runtime version), and restore the
+April-green **Playwright + CDP** harness on Windows (`npx playwright test
+--project=binary`). See `src-tauri/src/lib.rs` + `.github/workflows/ci.yml`.
+
