@@ -339,13 +339,15 @@ mod tests {
         // which varies across CI guest images (e.g. `which` is not guaranteed to
         // be on PATH on every runner). Use an absolute POSIX command so the
         // positive case is deterministic, and still exercise the negative case.
-        assert!(
-            !probe_binary("definitely-not-a-real-command-xyz-9876")
-        );
+        assert!(!probe_binary("definitely-not-a-real-command-xyz-9876"));
 
-        let absolute = ["/usr/bin/true", "/bin/true", "C:\\Windows\\System32\\where.exe"]
-            .iter()
-            .any(|p| probe_binary(p));
+        let absolute = [
+            "/usr/bin/true",
+            "/bin/true",
+            "C:\\Windows\\System32\\where.exe",
+        ]
+        .iter()
+        .any(|p| probe_binary(p));
         let relative = ["which", "where", "ls", "find", "dir"]
             .iter()
             .any(|c| probe_binary(c));
