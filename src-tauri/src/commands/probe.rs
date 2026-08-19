@@ -335,8 +335,25 @@ mod tests {
 
     #[test]
     fn test_probe_binary_self() {
-        // `which` itself should always be found in tests since we use it
-        assert!(probe_binary("which") || probe_binary("where") || find_python().is_some());
+        // `probe_binary` resolves names against PATH (via the `which` crate),
+        // which varies across CI guest images (e.g. `which` is not guaranteed to
+        // be on PATH on every runner). Use an absolute POSIX command so the
+        // positive case is deterministic, and still exercise the negative case.
+        assert!(
+            !probe_binary("definitely-not-a-real-command-xyz-9876")
+        );
+
+        let absolute = ["/usr/bin/true", "/bin/true", "C:\\Windows\\System32\\where.exe"]
+            .iter()
+            .any(|p| probe_binary(p));
+        let relative = ["which", "where", "ls", "find", "dir"]
+            .iter()
+            .any(|c| probe_binary(c));
+
+        assert!(
+            absolute || relative,
+            "probe_binary could not resolve any common command"
+        );
     }
 
     #[test]
