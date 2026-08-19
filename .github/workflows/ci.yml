@@ -203,31 +203,38 @@ jobs:
       - name: Enable universe repository
         if: runner.os == 'Linux'
         run: |
-          # Bound this step: on busy runners `add-apt-repository` has been
-          # observed to hang indefinitely and burn the whole job timeout.
-          # The "universe" repos are optional for this build, so time it out.
-          timeout 120 sudo add-apt-repository universe -y 2>/dev/null \
-            || echo "add-apt-repository skipped/timed out; continuing"
-          sudo apt-get update || echo "apt-get update had warnings; continuing"
+          # Recover from apt lock contention on shared runners, then add the
+          # optional "universe" repos under a bounded timeout (it has been
+          # observed to hang indefinitely and burn the whole job timeout).
+          sudo pkill -9 apt-get 2>/dev/null || true
+          sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/cache/apt/archives/lock
+          sudo dpkg --configure -a || true
+          timeout 120 sudo add-apt-repository universe -y 2>/dev/null || true
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libssl-dev \
-            pkg-config \
-            libasound2-dev \
-            libgtk-3-dev \
-            libgdk-pixbuf2.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            libsoup-3.0-dev \
-            libwebkit2gtk-4.1-dev \
-            libglib2.0-dev \
-            libcairo2-dev \
-            libdbus-1-dev \
-            ffmpeg \
-            libayatana-appindicator3-dev
+          sudo pkill -9 apt-get 2>/dev/null || true
+          sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/cache/apt/archives/lock
+          sudo dpkg --configure -a || true
+          for i in 1 2 3; do sudo apt-get update -y && break; sleep 10; done
+          for i in 1 2 3; do
+            sudo apt-get install -y \
+              libssl-dev \
+              pkg-config \
+              libasound2-dev \
+              libgtk-3-dev \
+              libgdk-pixbuf2.0-dev \
+              libjavascriptcoregtk-4.1-dev \
+              libsoup-3.0-dev \
+              libwebkit2gtk-4.1-dev \
+              libglib2.0-dev \
+              libcairo2-dev \
+              libdbus-1-dev \
+              ffmpeg \
+              libayatana-appindicator3-dev && break
+            sleep 10
+          done
 
       - name: Install ffmpeg (macOS)
         if: runner.os == 'macOS'
@@ -319,24 +326,28 @@ jobs:
       - name: Enable universe repository
         if: runner.os == 'Linux'
         run: |
-          # Bound this step: on busy runners `add-apt-repository` has been
-          # observed to hang indefinitely and burn the whole job timeout.
-          # The "universe" repos are optional for this build, so time it out.
-          timeout 120 sudo add-apt-repository universe -y 2>/dev/null \
-            || echo "add-apt-repository skipped/timed out; continuing"
-          sudo apt-get update || echo "apt-get update had warnings; continuing"
+          sudo pkill -9 apt-get 2>/dev/null || true
+          sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/cache/apt/archives/lock
+          sudo dpkg --configure -a || true
+          timeout 120 sudo add-apt-repository universe -y 2>/dev/null || true
 
       - name: Install system dependencies (Tauri)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libssl-dev \
-            pkg-config \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            webkit2gtk-driver
+          sudo pkill -9 apt-get 2>/dev/null || true
+          sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/cache/apt/archives/lock
+          sudo dpkg --configure -a || true
+          for i in 1 2 3; do sudo apt-get update -y && break; sleep 10; done
+          for i in 1 2 3; do
+            sudo apt-get install -y \
+              libssl-dev \
+              pkg-config \
+              libgtk-3-dev \
+              libwebkit2gtk-4.1-dev \
+              libayatana-appindicator3-dev \
+              webkit2gtk-driver && break
+            sleep 10
+          done
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
