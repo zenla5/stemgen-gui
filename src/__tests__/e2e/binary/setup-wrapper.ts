@@ -8,7 +8,7 @@
 import type { FullConfig } from '@playwright/test';
 
 export default async function globalSetup(config: FullConfig): Promise<void> {
-  if (!process.argv.includes('--project=binary')) {
+  if (!process.argv.some((a) => a.startsWith('--project=binary'))) {
     return;
   }
 
