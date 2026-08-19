@@ -198,3 +198,25 @@ WebView creation that is independent of the runtime version), and restore the
 April-green **Playwright + CDP** harness on Windows (`npx playwright test
 --project=binary`). See `src-tauri/src/lib.rs` + `.github/workflows/ci.yml`.
 
+### Outcome (Phase A landed — full CI green)
+
+**Verified on `windows-latest` / WebView2 151.0.4129.72:**
+- In-code CDP opens port 9515 (`Direct app CDP reachable on 9515: HTTP 200`);
+  Playwright attaches and the page renders (`hasRoot=true`).
+- The full ~86-test Playwright suite is **too slow for a 45-min job** on WebView2
+  (reload-heavy, ~1.2 min/test; only ~28/86 fit → job timeout). So Windows runs a
+  small **smoke suite** (`src/__tests__/e2e/binary/windows/smoke.spec.ts`, 5 tests:
+  launch, wizard-skip + sidebar, status bar, files drop-zone, settings nav),
+  driven by the new `binary-smoke` Playwright project (`playwright.config.ts`).
+  Linux keeps the full binary suite via WebdriverIO.
+- Also fixed:
+  - `setup-wrapper.ts` gated binary spawn on the exact `--project=binary` flag;
+    now matches any `--project=binary*` prefix so `binary-smoke` spawns the binary.
+  - Mac backend `test_probe_binary_self` was PATH-fragile and flaked, blocking the
+    `e2e-binary` job via `needs: [backend]` (tracked as #14); hardened to an
+    absolute-POSIX command + deterministic negative case.
+
+**Verified result (run `32310426655`):** entire CI green — `All Checks Passed`
+ran 13/13 jobs success, including `Binary E2E Tests (windows-latest)` (smoke,
+**5 passed in 5.5s**) and `Binary E2E Tests (ubuntu-latest)` (full wdio suite).
+
