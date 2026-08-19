@@ -89,6 +89,33 @@ pub fn run() {
         .setup(|app| {
             info!("Setting up application");
 
+            // Build the main window from config. The config sets `create: false`
+            // so construction happens here, which lets us apply WebView2-specific
+            // options that can only be set at WebView creation time.
+            //
+            // On devtools builds (CI test binaries) we enable the CDP
+            // remote-debugging port on Windows WebView2. That is the reliable,
+            // WebView2-runtime-version-independent way for the binary E2E harness
+            // (`playwright connectOverCDP`) to attach — the environment-variable
+            // mechanism (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`) has regressed on
+            // newer Evergreen runtimes. A no-op on Linux/macOS, and never compiled
+            // into shipped release binaries (which are not built with `devtools`).
+            let window = tauri::WebviewWindowBuilder::from_config(
+                app.handle(),
+                app.config()
+                    .app
+                    .windows
+                    .first()
+                    .expect("no main window configured in tauri.conf.json"),
+            )?;
+            #[cfg(any(debug_assertions, feature = "devtools"))]
+            let window = if cfg!(target_os = "windows") {
+                window.additional_browser_args("--remote-debugging-port=9515")
+            } else {
+                window
+            };
+            window.build()?;
+
             // Initialize database
             let app_data_dir = app
                 .path()

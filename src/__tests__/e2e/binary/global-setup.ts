@@ -131,13 +131,14 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   console.log(`[binary-setup] Found binary: ${binaryPath}`);
   console.log(`[binary-setup] CDP port: ${CDP_PORT}`);
 
-  // Prepare environment variables for CDP
+  // Prepare environment variables for CDP.
+  // Windows WebView2 does NOT use the env var here: the app opens the CDP port
+  // itself via `additional_browser_args` (devtools builds, see src-tauri/src/lib.rs),
+  // which is reliable across WebView2 Evergreen runtime versions. The env-var
+  // mechanism regressed on newer runtimes.
   const env: Record<string, string> = { ...process.env } as Record<string, string>;
 
-  if (process.platform === 'win32') {
-    // WebView2 on Windows
-    env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${CDP_PORT}`;
-  } else if (process.platform === 'linux') {
+  if (process.platform === 'linux') {
     // WebKit2GTK on Linux
     env.WEBKIT_INSPECTOR_SERVER = `127.0.0.1:${CDP_PORT}`;
   }
