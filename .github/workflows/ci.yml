@@ -354,6 +354,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          # A recycled Microsoft Edge/WebView2 process from a previous run can
+          # hold the profile lock and make a fresh WebDriver session fail with
+          # "DevToolsActivePort file doesn't exist". Clean them up first.
+          Stop-Process -Name msedge,msedgewebview2,msedgewebview2rt -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+
           $driverDir = Join-Path $env:GITHUB_WORKSPACE 'edge-driver-cache'
           $env:EDGEDRIVER_CACHE_DIR = $driverDir
           node -e "require('edgedriver').download()" | Out-Host
@@ -365,6 +371,7 @@ jobs:
           npx wdio run wdio.windows.conf.ts
         env:
           CI: 'true'
+          WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=0'
 
       - name: Upload binary test results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
