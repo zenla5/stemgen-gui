@@ -202,7 +202,13 @@ jobs:
 
       - name: Enable universe repository
         if: runner.os == 'Linux'
-        run: sudo add-apt-repository universe -y
+        run: |
+          # Bound this step: on busy runners `add-apt-repository` has been
+          # observed to hang indefinitely and burn the whole job timeout.
+          # The "universe" repos are optional for this build, so time it out.
+          timeout 120 sudo add-apt-repository universe -y 2>/dev/null \
+            || echo "add-apt-repository skipped/timed out; continuing"
+          sudo apt-get update || echo "apt-get update had warnings; continuing"
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -312,7 +318,13 @@ jobs:
 
       - name: Enable universe repository
         if: runner.os == 'Linux'
-        run: sudo add-apt-repository universe -y
+        run: |
+          # Bound this step: on busy runners `add-apt-repository` has been
+          # observed to hang indefinitely and burn the whole job timeout.
+          # The "universe" repos are optional for this build, so time it out.
+          timeout 120 sudo add-apt-repository universe -y 2>/dev/null \
+            || echo "add-apt-repository skipped/timed out; continuing"
+          sudo apt-get update || echo "apt-get update had warnings; continuing"
 
       - name: Install system dependencies (Tauri)
         if: runner.os == 'Linux'
