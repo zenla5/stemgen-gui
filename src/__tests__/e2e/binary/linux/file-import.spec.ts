@@ -118,19 +118,12 @@ describe('File Import', () => {
     await takeScreenshot('linux-file-import-focusable');
   });
 
-  it('drop zone responds to Enter key', async () => {
-    const state = readBinaryState();
-    if (!state?.available) return;
-
-    const dropZone = $('[data-testid="drop-zone"]');
-    await dropZone.click();
-
-    // Pressing Enter should trigger the file dialog handler
-    // (the dialog won't open in test env, but the handler should execute)
-    await browser.keys('Enter');
-
-    // App should still be functional (no crash)
-    expect(await $('[data-testid="drop-zone"]').isDisplayed()).toBe(true);
-    await takeScreenshot('linux-file-import-enter');
-  });
+  // NOTE: there is intentionally NO "drop zone responds to the Enter key" test
+  // here. Pressing Enter on the focused drop zone opens the Tauri app's native
+  // file-chooser dialog, which blocks every subsequent WebDriver command and
+  // leaves the `afterEach` reset (browser.url / reload) hanging until the mocha
+  // timeout. A native modal cannot be dismissed through WebDriver, so this
+  // single test made the whole spec flaky on CI. The remaining tests still
+  // cover drop-zone visibility, text, buttons, store injection, list handling
+  // and focus.
 });
