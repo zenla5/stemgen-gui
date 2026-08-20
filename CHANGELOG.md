@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — CI Hardening
+
+### Fixed
+- **[CI-E2E-WINDOWS]** Root-caused the Windows binary E2E CDP failure to a **WebView2 Evergreen runtime regression**: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` opens the debug port on WebView2 131 (verified on the `windows-2022` runner image) but silently stopped on 151 (`windows-latest`). Fixed by baking the remote-debugging port **in-code** via `additional_browser_args` on the main window, gated to `devtools` builds on Windows. Shipped release binaries are unaffected because they are not built with `devtools`.
+- **[CI-E2E-LINUX]** Binary E2E `Ctrl+B` sidebar test no longer samples the expand/collapse width at a fixed instant; it now waits for the width to stabilize, eliminating animation-timing flakes on loaded CI runners.
+- **[CI-E2E-PROBE]** The Rust `test_probe_binary_self` test was PATH-fragile and flaked on macOS CI, which (via the `e2e-binary` `needs: [backend]` dependency) skipped the whole binary E2E gate. Hardened to resolve the positive case via an absolute POSIX command plus a deterministic negative case (tracked as [#14](https://github.com/zenla5/stemgen-gui/issues/14)).
+
+### Internal
+- **[CI-E2E-WINDOWS-SMOKE]** Windows now runs a reduced 5-test Playwright smoke suite ([`src/__tests__/e2e/binary/windows/smoke.spec.ts`](src/__tests__/e2e/binary/windows/smoke.spec.ts), via the `binary-smoke` project) because WebView2 on shared CI is too slow for the full ~86-test Playwright suite to finish inside the 45-minute job timeout. Linux keeps the full binary suite via WebdriverIO. `setup-wrapper.ts` now matches any `--project=binary*` argument so the smoke project spawns the compiled binary for CDP.
+- **[CI-E2E-DRIVER]** Windows binary E2E now attaches Playwright directly to the in-process CDP port, so the Windows WebdriverIO harness (`wdio.windows.conf.ts`) is gone and Windows no longer provisions `msedgedriver`. Note: `edgedriver` remains in `package-lock.json` only as a transitive dependency of `@wdio/utils` (used by the Linux WebdriverIO suite, which stays in place) — it is not a direct devDependency and is not removed by this PR.
+
 ## [1.4.4] — 2026-04-11 — Separation Pipeline Fixes, CI Hardening & UI Warnings
 
 ### Fixed

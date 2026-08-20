@@ -252,6 +252,8 @@ export async function navigateToView(
   await page.waitForTimeout(100);
 }
 
+
+
 /**
  * Capture the most recent toast/notification message.
  * Uses sonner's data attributes.

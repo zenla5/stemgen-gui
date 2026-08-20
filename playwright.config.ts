@@ -1,5 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Any run against a compiled Tauri binary (full or smoke) spawns the binary,
+// which serves its own app — so the dev webServer must be skipped.
+const isBinaryRun =
+  process.argv.includes('--project=binary') ||
+  process.argv.includes('--project=binary-smoke');
+
 export default defineConfig({
   testDir: './src/__tests__/e2e',
   fullyParallel: true,
@@ -26,14 +32,16 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
-      // Binary project: tests against compiled Tauri binary via CDP
-      name: 'binary',
-      testDir: './src/__tests__/e2e/binary',
-      testIgnore: '**/linux/**', // Linux uses WebdriverIO instead
-      fullyParallel: false, // Shared binary process, must run serially
-      timeout: 120000, // Binary tests may be slower
+      // Windows binary smoke: the compiled-binary Playwright suite, reduced to a
+      // small representative set. WebView2 is too slow on CI for the full suite
+      // to finish within a job timeout, so Windows runs this; Linux runs the full
+      // suite via WebdriverIO (see wdio.conf.ts). Uses ../test-fixtures + helpers.
+      name: 'binary-smoke',
+      testDir: './src/__tests__/e2e/binary/windows',
+      fullyParallel: false,
+      timeout: 120000,
       expect: { timeout: 15000 },
-      retries: 0, // No retries for binary tests
+      retries: 0,
       outputDir: './test-results/binary-screenshots',
       use: {
         trace: 'on-first-retry',
@@ -42,7 +50,7 @@ export default defineConfig({
     },
   ],
   // Skip webServer for binary-only runs — the Tauri binary serves its own app
-  webServer: process.argv.includes('--project=binary')
+  webServer: isBinaryRun
     ? undefined
     : {
         command: 'npm run dev',
