@@ -1,5 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Any run against a compiled Tauri binary (full or smoke) spawns the binary,
+// which serves its own app — so the dev webServer must be skipped.
+const isBinaryRun =
+  process.argv.includes('--project=binary') ||
+  process.argv.includes('--project=binary-smoke');
+
 export default defineConfig({
   testDir: './src/__tests__/e2e',
   fullyParallel: true,
@@ -44,7 +50,7 @@ export default defineConfig({
     },
   ],
   // Skip webServer for binary-only runs — the Tauri binary serves its own app
-  webServer: process.argv.some((a) => a.startsWith('--project=binary'))
+  webServer: isBinaryRun
     ? undefined
     : {
         command: 'npm run dev',

@@ -18,12 +18,11 @@ const __dirname = dirname(__filename);
 const PROJECT_ROOT = __dirname;
 
 function getBinaryPath(): string | null {
-  const exe = process.platform === 'win32' ? '.exe' : '';
   const candidates = [
-    path.join(PROJECT_ROOT, 'target', 'release', `stemgen-gui${exe}`),
-    path.join(PROJECT_ROOT, 'target', 'release', `stemgen_gui${exe}`),
-    path.join(PROJECT_ROOT, 'src-tauri', 'target', 'release', `stemgen-gui${exe}`),
-    path.join(PROJECT_ROOT, 'src-tauri', 'target', 'release', `stemgen_gui${exe}`),
+    path.join(PROJECT_ROOT, 'target', 'release', 'stemgen-gui'),
+    path.join(PROJECT_ROOT, 'target', 'release', 'stemgen_gui'),
+    path.join(PROJECT_ROOT, 'src-tauri', 'target', 'release', 'stemgen-gui'),
+    path.join(PROJECT_ROOT, 'src-tauri', 'target', 'release', 'stemgen_gui'),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
@@ -89,23 +88,14 @@ export const config: Options.Testrunner = {
     console.log(`[wdio] Found binary: ${binaryPath}`);
 
     // Start tauri-driver
-    const homeDir = process.env.USERPROFILE || process.env.HOME || '';
-    const driverCandidates =
-      process.platform === 'win32'
-        ? [
-            path.join(homeDir, '.cargo', 'bin', 'tauri-driver.exe'),
-            path.join(homeDir, '.cargo', 'bin', 'tauri-driver'),
-          ]
-        : [path.join(homeDir, '.cargo', 'bin', 'tauri-driver')];
-    const tauriDriverBin = process.env.TAURI_DRIVER_BIN || driverCandidates.find(fs.existsSync) || 'tauri-driver';
+    const tauriDriverBin =
+      process.env.TAURI_DRIVER_BIN ||
+      path.join(process.env.HOME || '', '.cargo', 'bin', 'tauri-driver');
 
-    if (process.env.CI && !fs.existsSync(tauriDriverBin)) {
+    if (!fs.existsSync(tauriDriverBin)) {
       throw new Error(
         `tauri-driver not found at ${tauriDriverBin}. Install with: cargo install tauri-driver --locked`
       );
-    }
-    if (!fs.existsSync(tauriDriverBin)) {
-      console.warn(`[wdio] tauri-driver not found at ${tauriDriverBin}; relying on PATH`);
     }
 
     console.log(
