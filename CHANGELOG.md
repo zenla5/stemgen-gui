@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 
 ### Internal
 - **[CI-E2E-WINDOWS-SMOKE]** Windows now runs a reduced 5-test Playwright smoke suite ([`src/__tests__/e2e/binary/windows/smoke.spec.ts`](src/__tests__/e2e/binary/windows/smoke.spec.ts), via the `binary-smoke` project) because WebView2 on shared CI is too slow for the full ~86-test Playwright suite to finish inside the 45-minute job timeout. Linux keeps the full binary suite via WebdriverIO. `setup-wrapper.ts` now matches any `--project=binary*` argument so the smoke project spawns the compiled binary for CDP.
-- **[CI-E2E-DRIVER]** Removed the now-unused Windows WebdriverIO harness: `wdio.windows.conf.ts` and the `edgedriver` devDependency are gone; Windows no longer provisions `msedgedriver`, since Playwright attaches straight to the in-process CDP port.
+- **[CI-E2E-DRIVER]** Windows binary E2E now attaches Playwright directly to the in-process CDP port, so the Windows WebdriverIO harness (`wdio.windows.conf.ts`) is gone and Windows no longer provisions `msedgedriver`. Note: `edgedriver` remains in `package-lock.json` only as a transitive dependency of `@wdio/utils` (used by the Linux WebdriverIO suite, which stays in place) — it is not a direct devDependency and is not removed by this PR.
 
 ## [1.4.4] — 2026-04-11 — Separation Pipeline Fixes, CI Hardening & UI Warnings
 
