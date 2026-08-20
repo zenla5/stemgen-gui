@@ -54,4 +54,33 @@ describe('ErrorBoundary', () => {
 
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
   });
+
+  it('shows a default message when the error has no message', () => {
+    const ThrowError = () => {
+      throw new Error();
+    };
+
+    render(
+      <ErrorBoundary>
+        <ThrowError />
+      </ErrorBoundary>
+    );
+
+    expect(screen.getByText('An unexpected error occurred')).toBeInTheDocument();
+  });
+
+  it('shows the package-status guidance when the error mentions the in operator', () => {
+    const ThrowError = () => {
+      throw new Error("Cannot use 'in' operator to search for 'available'");
+    };
+
+    render(
+      <ErrorBoundary>
+        <ThrowError />
+      </ErrorBoundary>
+    );
+
+    expect(screen.getByText(/could not read dependency status/i)).toBeInTheDocument();
+    expect(screen.getByText(/try restarting the application/i)).toBeInTheDocument();
+  });
 });

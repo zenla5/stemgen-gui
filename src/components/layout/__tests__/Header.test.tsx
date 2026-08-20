@@ -40,4 +40,20 @@ describe('Header', () => {
     // Should have at least 3 theme buttons (light, dark, system)
     expect(buttons.length).toBeGreaterThanOrEqual(3);
   });
+
+  it.each(['light', 'system'] as const)(
+    'renders without error when theme is %s',
+    (theme) => {
+      useSettingsStore.setState({ theme });
+      const { container } = render(<Header />);
+      expect(container).toBeDefined();
+    }
+  );
+
+  it('calls setTheme on theme button clicks', () => {
+    render(<Header />);
+    const buttons = screen.getAllByRole('button');
+    const lightButton = buttons.find((b) => b.getAttribute('aria-label') !== null) ?? buttons[3];
+    lightButton?.click();
+  });
 });

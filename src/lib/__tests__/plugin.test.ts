@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   BUILT_IN_FORMATS,
   PluginManagerImpl,
@@ -119,6 +119,102 @@ describe('Plugin System', () => {
       const manager1 = getPluginManager();
       const manager2 = getPluginManager();
       expect(manager1).toBe(manager2);
+    });
+  });
+
+  describe('loadPlugin validation', () => {
+    let manager: PluginManagerImpl;
+
+    beforeEach(() => {
+      manager = new PluginManagerImpl();
+      vi.unstubAllGlobals();
+    });
+
+    const validPlugin = {
+      manifest: { id: 'custom-1', name: 'Custom', version: '1.0.0', author: 'Me', description: 'desc' },
+      stems: [{ id: 'drums', type: 'drums', name: 'Drums', color: '#FF6B6B' }],
+      exportSettings: { codec: 'aac', bitrate: 320 },
+    };
+
+    it('loads a valid plugin and registers it', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(validPlugin) })
+      );
+      const plugin = await manager.loadPlugin('/tmp/custom.json');
+      expect(plugin.manifest.id).toBe('custom-1');
+      expect(manager.getPlugin('custom-1')).toBe(validPlugin);
+      expect(manager.getLoadedPlugins()).toHaveLength(1);
+    });
+
+    it('throws when the fetch response is not ok', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+      await expect(manager.loadPlugin('/tmp/bad.json')).rejects.toThrow(
+        'Failed to load plugin from /tmp/bad.json'
+      );
+    });
+
+    it('throws when the manifest misses an id or name', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              manifest: { name: 'Custom' },
+              stems: [{ id: 'drums', type: 'drums', name: 'Drums', color: '#ff6b6b' }],
+              exportSettings: { codec: 'aac' },
+            }),
+        })
+      );
+      await expect(manager.loadPlugin('x')).rejects.toThrow('Invalid plugin manifest');
+    });
+
+    it('throws when stems is empty', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              manifest: { id: 'a', name: 'A' },
+              stems: [],
+              exportSettings: { codec: 'aac' },
+            }),
+        })
+      );
+      await expect(manager.loadPlugin('x')).rejects.toThrow('Invalid plugin manifest');
+    });
+
+    it('throws when export settings codec is missing', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              manifest: { id: 'a', name: 'A' },
+              stems: [{ id: 'drums', type: 'drums', name: 'Drums', color: '#ff6b6b' }],
+              exportSettings: {},
+            }),
+        })
+      );
+      await expect(manager.loadPlugin('x')).rejects.toThrow('Invalid plugin manifest');
+    });
+
+    it('wraps unexpected errors', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+      await expect(manager.loadPlugin('x')).rejects.toThrow('Failed to load plugin');
+    });
+
+    it('unloadPlugin removes an already-loaded plugin', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(validPlugin) })
+      );
+      await manager.loadPlugin('/tmp/custom.json');
+      manager.unloadPlugin('custom-1');
+      expect(manager.getPlugin('custom-1')).toBeUndefined();
     });
   });
 

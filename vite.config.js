@@ -7,7 +7,7 @@ export default defineConfig({
     plugins: [react()],
     resolve: {
         alias: {
-            '@': path.resolve(__dirname, './src'),
+            '@': path.resolve(import.meta.dirname, './src'),
         },
     },
     // Vite options tailored for Tauri development
@@ -21,7 +21,7 @@ export default defineConfig({
         },
     },
     build: {
-        target: ['es2021', 'chrome100', 'safari13'],
+        target: 'esnext',
         minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
         sourcemap: !!process.env.TAURI_DEBUG,
     },
