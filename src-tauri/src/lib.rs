@@ -89,9 +89,33 @@ pub fn run() {
         .setup(|app| {
             info!("Setting up application");
 
-            // The main window is built at the end of this setup (see below),
-            // after app state is managed, so the webview cannot invoke commands
-            // before `app.state::<AppState>()` is registered.
+            // Non-devtools (shipped release) builds: keep the main window
+            // appearing promptly at startup. `create: false` is set in
+            // tauri.conf.json because devtools/CI builds must inject the
+            // WebView2 CDP args (`additional_browser_args`) at WebView
+            // creation (see the devtools block below). That config cannot be
+            // feature-gated, so for every non-devtools build we build the
+            // window here, before the heavier init (DB, sidecar copy) below.
+            // IPC is not dispatched until the event loop runs after `setup()`
+            // returns, by which time `app.manage(AppState)` has registered
+            // state, so this ordering is safe.
+            #[cfg(not(feature = "devtools"))]
+            {
+                let window = tauri::WebviewWindowBuilder::from_config(
+                    app.handle(),
+                    app.config()
+                        .app
+                        .windows
+                        .first()
+                        .expect("no main window configured in tauri.conf.json"),
+                )?;
+                window.build()?;
+            }
+
+            // On devtools builds the main window is built at the end of this
+            // setup (see below), after app state is managed, so the webview
+            // cannot invoke commands before `app.state::<AppState>()` is
+            // registered.
 
             // Initialize database
             let app_data_dir = app
@@ -271,37 +295,41 @@ pub fn run() {
             // so construction happens here, which lets us apply WebView2-specific
             // options that can only be set at WebView creation time.
             //
-            // On devtools builds (CI test binaries) we enable the WebView2 CDP
-            // remote-debugging endpoint on Windows, bound to loopback. That is
-            // the reliable, WebView2-runtime-version-independent way for the
-            // binary E2E harness (`playwright connectOverCDP`) to attach — the
+            // This is devtools-only: non-devtools (release) builds create the
+            // window at the top of this closure (see above), so building it here
+            // too would create two `main` windows/webviews. On devtools builds
+            // (CI test binaries) we enable the WebView2 CDP remote-debugging
+            // endpoint on Windows, bound to loopback. That is the reliable,
+            // WebView2-runtime-version-independent way for the binary E2E
+            // harness (`playwright connectOverCDP`) to attach — the
             // environment-variable mechanism
             // (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`) has regressed on newer
-            // Evergreen runtimes. A no-op on Linux/macOS and non-dev build; never
-            // compiled into shipped release binaries (which are not built with
-            // `devtools`).
+            // Evergreen runtimes. A no-op on Linux/macOS; never compiled into
+            // shipped release binaries (which are not built with `devtools`).
             //
-            // Building the window last means the webview only starts once app
-            // state above is managed and the sidecar is wired up, so early
-            // frontend `invoke` calls (e.g. check_dependencies) cannot race
-            // `app.state::<AppState>()`.
-            let window = tauri::WebviewWindowBuilder::from_config(
-                app.handle(),
-                app.config()
-                    .app
-                    .windows
-                    .first()
-                    .expect("no main window configured in tauri.conf.json"),
-            )?;
+            // Building the window last means the devtools webview only starts
+            // once app state above is managed and the sidecar is wired up, so
+            // early frontend `invoke` calls (e.g. check_dependencies) cannot
+            // race `app.state::<AppState>()`.
             #[cfg(feature = "devtools")]
-            let window = if cfg!(target_os = "windows") {
-                window.additional_browser_args(
-                    "--remote-debugging-address=127.0.0.1 --remote-debugging-port=9515",
-                )
-            } else {
-                window
-            };
-            window.build()?;
+            {
+                let window = tauri::WebviewWindowBuilder::from_config(
+                    app.handle(),
+                    app.config()
+                        .app
+                        .windows
+                        .first()
+                        .expect("no main window configured in tauri.conf.json"),
+                )?;
+                let window = if cfg!(target_os = "windows") {
+                    window.additional_browser_args(
+                        "--remote-debugging-address=127.0.0.1 --remote-debugging-port=9515",
+                    )
+                } else {
+                    window
+                };
+                window.build()?;
+            }
 
             info!("Application setup complete");
             Ok(())
