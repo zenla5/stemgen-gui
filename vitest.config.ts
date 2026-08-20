@@ -35,11 +35,6 @@ export default defineConfig({
         'python/**',
         // Auto-generated/generated files
         'src-tauri/gen/**',
-        // Production UI chrome verified by the binary E2E suites, not unit coverage
-        'src/components/settings/**',
-        'src/components/setup/**',
-        'src/components/library/**',
-        'src/components/audio/**',
       ],
       thresholds: {
         lines: 55,

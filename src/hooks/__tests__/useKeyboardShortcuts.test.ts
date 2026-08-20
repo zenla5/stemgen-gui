@@ -97,11 +97,14 @@ describe('useKeyboardShortcuts', () => {
 it('ignores shortcuts when typing in INPUT elements', () => {
     renderHook(() => useKeyboardShortcuts());
 
+    // Start from a non-default view so "ignored" is distinguishable from "never fired"
+    useAppStore.setState({ activeView: 'settings' });
+
     const input = document.createElement('input');
     document.body.appendChild(input);
 
     input.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
-    expect(useAppStore.getState().activeView).toBe('files');
+    expect(useAppStore.getState().activeView).toBe('settings');
 
     document.body.removeChild(input);
   });
@@ -109,11 +112,13 @@ it('ignores shortcuts when typing in INPUT elements', () => {
   it('ignores shortcuts when typing in TEXTAREA elements', () => {
     renderHook(() => useKeyboardShortcuts());
 
+    useAppStore.setState({ activeView: 'settings' });
+
     const textarea = document.createElement('textarea');
     document.body.appendChild(textarea);
 
     textarea.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
-    expect(useAppStore.getState().activeView).toBe('files');
+    expect(useAppStore.getState().activeView).toBe('settings');
 
     document.body.removeChild(textarea);
   });

@@ -162,7 +162,7 @@ export function OrphanedStemsView({ rootId }: OrphanedStemsViewProps) {
               orphan={orphan}
               isDeleteConfirming={deleteConfirmId === orphan.id}
               onDeleteConfirm={() => handleDelete(orphan.stem_path)}
-              onDeleteRequest={() => setDeleteConfirmId(orphan.stem_path)}
+              onDeleteRequest={() => setDeleteConfirmId(orphan.id)}
               onDeleteCancel={() => setDeleteConfirmId(null)}
               onRelink={() => handleRelink(orphan.stem_path)}
               onIgnore={() => handleIgnore(orphan.stem_path)}
