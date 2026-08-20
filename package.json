@@ -19,7 +19,7 @@
     "test:integration": "vitest run src/__tests__/integration",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:binary": "playwright test --project=binary",
+    "test:e2e:binary": "playwright test --project=binary-smoke",
     "test:e2e:binary:linux": "wdio run wdio.conf.ts",
     "test:e2e:all": "playwright test",
     "tauri": "tauri",

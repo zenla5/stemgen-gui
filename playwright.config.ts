@@ -26,25 +26,10 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
-      // Binary project: tests against compiled Tauri binary via CDP
-      name: 'binary',
-      testDir: './src/__tests__/e2e/binary',
-      testIgnore: ['**/linux/**', '**/windows/**'], // Linux uses WebdriverIO; windows/ is the smoke project
-      fullyParallel: false, // Shared binary process, must run serially
-      timeout: 120000, // Binary tests may be slower
-      expect: { timeout: 15000 },
-      retries: 0, // No retries for binary tests
-      outputDir: './test-results/binary-screenshots',
-      use: {
-        trace: 'on-first-retry',
-        screenshot: 'on',
-      },
-    },
-    {
-      // Windows binary smoke: a reduced subset of the compiled-binary suite.
-      // WebView2 is too slow on CI for the full suite to finish within a job
-      // timeout, so Windows runs this small representative set; Linux runs the
-      // full suite via WebdriverIO.
+      // Windows binary smoke: the compiled-binary Playwright suite, reduced to a
+      // small representative set. WebView2 is too slow on CI for the full suite
+      // to finish within a job timeout, so Windows runs this; Linux runs the full
+      // suite via WebdriverIO (see wdio.conf.ts). Uses ../test-fixtures + helpers.
       name: 'binary-smoke',
       testDir: './src/__tests__/e2e/binary/windows',
       fullyParallel: false,

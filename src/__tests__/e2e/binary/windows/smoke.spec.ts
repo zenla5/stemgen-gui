@@ -15,11 +15,6 @@ import { test, expect } from '../test-fixtures';
 import { readBinaryState, navigateSkippingWizard, navigateToView } from '../helpers';
 
 test.describe('Windows binary smoke', () => {
-  test.beforeAll(() => {
-    const state = readBinaryState();
-    if (!state?.available) return;
-  });
-
   test('binary launches and app shell renders', async ({ page }) => {
     const state = readBinaryState();
     test.skip(!state?.available, state?.reason || 'Binary not available');
