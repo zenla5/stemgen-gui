@@ -5,11 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] — CI Hardening
 
 ### Fixed
+- **[CI-E2E-WINDOWS]** Root-caused the Windows binary E2E CDP failure to a **WebView2 Evergreen runtime regression**: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` opens the debug port on WebView2 131 (verified on the `windows-2022` runner image) but silently stopped on 151 (`windows-latest`). Fixed by baking the remote-debugging port **in-code** via `additional_browser_args` on the main window, gated to `devtools` builds on Windows. Shipped release binaries are unaffected because they are not built with `devtools`.
 - **[CI-E2E-LINUX]** Binary E2E `Ctrl+B` sidebar test no longer samples the expand/collapse width at a fixed instant; it now waits for the width to stabilize, eliminating animation-timing flakes on loaded CI runners.
-- **[CI-E2E-WINDOWS]** Replaced the flaky Playwright+CDP binary E2E harness on Windows with the tauri-driver + WebdriverIO setup already used on Linux, removing the "CDP not available" failure mode.
+- **[CI-E2E-PROBE]** The Rust `test_probe_binary_self` test was PATH-fragile and flaked on macOS CI, which (via the `e2e-binary` `needs: [backend]` dependency) skipped the whole binary E2E gate. Hardened to resolve the positive case via an absolute POSIX command plus a deterministic negative case (tracked as [#14](https://github.com/zenla5/stemgen-gui/issues/14)).
 
 ### Internal
-- **[CI-E2E-DRIVER]** `wdio.conf.ts` now discovers `tauri-driver` correctly on Windows (`USERPROFILE` + `.exe` candidates); Windows CI provisions `msedgedriver` via the `edgedriver` package and runs `wdio.windows.conf.ts`.
+- **[CI-E2E-WINDOWS-SMOKE]** Windows now runs a reduced 5-test Playwright smoke suite ([`src/__tests__/e2e/binary/windows/smoke.spec.ts`](src/__tests__/e2e/binary/windows/smoke.spec.ts), via the `binary-smoke` project) because WebView2 on shared CI is too slow for the full ~86-test Playwright suite to finish inside the 45-minute job timeout. Linux keeps the full binary suite via WebdriverIO. `setup-wrapper.ts` now matches any `--project=binary*` argument so the smoke project spawns the compiled binary for CDP.
+- **[CI-E2E-DRIVER]** Removed the now-unused Windows WebdriverIO harness: `wdio.windows.conf.ts` and the `edgedriver` devDependency are gone; Windows no longer provisions `msedgedriver`, since Playwright attaches straight to the in-process CDP port.
 
 ## [1.4.4] — 2026-04-11 — Separation Pipeline Fixes, CI Hardening & UI Warnings
 
