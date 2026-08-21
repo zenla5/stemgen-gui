@@ -265,32 +265,10 @@ export function useStemMixer(
   stems: Stem[],
   masterVolume: number = 1
 ) {
-  // Apply solo/mute logic
-  useEffect(() => {
-    // If any stem is soloed, mute non-soloed stems
-    const hasSolo = stems.some(s => s.solo);
-    
-    // Calculate effective volume for each stem
-    stems.forEach(stem => {
-      let _effectiveVolume = stem.volume;
-      
-      // Apply mute
-      if (stem.muted) {
-        _effectiveVolume = 0;
-      }
-      
-      // If another stem is soloed and this one isn't, mute it
-      if (hasSolo && !stem.solo) {
-        _effectiveVolume = 0;
-      }
-      
-      // Apply master volume
-      _effectiveVolume *= masterVolume;
-      
-      // Note: Individual stem volume control would require separate gain nodes
-      // For now, we only support master volume
-    });
-  }, [stems, masterVolume]);
+  // Individual stem gain nodes are not yet implemented; volume/mute/solo are
+  // managed via masterVolume and the audio graph in useAudioPlayer.
+  void stems;
+  void masterVolume;
 
   return { stems };
 }
