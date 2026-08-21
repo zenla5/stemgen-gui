@@ -3,9 +3,9 @@
 
 version: 2
 updates:
-  # Rust/Tauri dependencies (Cargo workspace members)
+  # Rust/Tauri dependencies (Cargo workspace manifest at repo root)
   - package-ecosystem: cargo
-    directory: /src-tauri
+    directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
