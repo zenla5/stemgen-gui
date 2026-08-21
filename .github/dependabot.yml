@@ -1,0 +1,36 @@
+# Please see https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot-github-api
+# for all supported options.
+
+version: 2
+updates:
+  # Rust/Tauri dependencies (Cargo workspace members)
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    target-branch: main
+
+  # Node/TypeScript dependencies
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    target-branch: main
+
+  # Python sidecar dependencies
+  - package-ecosystem: pip
+    directory: /python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    target-branch: main
+
+  # GitHub Actions workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    target-branch: main
