@@ -1,10 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, act } from '@testing-library/react';
 import { InstallProgress } from '../InstallProgress';
 
 describe('InstallProgress', () => {
   beforeEach(() => {
     vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn() } });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders a running state with loader text', () => {
@@ -89,5 +93,43 @@ describe('InstallProgress', () => {
       <InstallProgress lines={[]} isRunning result={null} />
     );
     expect(withoutCancel.container.textContent).not.toContain('Cancel');
+  });
+
+  it('shows the copied state after copying then resets', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    vi.useFakeTimers();
+    const { container } = render(
+      <InstallProgress
+        lines={[]}
+        isRunning={false}
+        commandDisplay="ffmpeg -i x"
+        result={{ success: true, alreadyInstalled: false }}
+      />
+    );
+    const copyButton = [...container.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Copy')
+    );
+    copyButton?.click();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain('Copied');
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(container.textContent).not.toContain('Copied');
+  });
+
+  it('formats elapsed time in minutes once over a minute', () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <InstallProgress lines={[]} isRunning result={null} />
+    );
+    expect(container.textContent).toContain('0s');
+    act(() => {
+      vi.advanceTimersByTime(65000);
+    });
+    expect(container.textContent).toContain('1m 5s');
   });
 });

@@ -41,7 +41,7 @@ describe('Header', () => {
     expect(buttons.length).toBeGreaterThanOrEqual(3);
   });
 
-  it.each(['light', 'system'] as const)(
+  it.each(['light', 'dark', 'system'] as const)(
     'renders without error when theme is %s',
     (theme) => {
       useSettingsStore.setState({ theme });

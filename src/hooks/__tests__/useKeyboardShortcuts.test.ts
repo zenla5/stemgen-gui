@@ -94,7 +94,7 @@ describe('useKeyboardShortcuts', () => {
     expect(useAppStore.getState().sidebarCollapsed).toBe(false);
   });
 
-it('ignores shortcuts when typing in INPUT elements', () => {
+  it('ignores shortcuts when typing in INPUT elements', () => {
     renderHook(() => useKeyboardShortcuts());
 
     // Start from a non-default view so "ignored" is distinguishable from "never fired"
