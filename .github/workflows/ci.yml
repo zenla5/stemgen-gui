@@ -284,8 +284,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run npm audit
-        run: npm audit --audit-level=high || true
-        continue-on-error: true
+        run: npm audit --audit-level=high
 
       - name: Run cargo-audit
         run: cargo install cargo-audit && cargo audit || true
