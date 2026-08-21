@@ -4,7 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] — CI Hardening
 
+### Security
+- **[TOOLCHAIN-SECURITY]** Upgraded the dev/build toolchain majors to close critical/high npm advisories in the Vite/Vitest/Happy DOM stack (tracked as [#7](https://github.com/zenla5/stemgen-gui/issues/7)): `vitest@4` + `@vitest/coverage-v8@4` (RCE when the Vitest UI server is reachable), `happy-dom@20` (VM context escape RCE, fetch-cookie leak, unsanitized export interpolation), `vite@8` (Windows `server.fs.deny` bypass, optimized-deps (unminified) path traversal, launch-editor NTLMv2 hash disclosure), and `@vitejs/plugin-react@6` (peer-dep on vite 8). `esbuild`/`vite-node`/`@vitest/mocker` transitively resolve. The npm audit critical count drops 3 → 0. Upgrade was deliberate (no `npm audit fix --force`), so breaking changes were handled per package.
+- **[CI-SECURITY-AUDIT]** Remaining open vulnerabilities are all out-of-scope of #7 (wdio/`deepmerge-ts`, `react-router-dom`, `serialize-javascript`, `extract-zip`, tsx-bundled esbuild) and are tracked as follow-ups; the `npm audit` gate stays `|| true` server-side.
+
+### Internal
+- **[TOOLCHAIN-CONFIG]** Vite/Vitest 4 breaking-config fallouts: `__dirname` → `import.meta.dirname` in `vite.config.(ts|js)` and `vitest.config.ts` (native config loader), and `vite build` target `es2021/chrome100/safari13` → `esnext` because the plugin-react 6 React compiler emits JS the old targets can no longer esbuild-lower. The `@` alias in all three configs uses the portability-safe `path.dirname(fileURLToPath(import.meta.url))` form (plain `import.meta.dirname` requires Node >=20.11).
+- **[COVERAGE]** vitest-4 v8 re-instruments more of the source tree, so the revived branch gate required tests (not just the E2E-chrome excludes) for `InstallProgress`, `useNetworkStatus`, `useKeyboardShortcuts`, `plugin` load/validation, `ErrorBoundary`, `utils` debounce, and `Header`.
+
 ### Fixed
+- **[FIX-ORPHAN-DELETE-CONFIRM]** Per-row Delete confirmation in `OrphanedStemsView` never opened because the row state keyed on `orphan.id` but the click handler set the comparing field to `orphan.stem_path`. Now uses `orphan.id` consistently. Bundled with the toolchain upgrade per review.
 - **[CI-E2E-WINDOWS]** Root-caused the Windows binary E2E CDP failure to a **WebView2 Evergreen runtime regression**: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` opens the debug port on WebView2 131 (verified on the `windows-2022` runner image) but silently stopped on 151 (`windows-latest`). Fixed by baking the remote-debugging port **in-code** via `additional_browser_args` on the main window, gated to `devtools` builds on Windows. Shipped release binaries are unaffected because they are not built with `devtools`.
 - **[CI-E2E-LINUX]** Binary E2E `Ctrl+B` sidebar test no longer samples the expand/collapse width at a fixed instant; it now waits for the width to stabilize, eliminating animation-timing flakes on loaded CI runners.
 - **[CI-E2E-PROBE]** The Rust `test_probe_binary_self` test was PATH-fragile and flaked on macOS CI, which (via the `e2e-binary` `needs: [backend]` dependency) skipped the whole binary E2E gate. Hardened to resolve the positive case via an absolute POSIX command plus a deterministic negative case (tracked as [#14](https://github.com/zenla5/stemgen-gui/issues/14)).

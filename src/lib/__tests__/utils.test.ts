@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   cn,
   formatBytes,
@@ -11,6 +11,7 @@ import {
   isAudioFile,
   getFileExtension,
   getFileNameWithoutExtension,
+  debounce,
 } from '../utils';
 
 describe('cn', () => {
@@ -174,6 +175,49 @@ describe('getFileExtension', () => {
 
   it('returns filename as extension when no dot present', () => {
     expect(getFileExtension('song')).toBe('song');
+  });
+});
+
+describe('debounce', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('invokes the function once after multiple rapid calls', () => {
+    vi.useFakeTimers();
+    const fn = vi.fn();
+    const debounced = debounce(fn, 100);
+
+    debounced('a');
+    debounced('b');
+    vi.advanceTimersByTime(100);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledWith('b');
+  });
+
+  it('reschedules when called again within the wait window', () => {
+    vi.useFakeTimers();
+    const fn = vi.fn();
+    const debounced = debounce(fn, 100);
+
+    debounced('a');
+    vi.advanceTimersByTime(50);
+    debounced('c');
+    vi.advanceTimersByTime(100);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledWith('c');
+  });
+});
+
+describe('isAudioFile edge cases', () => {
+  it('returns false when the filename has no extension', () => {
+    expect(isAudioFile('song')).toBe(false);
+  });
+});
+
+describe('getFileExtension edge cases', () => {
+  it('returns empty string for an empty filename', () => {
+    expect(getFileExtension('')).toBe('');
   });
 });
 

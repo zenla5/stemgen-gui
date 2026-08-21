@@ -9,7 +9,10 @@ const mockResizeObserver = {
   disconnect: vi.fn(),
   unobserve: vi.fn(),
 };
-vi.stubGlobal('ResizeObserver', vi.fn(() => mockResizeObserver));
+function mockResizeObserverConstructor() {
+  return mockResizeObserver;
+}
+vi.stubGlobal('ResizeObserver', mockResizeObserverConstructor);
 
 describe('StemWaveformDisplay', () => {
   const mockWaveformData: WaveformData = {

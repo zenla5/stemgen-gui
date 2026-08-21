@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { Header } from '@/components/layout/Header';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -39,5 +39,30 @@ describe('Header', () => {
     const buttons = screen.getAllByRole('button');
     // Should have at least 3 theme buttons (light, dark, system)
     expect(buttons.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each(['light', 'dark', 'system'] as const)(
+    'renders without error when theme is %s',
+    (theme) => {
+      useSettingsStore.setState({ theme });
+      const { container } = render(<Header />);
+      expect(container).toBeDefined();
+    }
+  );
+
+  it('calls setTheme on theme button clicks', () => {
+    const setThemeSpy = vi.fn();
+    useSettingsStore.setState({ setTheme: setThemeSpy });
+    render(<Header />);
+    // Last three buttons are light/dark/system (after the mobile-menu and github buttons)
+    const buttons = screen.getAllByRole('button');
+    const themeButtons = buttons.slice(-3);
+
+    fireEvent.click(themeButtons[0]);
+    expect(setThemeSpy).toHaveBeenCalledWith('light');
+    fireEvent.click(themeButtons[1]);
+    expect(setThemeSpy).toHaveBeenCalledWith('dark');
+    fireEvent.click(themeButtons[2]);
+    expect(setThemeSpy).toHaveBeenCalledWith('system');
   });
 });

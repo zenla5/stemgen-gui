@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OrphanedStemsView } from '@/components/library/OrphanedStemsView';
 import { useLibraryStore } from '@/stores/libraryStore';
 import type { OrphanedStemEntry } from '@/lib/types/library';
+import { open } from '@tauri-apps/plugin-dialog';
+import { act } from '@testing-library/react';
 
 // Mock Tauri API
 vi.mock('@tauri-apps/api/core', () => ({
@@ -205,5 +207,123 @@ describe('OrphanedStemsView', () => {
     render(<OrphanedStemsView rootId="root-1" />);
 
     expect(loadOrphansSpy).toHaveBeenCalledWith('root-1');
+  });
+
+  it('per-row Delete button opens confirmation and confirm deletes', async () => {
+    const deleteOrphanSpy = vi.fn().mockResolvedValue(undefined);
+    resetStore([orphan1]);
+    useLibraryStore.setState({ deleteOrphan: deleteOrphanSpy });
+
+    render(<OrphanedStemsView rootId="root-1" />);
+
+    fireEvent.click(screen.getByTestId('delete-btn'));
+    expect(screen.getByTestId('delete-confirm-btn')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('delete-confirm-btn'));
+    await waitFor(() => {
+      expect(deleteOrphanSpy).toHaveBeenCalledWith('/music/track1.stem.mp4');
+    });
+  });
+
+  it('per-row Delete cancel hides the confirmation', () => {
+    resetStore([orphan1]);
+
+    render(<OrphanedStemsView rootId="root-1" />);
+
+    fireEvent.click(screen.getByTestId('delete-btn'));
+    expect(screen.getByTestId('delete-confirm-btn')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('delete-cancel-btn'));
+    expect(screen.queryByTestId('delete-confirm-btn')).not.toBeInTheDocument();
+  });
+
+  it('relinking with a selected file shows the matched success toast', async () => {
+    const user = userEvent.setup();
+    const relinkOrphanSpy = vi.fn().mockResolvedValue({ matched: true, new_status: 'Available' });
+    resetStore([orphan1]);
+    useLibraryStore.setState({ relinkOrphan: relinkOrphanSpy });
+    (open as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('/new/source.flac');
+
+    render(<OrphanedStemsView rootId="root-1" />);
+
+    await user.click(screen.getByTestId('relink-btn'));
+
+    await waitFor(() => {
+      expect(relinkOrphanSpy).toHaveBeenCalledWith('/music/track1.stem.mp4', '/new/source.flac');
+    });
+    expect(screen.getByTestId('relink-result-toast')).toBeInTheDocument();
+    expect(screen.getByText('library.relinkSuccess')).toBeInTheDocument();
+  });
+
+  it('relinking with a selected file shows the failed toast when unmatched', async () => {
+    const user = userEvent.setup();
+    resetStore([orphan1]);
+    (open as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('/new/source.flac');
+
+    render(<OrphanedStemsView rootId="root-1" />);
+
+    await user.click(screen.getByTestId('relink-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('relink-result-toast')).toBeInTheDocument();
+    });
+    expect(screen.getByText('library.relinkFailed')).toBeInTheDocument();
+  });
+
+  it('relinking without a selection does not call relinkOrphan', async () => {
+    const user = userEvent.setup();
+    const relinkOrphanSpy = vi.fn().mockResolvedValue({ matched: false, new_status: 'OrphanedStem' });
+    resetStore([orphan1]);
+    useLibraryStore.setState({ relinkOrphan: relinkOrphanSpy });
+    (open as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    render(<OrphanedStemsView rootId="root-1" />);
+
+    await user.click(screen.getByTestId('relink-btn'));
+
+    expect(relinkOrphanSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows a no-match message when the search filter yields no rows', async () => {
+    const user = userEvent.setup();
+    resetStore([orphan1]);
+
+    render(<OrphanedStemsView rootId="root-1" />);
+    await user.type(screen.getByTestId('orphans-search'), 'zzz-nomatch');
+
+    expect(screen.getByText('library.noOrphansMatchFilter')).toBeInTheDocument();
+  });
+
+  it('formats file sizes across B, KB and MB thresholds', () => {
+    resetStore([
+      { ...orphan1, id: 'o-b', file_size: 500 },
+      { ...orphan1, id: 'o-kb', file_size: 2048, stem_path: '/x/b.stem.mp4' },
+    ]);
+
+    render(<OrphanedStemsView rootId="root-1" />);
+
+    expect(screen.getByText('500 B')).toBeInTheDocument();
+    expect(screen.getByText('2.0 KB')).toBeInTheDocument();
+  });
+
+  it('clears the relink toast after the timeout', async () => {
+    vi.useFakeTimers();
+    resetStore([orphan1]);
+    (open as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('/new/source.flac');
+
+    render(<OrphanedStemsView rootId="root-1" />);
+    fireEvent.click(screen.getByTestId('relink-btn'));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('relink-result-toast')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(3500);
+    });
+
+    expect(screen.queryByTestId('relink-result-toast')).not.toBeInTheDocument();
+    vi.useRealTimers();
   });
 });

@@ -5,6 +5,19 @@ import { useAppStore } from '@/stores/appStore';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
+const togglePlay = vi.fn();
+const seek = vi.fn();
+const loadedPlayer = {
+  state: { currentTime: 30, duration: 100, isPlaying: false },
+  togglePlay,
+  seek,
+  isLoaded: true,
+};
+
+vi.mock('@/hooks/playerContext', () => ({
+  usePlayerContext: () => loadedPlayer,
+}));
+
 function resetStore() {
   useAppStore.setState({
     sidebarCollapsed: false,
@@ -22,6 +35,10 @@ describe('useKeyboardShortcuts', () => {
     // Remove any lingering listeners
     window.onkeydown = null;
   });
+
+  const press = (init?: ConstructorParameters<typeof KeyboardEvent>[1]) => {
+    window.dispatchEvent(new KeyboardEvent('keydown', init));
+  };
 
   it('sets activeView to files when 1 is pressed', () => {
     renderHook(() => useKeyboardShortcuts());
@@ -80,17 +97,14 @@ describe('useKeyboardShortcuts', () => {
   it('ignores shortcuts when typing in INPUT elements', () => {
     renderHook(() => useKeyboardShortcuts());
 
+    // Start from a non-default view so "ignored" is distinguishable from "never fired"
+    useAppStore.setState({ activeView: 'settings' });
+
     const input = document.createElement('input');
     document.body.appendChild(input);
 
-    // Programmatically focus and verify isContentEditable / tagName detection
-    const focusEvent = new FocusEvent('focus', { bubbles: true });
-    input.dispatchEvent(focusEvent);
-
-    // The hook checks tagName === 'INPUT' internally via e.target.tagName
-    // We can't easily mock focus state, but we test the negative: shortcuts
-    // DO work when no input is focused (baseline)
-    expect(useAppStore.getState().activeView).toBe('files');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
+    expect(useAppStore.getState().activeView).toBe('settings');
 
     document.body.removeChild(input);
   });
@@ -98,11 +112,54 @@ describe('useKeyboardShortcuts', () => {
   it('ignores shortcuts when typing in TEXTAREA elements', () => {
     renderHook(() => useKeyboardShortcuts());
 
+    useAppStore.setState({ activeView: 'settings' });
+
     const textarea = document.createElement('textarea');
     document.body.appendChild(textarea);
 
-    expect(useAppStore.getState().activeView).toBe('files');
+    textarea.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
+    expect(useAppStore.getState().activeView).toBe('settings');
 
     document.body.removeChild(textarea);
+  });
+
+  describe('playback shortcuts when player is loaded', () => {
+    beforeEach(() => {
+      loadedPlayer.state.currentTime = 30;
+      renderHook(() => useKeyboardShortcuts());
+    });
+
+    it('toggles play/pause on Space', () => {
+      press({ code: 'Space' });
+      expect(togglePlay).toHaveBeenCalled();
+    });
+
+    it('seeks backward 5 seconds on ArrowLeft with clamping at zero', () => {
+      press({ code: 'ArrowLeft' });
+      expect(seek).toHaveBeenCalledWith(25);
+
+      loadedPlayer.state.currentTime = 3;
+      press({ code: 'ArrowLeft' });
+      expect(seek).toHaveBeenCalledWith(0);
+    });
+
+    it('seeks forward 5 seconds on ArrowRight with clamping at duration', () => {
+      press({ code: 'ArrowRight' });
+      expect(seek).toHaveBeenCalledWith(35);
+
+      loadedPlayer.state.currentTime = 98;
+      press({ code: 'ArrowRight' });
+      expect(seek).toHaveBeenCalledWith(100);
+    });
+
+    it('seeks to the beginning on Home', () => {
+      press({ code: 'Home' });
+      expect(seek).toHaveBeenCalledWith(0);
+    });
+
+    it('seeks to the end on End', () => {
+      press({ code: 'End' });
+      expect(seek).toHaveBeenCalledWith(100);
+    });
   });
 });

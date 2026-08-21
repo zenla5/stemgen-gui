@@ -4,6 +4,12 @@ import { SettingsPanel } from '../SettingsPanel';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
 
+const mockInvoke = vi.hoisted(() => vi.fn());
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: mockInvoke,
+}));
+
 // ─── Mock ModelManager to avoid Tauri listen() complexity ──────────────────────
 vi.mock('../ModelManager', () => ({
   ModelManager: () => <div data-testid="model-manager">ModelManager</div>,
@@ -401,5 +407,142 @@ describe('SettingsPanel — conditional rendering', () => {
 
     render(<SettingsPanel />);
     expect(screen.getByText(/python 3\.8 may not be compatible/i)).toBeInTheDocument();
+  });
+});
+
+// ─── System Status / dependency install tests ──────────────────────────────────
+
+describe('SettingsPanel — System Status install flows', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStores();
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_models') return [];
+      if (cmd === 'get_provider_api_key') return null;
+      return null;
+    });
+    useAppStore.setState({
+      environmentValidation: {
+        isReady: false,
+        ffmpeg: { available: null },
+        ffprobe: { available: null },
+        python: { missing: 'Python not found' },
+        pytorch: { missing: 'PyTorch not found' },
+        torchaudio: { available: null },
+        demucs: { available: null },
+        cuda: { available: null },
+        sidecarScript: { available: null },
+        warnings: [],
+      },
+      activeInstallLines: {},
+      installResults: {},
+      fetchInstallManifest: vi.fn().mockResolvedValue(undefined),
+      getAvailableInstallers: vi.fn().mockResolvedValue([
+        { id: 'py-installer', name: 'Python Installer', commandDisplay: 'pip install python', needsElevation: false },
+      ]),
+      installDependency: vi.fn().mockResolvedValue(undefined),
+      validateEnvironment: vi.fn().mockResolvedValue(undefined),
+      checkSidecarHealth: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  it('shows the Install All Missing button when dependencies are missing', () => {
+    render(<SettingsPanel />);
+    expect(screen.getByTestId('install-all-btn')).toBeInTheDocument();
+  });
+
+  it('installs all missing dependencies and refreshes status', async () => {
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByTestId('install-all-btn'));
+
+    await screen.findByTestId('install-plan');
+    expect(useAppStore.getState().getAvailableInstallers).toHaveBeenCalled();
+    expect(useAppStore.getState().installDependency).toHaveBeenCalled();
+    expect(useAppStore.getState().validateEnvironment).toHaveBeenCalled();
+    expect(useAppStore.getState().checkSidecarHealth).toHaveBeenCalled();
+  });
+
+  it('shows the install plan progress rows', async () => {
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByTestId('install-all-btn'));
+
+    await screen.findByTestId('install-plan-row-python');
+    expect(screen.getByTestId('install-plan-row-python')).toBeInTheDocument();
+    expect(screen.getByTestId('install-plan-row-pytorch')).toBeInTheDocument();
+  });
+
+  it('dismisses the install plan via the Dismiss button', async () => {
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByTestId('install-all-btn'));
+
+    await screen.findByTestId('install-plan');
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    expect(screen.queryByTestId('install-plan')).not.toBeInTheDocument();
+  });
+
+  it('shows a skipped status when no installer is available for a platform', async () => {
+    useAppStore.setState({
+      getAvailableInstallers: vi.fn().mockResolvedValue([]),
+    });
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByTestId('install-all-btn'));
+
+    await screen.findByTestId('install-plan-status-python');
+    expect(screen.getByTestId('install-plan-status-python')).toHaveTextContent('Skipped');
+  });
+
+  it('shows a failed status when a dependency install throws', async () => {
+    useAppStore.setState({
+      installDependency: vi.fn().mockRejectedValue(new Error('install failed')),
+    });
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByTestId('install-all-btn'));
+
+    await screen.findByTestId('install-plan-status-python');
+    expect(screen.getByTestId('install-plan-status-python')).toHaveTextContent('Failed');
+  });
+
+  it('does not show install-all when nothing is missing', () => {
+    resetStores();
+    useAppStore.setState({
+      environmentValidation: {
+        isReady: true,
+        ffmpeg: { available: null },
+        ffprobe: { available: null },
+        python: { available: null },
+        pytorch: { available: null },
+        torchaudio: { available: null },
+        demucs: { available: null },
+        cuda: { available: null },
+        sidecarScript: { available: null },
+        warnings: [],
+      },
+    });
+    render(<SettingsPanel />);
+    expect(screen.queryByTestId('install-all-btn')).not.toBeInTheDocument();
+  });
+
+  it('repairs the sidecar via the Repair Installation button on failure', async () => {
+    mockInvoke.mockRejectedValue(new Error('deploy failed'));
+
+    useAppStore.setState({
+      environmentValidation: {
+        isReady: false,
+        ffmpeg: { available: null },
+        ffprobe: { available: null },
+        python: { available: null },
+        pytorch: { available: null },
+        torchaudio: { available: null },
+        demucs: { available: null },
+        cuda: { available: null },
+        sidecarScript: { missing: 'Sidecar missing' },
+        warnings: [],
+      },
+    });
+
+    render(<SettingsPanel />);
+    fireEvent.click(screen.getByTestId('repair-sidecar-btn'));
+    await screen.findByTestId('sidecar-repair-error');
+    expect(screen.getByTestId('sidecar-repair-error')).toHaveTextContent(/deploy failed/);
   });
 });
