@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.6] — 2026-08-22 — Version Bump
+
+### Changed
+
+- **Version consistency** — All version strings bumped to `1.4.6`: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+
+### Internal
+
+- **[REACT-19]** Completed the React 19 migration (`react@19.2.8`, `react-dom`, `@types/react`), superseding the earlier bump PR.
+- **[DEPS]** Accumulated dependency bumps since v1.4.5: `eslint@10.8.1`, `react-i18next@17.0.11`, `torch@2.7.1+cu118`, `torchaudio`, `zod@4.4.3`, `i18next@26.3.6`, `sonner@2.0.8`, `tailwind-merge@3.6.0`, `@types/node@26.2.0`, `globals@17.11.0`, and assorted GitHub Actions upgrades.
+
 ## [1.4.5] — 2026-08-21 — Security & CI Hardening
 
 ### Security
