@@ -28,39 +28,39 @@ Audio File (MP3/FLAC/WAV/OGG)
         │
         ▼
 ┌───────────────────┐
-│  ① Decode &      │  ← Rust Symphonia decoder
-│     Resample      │     → 44.1kHz PCM
+│  ① Decode &       │  ← Rust Symphonia decoder
+│     Resample      │  → 44.1kHz PCM
 └─────────┬─────────┘
           │
           ▼
 ┌───────────────────┐
 │  ② AI Separation  │  ← Python sidecar
-│                   │     demucs / bs_roformer
-│  Drums / Bass /   │     → 4 mono stems
+│                   │    demucs / bs_roformer
+│  Drums / Bass /   │  → 4 mono stems
 │  Other / Vocals   │
 └─────────┬─────────┘
           │
           ▼
 ┌───────────────────┐
 │  ③ Preview &      │  ← Web Audio API
-│     Mix (opt.)    │     per-stem volume/solo/mute
+│    Mix (opt.)     │  → per-stem volume/solo/mute
 └─────────┬─────────┘
           │
           ▼
 ┌───────────────────┐
-│  ④ Encode Stems  │  ← FFmpeg
-│                   │     ALAC / AAC
+│  ④ Encode Stems   │  ← FFmpeg
+│                   │  → ALAC / AAC
 └─────────┬─────────┘
           │
           ▼
 ┌───────────────────┐
-│  ⑤ Pack NI Atom  │  ← Rust (native)
-│                   │     [moov]→[udta]→[nmde]
-│  .stem.mp4        │     JSON metadata + stem colors
+│  ⑤ Pack NI Atom   │  ← Rust (native)
+│                   │    [moov]→[udta]→[nmde]
+│  .stem.mp4        │  → JSON metadata + stem colors
 └─────────┬─────────┘
           │
           ▼
-   Ready for DJ Software
+    Ready for DJ Software
 ```
 
 ## Features
@@ -230,6 +230,7 @@ npm run tauri:build     # Build Tauri app
 
 > **Note:** `npm run copy-sidecar` copies `python/stemgen_sidecar.py` into `src-tauri/resources/` so that Tauri v2 bundles it reliably. It runs automatically as part of both `npm run tauri:dev` and `npm run tauri:build`.
 
+```bash
 # Quality checks
 npm run check           # TypeScript type check
 npm run lint            # ESLint linting
