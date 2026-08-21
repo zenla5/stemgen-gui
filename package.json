@@ -1,6 +1,6 @@
 {
   "name": "stemgen-gui",
-      "version": "1.4.4",
+  "version": "1.4.4",
   "description": "🎛 A free and open source (FOSS) streamlined end-to-end pipeline to convert audio files into .stem.mp4 files",
   "private": true,
   "type": "module",
@@ -61,7 +61,6 @@
     "react-dropzone": "^14.2.10",
     "react-hook-form": "^7.53.2",
     "react-i18next": "^15.1.1",
-    "react-router-dom": "^6.28.0",
     "recharts": "^2.14.1",
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.5",
