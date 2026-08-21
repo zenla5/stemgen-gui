@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — CI Hardening
+## [1.4.5] — 2026-08-21 — Security & CI Hardening
 
 ### Security
 - **[TOOLCHAIN-SECURITY]** Upgraded the dev/build toolchain majors to close critical/high npm advisories in the Vite/Vitest/Happy DOM stack (tracked as [#7](https://github.com/zenla5/stemgen-gui/issues/7)): `vitest@4` + `@vitest/coverage-v8@4` (RCE when the Vitest UI server is reachable), `happy-dom@20` (VM context escape RCE, fetch-cookie leak, unsanitized export interpolation), `vite@8` (Windows `server.fs.deny` bypass, optimized-deps (unminified) path traversal, launch-editor NTLMv2 hash disclosure), and `@vitejs/plugin-react@6` (peer-dep on vite 8). `esbuild`/`vite-node`/`@vitest/mocker` transitively resolve. The npm audit critical count drops 3 → 0. Upgrade was deliberate (no `npm audit fix --force`), so breaking changes were handled per package.
