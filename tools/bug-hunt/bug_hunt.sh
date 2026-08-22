@@ -273,7 +273,6 @@ build_input() {
     # (any [SEVERITY] present) could never be satisfied.
     if (de ~ /^\[DESCRIPTION\] *clean/ || de ~ /^\[DESCRIPTION\] *n\/a/) next;
     if (sc=="") sc="[SCREEN] n/a";
-    if (sc=="") sc="[SCREEN] n/a";
     if (fi=="") fi="[FILE] n/a";
     if (ca=="") ca="[CATEGORY] other";
     if (de=="") de="[DESCRIPTION] n/a";
@@ -344,6 +343,12 @@ file_issues() {
   [ -s "$INPUT" ] || { log 'file_issues: no findings to file (clean)'; return 0; }
   command -v gh >/dev/null 2>&1 || { log 'file_issues: gh CLI not found — skipping issue filing'; return 0; }
   [ -n "$BUG_HUNT_REPO" ] || { log 'file_issues: BUG_HUNT_REPO empty — skipping issue filing'; return 0; }
+  # No canonical severity line → nothing fileable (only [CLEAN] / noise blocks).
+  # Bail before any gh call so a clean-ish INPUT can't result in a needless search.
+  if ! grep -q '^\[SEVERITY\]' "$INPUT"; then
+    log 'file_issues: no [SEVERITY] findings to file (clean)'
+    return 0
+  fi
 
   # Two passes: first reduce every block to one canonical representative per
   # signature (highest severity). Then file one issue per signature.
@@ -372,7 +377,7 @@ file_issues() {
     fi
 
     # Canonical signature: CATEGORY + a normalized description fingerprint
-    # (first up to 3 significant tokens). The screen is deliberately NOT part of
+    # (first up to 5 significant tokens). The screen is deliberately NOT part of
     # the key so the same root cause (e.g. a footer/clipped-content bug) that
     # shows up across many views files as ONE issue, not one per screen/theme.
     local dekey
@@ -382,7 +387,7 @@ file_issues() {
               | grep -oE '[a-z]+' \
               | grep -vE '^(a|an|the|to|is|of|at|are|and|it|on|for)$' \
               | tr '\n' ' ' | tr -s ' ')"
-    dekey="$(echo "$dekey" | grep -oE '([a-z]+ ){0,2}[a-z]+' | head -1 | tr -s ' ')"
+    dekey="$(echo "$dekey" | grep -oE '([a-z]+ ){0,4}[a-z]+' | head -1 | tr -s ' ')"
     local sigkey
     sigkey="${ca}|${dekey}"
 
@@ -404,6 +409,12 @@ file_issues() {
     ca="${sig_ca[$sigkey]:-}"; de="${sig_de[$sigkey]:-}"; re="${sig_re[$sigkey]:-}"
 
     title="[Bug-Hunt] ${s}: ${de}"
+    # Sanitize: raw model/gate descriptions may contain newlines, control
+    # chars, or literal double quotes. A `"` would terminate the quoted token
+    # in the `gh issue list --search "\"${title}\""` dedup query and break the
+    # roundtrip, so collapse whitespace to single spaces and replace `"` with a
+    # safe em-dash before truncating.
+    title="$(printf '%s' "$title" | tr '\n\r\t' '   ' | tr -s ' ' | sed 's/"/–/g')"
     title="${title:0:100}"
 
     existing="$(gh issue list --repo "$BUG_HUNT_REPO" --state open --label bug \

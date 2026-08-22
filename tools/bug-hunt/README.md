@@ -46,11 +46,21 @@ By default a non-green local run (STALLED / BUDGET / GIVEUP) only leaves finding
 in `hunt-input.txt` and `summary.txt`. Set `CREATE_ISSUES=1` to also file one
 real GitHub issue per **distinct** unfixed bug against `BUG_HUNT_REPO`. The repo
 slug is auto-derived from `git remote get-url origin` (override with
-`BUG_HUNT_REPO=owner/repo`). Dedup is by a canonical signature (category +
-normalized description fingerprint) so the same root cause seen across many
-screens files once; clean/n/a noise blocks are never filed. Filing is
-best-effort — failures are logged, never fatal — and CI behavior is unchanged
-(it keeps its own single give-up Issue and issue-filing stays off there).
+`BUG_HUNT_REPO=owner/repo`). Dedup is by a canonical signature (category + a
+normalized description fingerprint spanning a few significant tokens) so the same
+root cause seen across many screens files once; clean/n/a noise blocks are never
+filed. Filing is best-effort — failures are logged, never fatal — and CI behavior
+is unchanged (it keeps its own single give-up Issue and issue-filing stays off
+there).
+
+> **What gets filed.** At a non-green end, **all** distinct findings present in
+> `hunt-input.txt` are filed — **not only product UI bugs**. This deliberately
+> includes harness/tooling-level findings: a `vision-review` failure, a missing
+> `opencode` CLI on PATH, and gate-failure `crash` blocks (all `[SCREEN]` values
+> of `vision` / `gates`). A broken local env can therefore produce `[Bug-Hunt]`
+> issues that are not product defects. **Review and curate** the filed issues
+> before treating them as product-only; drop any that describe a tooling/environment
+> problem rather than an app bug.
 
 CI: an optional `.github/workflows/bug-hunt.yml` runs the same loop on a GitHub
 runner (manual `workflow_dispatch`; installs `opencode-ai` and reads the repo's

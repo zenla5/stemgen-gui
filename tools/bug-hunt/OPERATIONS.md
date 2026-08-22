@@ -60,6 +60,15 @@ BUDGET) leaves findings only in `hunt-input.txt` / `summary.txt`. With
 `BUG_HUNT_REPO` (auto-derived from `git remote get-url origin`; override with
 `BUG_HUNT_REPO=owner/repo`). Best-effort, never fatal; CI behavior is unchanged.
 
+> **What gets filed.** At a non-green end, **all** distinct findings in
+> `hunt-input.txt` are filed — including **harness/tooling-level** findings
+> (`[SCREEN] vision` / `gates`: a `vision-review` failure, missing `opencode`
+> CLI, or a gate-failure `crash` block) — not only product UI bugs. A broken local
+> env (e.g. missing CLI, NixOS inotify exhaustion) can therefore file non-product
+> issues. Curate the `[Bug-Hunt]` issues before routing them to the product as
+> defects; close/drop any that describe tooling or environment failures instead
+> of an app bug.
+
 ## Exit codes & how to read them
 | Code | Meaning | Where to look |
 |------|---------|---------------|
