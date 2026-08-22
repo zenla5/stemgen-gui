@@ -332,10 +332,13 @@ over_budget() {
 # ---------------------------------------------------------------------------
 # file_issues — when CREATE_ISSUES=1 and the run ends non-green with unfixed
 # findings left in hunt-input.txt, file one real GitHub issue per DISTINCT bug
-# (normalized 6-field block) against BUG_HUNT_REPO. Skips any bug whose finding
-# signature already matches an open 'bug'-labeled issue (title begins with the
-# same SEVERITY/CATEGORY/description prefix) so re-runs do not spam duplicates.
-# Returns 0 always (filing is best-effort; failures are logged, never fatal).
+# (normalized finding) against BUG_HUNT_REPO. Dedup is by a canonical signature
+# (CATEGORY + a normalized description fingerprint) so the same root cause — which
+# the vision model may word slightly differently across screens/themes — collapses
+# into ONE issue instead of many near-duplicates. The screen/theme is deliberately
+# not part of the key so a defect spanning many views files once. Cosmetic-other /
+# clean / n/a noise blocks are never filed. Returns 0 always (filing is
+# best-effort; failures are logged, never fatal).
 # ---------------------------------------------------------------------------
 file_issues() {
   [ "$CREATE_ISSUES" = "1" ] || return 0
@@ -343,12 +346,12 @@ file_issues() {
   command -v gh >/dev/null 2>&1 || { log 'file_issues: gh CLI not found — skipping issue filing'; return 0; }
   [ -n "$BUG_HUNT_REPO" ] || { log 'file_issues: BUG_HUNT_REPO empty — skipping issue filing'; return 0; }
 
-  # Signature of a normalized block = SEVERITY+CATEGORY+DESCRIPTION (first line
-  # of each field), used both to build the title and to dedup vs open issues.
+  # Two passes: first reduce every block to one canonical representative per
+  # signature (highest severity). Then file one issue per signature.
+  local -A best_by_sig=() best_sev_by_sig=()
+  local -a order=()
+
   local blk s sc fi ca de re
-  # hunt-input.txt blocks are blank-line-separated; read them as paragraphs so
-  # each finding's 6 fields stay together (a line-by-line read would split one
-  # finding into six single-field fragments and produce "n/a" titles).
   while IFS= read -r -d '' blk; do
     [ -z "$blk" ] && continue
     s="$(printf '%s\n' "$blk" | sed -n 's/^\[SEVERITY\] *//p' | head -1)"
@@ -358,12 +361,60 @@ file_issues() {
     de="$(printf '%s\n' "$blk" | sed -n 's/^\[DESCRIPTION\] *//p' | head -1)"
     re="$(printf '%s\n' "$blk" | sed -n 's/^\[REPRO\] *//p' | head -1)"
     s="${s:-unknown}"; ca="${ca:-other}"; de="${de:-n/a}"
-    local title
+
+    # Never file noise / clean blocks.
+    if [ "$(echo "$ca" | tr 'A-Z' 'a-z')" = "other" ] || \
+       [ "$(echo "$de" | tr 'A-Z' 'a-z')" = "clean" ] || \
+       [ "$de" = "n/a" ] || [ "$sc" = "n/a" ]; then
+      continue
+    fi
+
+    # Canonical signature: CATEGORY + a normalized description fingerprint
+    # (first 6 significant tokens). The screen is deliberately NOT part of the
+    # key so the same root cause (e.g. a footer/clipped-content bug) that shows
+    # up across many views files as ONE issue, not one per screen/theme.
+    local dekey
+    dekey="$(echo "$de" | tr 'A-Z' 'a-z' \
+              | sed -E 's/\([^)]*\)//g; s/"[^"]*"//g' \
+              | sed -E 's/[0-9]+//g' \
+              | grep -oE '[a-z]+' \
+              | grep -vE '^(a|an|the|to|is|of|at|are|and|it|on|for)$' \
+              | tr '\n' ' ' | tr -s ' ')"
+    dekey="$(echo "$dekey" | grep -oE '([a-z]+ ){0,5}[a-z]+' | head -1 | tr -s ' ')"
+    local sigkey
+    sigkey="${ca}|${dekey}"
+
+    local rank=3
+    case "$s" in critical) rank=0;; major) rank=1;; minor) rank=2;; cosmetic) rank=3;; esac
+
+    if [ -z "${best_sev_by_sig[$sigkey]}" ] || [ "$rank" -lt "${best_sev_by_sig[$sigkey]}" ]; then
+      if [ -z "${best_sev_by_sig[$sigkey]}" ]; then order+=( "$sigkey" ); fi
+      best_sev_by_sig[$sigkey]="$rank"
+      best_by_sig[$sigkey]="${s}\x01${sc}\x01${fi}\x01${ca}\x01${de}\x01${re}"
+    fi
+  done < <(awk 'BEGIN{RS="";FS="\n";OFS="\n"} {printf "%s\0",$0}' "$INPUT")
+
+  # File in insertion order, deduped by signature.
+  for sigkey in "${order[@]}"; do
+    local title body existing rest fields f1
+    # unpack the 6 fields separated by \x01
+    fields="${best_by_sig[$sigkey]}"
+    s=""; sc=""; fi=""; ca=""; de=""; re=""
+    f1="${fields%%\x01*}"; rest="${fields#*\x01*}"
+    s="$f1"
+    f1="${rest%%\x01*}"; rest="${rest#*\x01*}"
+    sc="$f1"
+    f1="${rest%%\x01*}"; rest="${rest#*\x01*}"
+    fi="$f1"
+    f1="${rest%%\x01*}"; rest="${rest#*\x01*}"
+    ca="$f1"
+    f1="${rest%%\x01*}"; rest="${rest#*\x01*}"
+    de="$f1"
+    re="$rest"
+
     title="[Bug-Hunt] ${s}: ${de}"
-    # Truncate the title to a GitHub-friendly length using the description.
     title="${title:0:100}"
 
-    local existing
     existing="$(gh issue list --repo "$BUG_HUNT_REPO" --state open --label bug \
       --search "\"${title}\"" --limit 5 --json title -q '.[].title' 2>/dev/null || true)"
     if printf '%s\n' "$existing" | grep -Fxiq "$title"; then
@@ -372,8 +423,7 @@ file_issues() {
     fi
 
     log "file_issues: creating issue: $title"
-    local body
-    body="Automated finding from the local bug-hunt harness (CREATE_ISSUES=1).
+    body="Automated finding from the local bug-hunt harness (CREATE_ISSUES=1). One representative screen/theme shown; the same defect may affect related views.
 
 \`\`\`
 [SEVERITY] $s
@@ -384,10 +434,10 @@ file_issues() {
 [REPRO]    $re
 \`\`\`
 
-**Screenshot:** see \`tools/bug-hunt/screenshots/$sc.png\` (desktop) and the console log \`tools/bug-hunt/screenshots/console-errors.log\`."
+**Screenshot:** see \`tools/bug-hunt/screenshots/$fi\` and the console log \`tools/bug-hunt/screenshots/console-errors.log\`."
     gh issue create --repo "$BUG_HUNT_REPO" --title "$title" --body "$body" --label bug \
       >>"$LOG" 2>&1 || log "file_issues: FAILED to create issue: $title"
-  done < <(awk 'BEGIN{RS="";FS="\n";OFS="\n"} {printf "%s\0",$0}' "$INPUT")
+  done
   return 0
 }
 
