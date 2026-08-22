@@ -49,6 +49,8 @@ cd tools/bug-hunt
 MAX_ITER=5 ./bug_hunt.sh       # bounded trial
 TOKEN_CAP=2000000 ./bug_hunt.sh  # soft token/cost guard
 CREATE_ISSUES=1 ./bug_hunt.sh    # opt-in: file one GitHub issue per distinct unfixed bug
+FILE_TOOLING_ISSUES=0 ./bug_hunt.sh  # exclude harness/env findings (see below)
+MAX_ISSUES=5 ./bug_hunt.sh       # cap distinct issues filed per run
 ```
 The loop: gates → fresh capture → vision-review → merge to `hunt-input.txt` →
 green if gates+vision+layout clean, else `bug-hunter` fixes (one commit per
@@ -58,16 +60,24 @@ fix) → repeat.
 BUDGET) leaves findings only in `hunt-input.txt` / `summary.txt`. With
 `CREATE_ISSUES=1` it files one GitHub issue per distinct bug against
 `BUG_HUNT_REPO` (auto-derived from `git remote get-url origin`; override with
-`BUG_HUNT_REPO=owner/repo`). Best-effort, never fatal; CI behavior is unchanged.
+`BUG_HUNT_REPO=owner/repo`). At most `MAX_ISSUES` distinct issues are filed per
+run (default 20). Best-effort, never fatal; CI behavior is unchanged.
 
 > **What gets filed.** At a non-green end, **all** distinct findings in
-> `hunt-input.txt` are filed — including **harness/tooling-level** findings
+> `hunt-input.txt` are filed, **including harness/tooling-level** findings
 > (`[SCREEN] vision` / `gates`: a `vision-review` failure, missing `opencode`
-> CLI, or a gate-failure `crash` block) — not only product UI bugs. A broken local
-> env (e.g. missing CLI, NixOS inotify exhaustion) can therefore file non-product
-> issues. Curate the `[Bug-Hunt]` issues before routing them to the product as
-> defects; close/drop any that describe tooling or environment failures instead
-> of an app bug.
+> CLI, or a gate-failure `crash` block) — not only product UI bugs. A broken
+> local env (e.g. missing CLI, NixOS inotify exhaustion) can therefore file
+> non-product issues. Set `FILE_TOOLING_ISSUES=0` to drop those `vision`/`gates`
+> findings and file only product-level defects. Curate the `[Bug-Hunt]` issues
+> before routing them to the product; close/drop any that describe tooling or
+> environment failures instead of an app bug.
+>
+> Dedup is by a canonical signature (root-cause CATEGORY + normalized
+> description fingerprint), so the same defect across many screens files once.
+> Dedup also consults already-open issues by title and body; a `gh` search
+> **error** is treated as "skip, log" — never "create" — so a transient API
+> failure cannot produce a duplicate issue.
 
 ## Exit codes & how to read them
 | Code | Meaning | Where to look |

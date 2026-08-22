@@ -8,4 +8,5 @@ smoke.log
 _gates/
 screenshots/
 .vision.tmp
+.issuedup.json
 ci-hunt.log

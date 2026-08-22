@@ -46,6 +46,8 @@ START_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 # derived from `git remote get-url origin` so a local run files against the real
 # remote instead of only a local branch.
 CREATE_ISSUES="${CREATE_ISSUES:-0}"
+FILE_TOOLING_ISSUES="${FILE_TOOLING_ISSUES:-1}"   # 0 = drop harness/env findings ([SCREEN] vision/gates)
+MAX_ISSUES="${MAX_ISSUES:-20}"                    # cap distinct issues filed per run
 BUG_HUNT_REPO="${BUG_HUNT_REPO:-}"
 if [ -z "$BUG_HUNT_REPO" ] && command -v git >/dev/null 2>&1; then
   BUG_HUNT_REPO="$(cd "$ROOT" 2>/dev/null && git remote get-url origin 2>/dev/null || true)"
@@ -331,15 +333,19 @@ over_budget() {
 }
 
 # ---------------------------------------------------------------------------
-# file_issues — when CREATE_ISSUES=1 and the run ends non-green with unfixed
+# file_issues. When CREATE_ISSUES=1 and the run ends non-green with unfixed
 # findings left in hunt-input.txt, file one real GitHub issue per DISTINCT bug
 # (normalized finding) against BUG_HUNT_REPO. Dedup is by a canonical signature
-# (CATEGORY + a normalized description fingerprint) so the same root cause — which
-# the vision model may word slightly differently across screens/themes — collapses
-# into ONE issue instead of many near-duplicates. The screen/theme is deliberately
-# not part of the key so a defect spanning many views files once. Cosmetic-other /
-# clean / n/a noise blocks are never filed. Returns 0 always (filing is
-# best-effort; failures are logged, never fatal).
+# (root cause CATEGORY + a normalized description fingerprint) so the same root
+# cause — which the vision model may word slightly differently across
+# screens/themes — collapses into ONE issue instead of many near-duplicates;
+# the screen/theme is deliberately not part of the key. Dedup consults open
+# issues by title AND body (the filed body embeds [DESCRIPTION]), and a search
+# ERROR is treated as "skip, log" — never "create" — so a transient gh failure
+# cannot produce a duplicate. Harness/env findings ([SCREEN] vision/gates) are
+# dropped unless FILE_TOOLING_ISSUES=1. At most MAX_ISSUES distinct issues are
+# filed per run. clean/n/a noise and cosmetic-other blocks are never filed.
+# Returns 0 always (filing is best-effort; failures are logged, never fatal).
 # ---------------------------------------------------------------------------
 file_issues() {
   [ "$CREATE_ISSUES" = "1" ] || return 0
@@ -384,6 +390,13 @@ file_issues() {
        [ "$de" = "n/a" ] || [ "$sc" = "n/a" ]; then
       continue
     fi
+    # Harness/env findings ([SCREEN] vision / gates) are not product defects: a
+    # missing opencode CLI, a vision-review failure, or a gate-failure crash
+    # block. Dropped unless the user explicitly opts in via FILE_TOOLING_ISSUES=1.
+    if [ "$FILE_TOOLING_ISSUES" != "1" ] && \
+       { [ "$sc" = "vision" ] || [ "$sc" = "gates" ]; }; then
+      continue
+    fi
 
     # Canonical signature: CATEGORY + a normalized description fingerprint
     # (first up to 5 significant tokens). The screen is deliberately NOT part of
@@ -411,9 +424,15 @@ file_issues() {
     fi
   done < <(awk 'BEGIN{RS="";FS="\n";OFS="\n"} {printf "%s\0",$0}' "$INPUT")
 
-  # File in insertion order, deduped by signature.
+  # File in insertion order, deduped by signature. `created` enforces the
+  # per-run MAX_ISSUES cap; `filed` remembers signatures created THIS run so a
+  # duplicate signature close behind an earlier one can't slip past
+  # eventual-consistent GitHub search.
+  local -A filed
+  local created=0
   for sigkey in "${order[@]}"; do
-    local title body existing
+    [ "$created" -ge "$MAX_ISSUES" ] && { log "file_issues: MAX_ISSUES=$MAX_ISSUES reached — stopping filing"; break; }
+    local title body
     s="${sig_s[$sigkey]:-}"; sc="${sig_sc[$sigkey]:-}"; fi="${sig_fi[$sigkey]:-}"
     ca="${sig_ca[$sigkey]:-}"; de="${sig_de[$sigkey]:-}"; re="${sig_re[$sigkey]:-}"
 
@@ -426,15 +445,42 @@ file_issues() {
     title="$(printf '%s' "$title" | tr '\n\r\t' '   ' | tr -s ' ' | sed 's/"/–/g')"
     title="${title:0:100}"
 
-    existing="$(gh issue list --repo "$BUG_HUNT_REPO" --state open --label bug \
-      --search "\"${title}\"" --limit 5 --json title -q '.[].title' 2>/dev/null || true)"
-    if printf '%s\n' "$existing" | grep -Fxiq "$title"; then
-      log "file_issues: skip (already open): $title"
+    # In-run dedup: skip if this signature was already filed this invocation.
+    if [ -n "${filed[$sigkey]:-}" ]; then
+      log "file_issues: skip (filed earlier this run): $title"
+      continue
+    fi
+
+    # Dedup against already-open issues. GitHub search is eventually consistent,
+    # so a search ERROR must NOT be treated as "no match" (that would create a
+    # duplicate); on error we skip + log instead. Match by title AND body (the
+    # filed body embeds [DESCRIPTION]), and report the matched issue number.
+    local dup_file="$HUNT_DIR/.issuedup.json" dup_num="0"
+    gh issue list --repo "$BUG_HUNT_REPO" --state open --label bug \
+      --search "\"${title}\"" --limit "$MAX_ISSUES" --json number,title,body >"$dup_file" 2>/dev/null
+    local rc_match=$?
+    if [ "$rc_match" -ne 0 ]; then
+      rm -f "$dup_file"
+      log "file_issues: dedup search FAILED (rc=$rc_match) — skipping (will not create a duplicate): $title"
+      continue
+    fi
+    local dup_num="0" iout
+    iout="$(env DEDUP_FILE="$dup_file" DEDUP_TITLE="$title" DEDUP_DESC="$de" "$HUNT_DIR/issue-dedup.cjs" 2>/dev/null)"
+    local rc_dedup=$?
+    rm -f "$dup_file"
+    if [ "$rc_dedup" -ne 0 ]; then
+      log "file_issues: dedup helper FAILED (rc=$rc_dedup) — skipping (will not create a duplicate): $title"
+      continue
+    fi
+    dup_num="$(printf '%s' "$iout" | sed -n 's/^DUP://p' | grep -oE '[0-9]+' | head -1)"
+    if [ -n "$dup_num" ]; then
+      filed[$sigkey]=1
+      log "file_issues: skip (already open #$dup_num): $title"
       continue
     fi
 
     log "file_issues: creating issue: $title"
-    body="Automated finding from the local bug-hunt harness (CREATE_ISSUES=1). One representative screen/theme shown; the same defect may affect related views.
+    filled_body="Automated finding from the local bug-hunt harness (CREATE_ISSUES=1). One representative screen/theme shown; the same defect may affect related views.
 
 \`\`\`
 [SEVERITY] $s
@@ -446,8 +492,13 @@ file_issues() {
 \`\`\`
 
 **Screenshot:** see \`tools/bug-hunt/screenshots/$fi\` and the console log \`tools/bug-hunt/screenshots/console-errors.log\`."
-    gh issue create --repo "$BUG_HUNT_REPO" --title "$title" --body "$body" --label bug \
-      >>"$LOG" 2>&1 || log "file_issues: FAILED to create issue: $title"
+    if gh issue create --repo "$BUG_HUNT_REPO" --title "$title" --body "$filled_body" --label bug \
+      >>"$LOG" 2>&1; then
+      filed[$sigkey]=1
+      created=$((created+1))
+    else
+      log "file_issues: FAILED to create issue: $title"
+    fi
   done
   return 0
 }
