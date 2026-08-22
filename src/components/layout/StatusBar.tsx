@@ -18,9 +18,9 @@ export function StatusBar() {
     'Unknown';
 
   return (
-    <footer data-testid="status-bar" className="flex h-8 items-center justify-between border-t border-border bg-card px-4 text-xs text-muted-foreground">
+    <footer data-testid="status-bar" className="flex flex-wrap items-center justify-between border-t border-border bg-card px-4 text-xs text-muted-foreground">
       {/* Left side - Status */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-2">
         {/* Dependency status */}
         {!environmentValidated ? (
           <div className="flex items-center gap-1">
@@ -40,7 +40,7 @@ export function StatusBar() {
         )}
 
         {/* Dependency indicators */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <DependencyIndicator label="FFmpeg" ok={envReady.ffmpegOk} />
           <DependencyIndicator label="Python" ok={envReady.pythonOk && envReady.demucsOk} />
           <DependencyIndicator label="Models" ok={dependencies.models} />
@@ -48,17 +48,17 @@ export function StatusBar() {
       </div>
 
       {/* Right side - Info */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {/* File count */}
         <span>{audioFiles.length} file{audioFiles.length !== 1 ? 's' : ''} loaded</span>
 
         {/* Job count */}
         {jobs.length > 0 && (
-          <span>{jobs.filter((j) => j.status === 'completed').length}/{jobs.length} jobs done</span>
+          <span className="hidden sm:inline">{jobs.filter((j) => j.status === 'completed').length}/{jobs.length} jobs done</span>
         )}
 
         {/* Device */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 whitespace-nowrap">
           <Cpu className="h-3 w-3" />
           <span>{deviceLabel}</span>
         </div>
@@ -66,7 +66,7 @@ export function StatusBar() {
         {/* Cloud Provider Indicator */}
         {activeProvider !== 'local' && (
           <div
-            className="flex items-center gap-1 text-blue-500"
+            className="hidden md:inline-flex items-center gap-1 text-blue-500"
             title={`Cloud inference: ${activeProvider}`}
           >
             {!isOnline ? (

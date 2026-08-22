@@ -1,11 +1,11 @@
-import { Moon, Sun, Monitor, Github, Menu } from 'lucide-react';
+import { Moon, Sun, Monitor, Github, Menu, X } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { cn } from '@/lib/utils';
 import { APP_VERSION } from '@/lib/constants';
 
 export function Header() {
-  const { toggleSidebar } = useAppStore();
+  const { openMobileSidebar, mobileSidebarOpen, closeMobileSidebar } = useAppStore();
   const { theme, setTheme } = useSettingsStore();
 
   return (
@@ -13,10 +13,11 @@ export function Header() {
       <div className="flex items-center gap-4">
         <button
           data-testid="mobile-menu-btn"
-          onClick={toggleSidebar}
+          onClick={mobileSidebarOpen ? closeMobileSidebar : openMobileSidebar}
           className="rounded-md p-2 hover:bg-muted lg:hidden"
+          aria-label={mobileSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
         >
-          <Menu className="h-5 w-5" />
+          {mobileSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
         
         <div className="flex items-center gap-2">

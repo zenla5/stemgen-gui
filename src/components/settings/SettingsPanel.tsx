@@ -186,12 +186,12 @@ export function SettingsPanel() {
 
       {/* System Status (Phase 3) */}
       <section className="space-y-3 rounded-lg border border-muted p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="flex items-center gap-2 text-sm font-medium">
             <Package className="h-4 w-4" />
             System Status
           </h3>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {missingDeps > 0 && (
               <Button
                 data-testid="install-all-btn"
@@ -199,7 +199,7 @@ export function SettingsPanel() {
                 size="sm"
                 onClick={handleInstallAllMissing}
                 disabled={installingDep !== null}
-                className="h-7 text-xs"
+                className="h-7 whitespace-nowrap text-xs"
               >
                 <Download className="h-3 w-3 mr-1" />
                 Install All Missing
@@ -212,7 +212,7 @@ export function SettingsPanel() {
                 checkSidecarHealth();
                 validateEnvironment();
               }}
-              className="flex items-center gap-1 rounded-md border border-muted px-2 py-1 text-xs hover:bg-muted"
+              className="flex shrink-0 whitespace-nowrap items-center gap-1 rounded-md border border-muted px-2 py-1 text-xs hover:bg-muted"
             >
               <RefreshCw className="h-3 w-3" />
               Refresh
@@ -667,12 +667,12 @@ export function SettingsPanel() {
 // Helper components
 function StatusBadge({ label, value, healthy, icon }: { label: string; value: string; healthy?: boolean; icon: ReactNode }) {
   return (
-    <div className="flex items-center gap-2 rounded-md border p-2">
+    <div className="flex min-w-0 items-center gap-2 rounded-md border p-2">
       {icon}
-      <div className="flex flex-col">
+      <div className="min-w-0 flex-1 flex flex-col">
         <span className="text-xs text-muted-foreground">{label}</span>
         <span className={cn(
-          "text-sm font-medium",
+          "break-words text-sm font-medium",
           healthy === undefined ? "text-muted-foreground" :
           healthy ? "text-green-600" : "text-orange-600"
         )}>
@@ -686,13 +686,13 @@ function StatusBadge({ label, value, healthy, icon }: { label: string; value: st
 function PackageRow({ label, status, value, healthy, failureReason, depKey }: { label: string; status: ReactNode; value: string; healthy?: boolean; failureReason?: string; depKey?: string }) {
   return (
     <div className="rounded px-2 py-1">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {status}
-          <span className="text-sm">{label}</span>
+          <span className="text-sm whitespace-nowrap">{label}</span>
         </div>
         <span className={cn(
-          "text-xs",
+          "break-words text-xs",
           healthy === undefined ? "text-muted-foreground" :
           healthy ? "text-green-600" : "text-red-600"
         )}>
@@ -729,13 +729,13 @@ function SidecarRow({ status, value, healthy, failureReason, onRevalidate }: {
 
   return (
     <div className="rounded px-2 py-1">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {status}
-          <span className="text-sm">Sidecar Script</span>
+          <span className="text-sm whitespace-nowrap">Sidecar Script</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={cn("text-xs", healthy ? "text-green-600" : "text-red-600")}>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={cn("break-words text-xs", healthy ? "text-green-600" : "text-red-600")}>
             {value}
           </span>
           {!healthy && (
@@ -813,14 +813,14 @@ function InstallablePackageRow({
 
   return (
     <div className="rounded px-2 py-1">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {status}
-          <span className="text-sm">{label}</span>
+          <span className="text-sm whitespace-nowrap">{label}</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 min-w-0">
           <span className={cn(
-            "text-xs",
+            "break-words text-xs",
             healthy === undefined ? "text-muted-foreground" :
             healthy ? "text-green-600" : "text-red-600"
           )}>
