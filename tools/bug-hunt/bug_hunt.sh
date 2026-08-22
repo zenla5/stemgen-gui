@@ -55,8 +55,6 @@ if [ -z "$BUG_HUNT_REPO" ] && command -v git >/dev/null 2>&1; then
     *) BUG_HUNT_REPO="";;
   esac
 fi
-[ "$CREATE_ISSUES" = "1" ] && [ -z "$BUG_HUNT_REPO" ] && \
-  log "WARNING: CREATE_ISSUES=1 but BUG_HUNT_REPO is unresolved (no origin remote slug); issue filing will be skipped"
 
 # E2E gate scope. `npm run test:e2e` (playwright test) runs BOTH the `chromium`
 # project (dev-server, observable React UI) AND the `binary` project (compiled
@@ -82,6 +80,11 @@ mkdir -p "$SHOTS"
 
 log() { printf '%s | %s\n' "$(date -u '+%H:%M:%S')" "$*" | tee -a "$LOG"; }
 die() { log "FATAL: $*"; exit 1; }
+
+# Warn early (must come after log() is defined, see above) when the user opted
+# into issue filing but no remote slug could be resolved for the repo.
+[ "$CREATE_ISSUES" = "1" ] && [ -z "$BUG_HUNT_REPO" ] && \
+  log "WARNING: CREATE_ISSUES=1 but BUG_HUNT_REPO is unresolved (no origin remote slug); issue filing will be skipped"
 
 # ---------------------------------------------------------------------------
 # Gates — returns 0 only if all four pass. Records per-gate output so gate
@@ -361,6 +364,12 @@ file_issues() {
   while IFS= read -r -d '' blk; do
     [ -z "$blk" ] && continue
     s="$(printf '%s\n' "$blk" | sed -n 's/^\[SEVERITY\] *//p' | head -1)"
+    # Also accept inline severity markers ([CRITICAL]/[MAJOR]/[MINOR]/[COSMETIC])
+    # so a block that reaches this function without build_input normalization is
+    # still ranked correctly instead of filing under `unknown`.
+    if [ -z "$s" ]; then
+      s="$(printf '%s\n' "$blk" | sed -n 's/^\[\(CRITICAL\|MAJOR\|MINOR\|COSMETIC\)\].*/\L\1/p' | head -1 | tr 'A-Z' 'a-z')"
+    fi
     sc="$(printf '%s\n' "$blk" | sed -n 's/^\[SCREEN\] *//p' | head -1)"
     fi="$(printf '%s\n' "$blk" | sed -n 's/^\[FILE\] *//p' | head -1)"
     ca="$(printf '%s\n' "$blk" | sed -n 's/^\[CATEGORY\] *//p' | head -1)"
