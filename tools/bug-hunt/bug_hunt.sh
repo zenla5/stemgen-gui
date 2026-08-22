@@ -348,7 +348,9 @@ file_issues() {
 
   # Two passes: first reduce every block to one canonical representative per
   # signature (highest severity). Then file one issue per signature.
-  local -A best_by_sig=() best_sev_by_sig=()
+  # Per-sigkey field arrays (avoids packing/unpacking with an escape separator,
+  # which corrupted field values).
+  local -A best_sev_by_sig=() sig_s=() sig_sc=() sig_fi=() sig_ca=() sig_de=() sig_re=()
   local -a order=()
 
   local blk s sc fi ca de re
@@ -380,37 +382,26 @@ file_issues() {
               | grep -oE '[a-z]+' \
               | grep -vE '^(a|an|the|to|is|of|at|are|and|it|on|for)$' \
               | tr '\n' ' ' | tr -s ' ')"
-    dekey="$(echo "$dekey" | grep -oE '([a-z]+ ){0,5}[a-z]+' | head -1 | tr -s ' ')"
+    dekey="$(echo "$dekey" | grep -oE '([a-z]+ ){0,2}[a-z]+' | head -1 | tr -s ' ')"
     local sigkey
     sigkey="${ca}|${dekey}"
 
     local rank=3
     case "$s" in critical) rank=0;; major) rank=1;; minor) rank=2;; cosmetic) rank=3;; esac
 
-    if [ -z "${best_sev_by_sig[$sigkey]}" ] || [ "$rank" -lt "${best_sev_by_sig[$sigkey]}" ]; then
-      if [ -z "${best_sev_by_sig[$sigkey]}" ]; then order+=( "$sigkey" ); fi
+    if [ -z "${best_sev_by_sig[$sigkey]:-}" ] || [ "$rank" -lt "${best_sev_by_sig[$sigkey]:-999}" ]; then
+      if [ -z "${best_sev_by_sig[$sigkey]:-}" ]; then order+=( "$sigkey" ); fi
       best_sev_by_sig[$sigkey]="$rank"
-      best_by_sig[$sigkey]="${s}\x01${sc}\x01${fi}\x01${ca}\x01${de}\x01${re}"
+      sig_s[$sigkey]="$s"; sig_sc[$sigkey]="$sc"; sig_fi[$sigkey]="$fi"
+      sig_ca[$sigkey]="$ca"; sig_de[$sigkey]="$de"; sig_re[$sigkey]="$re"
     fi
   done < <(awk 'BEGIN{RS="";FS="\n";OFS="\n"} {printf "%s\0",$0}' "$INPUT")
 
   # File in insertion order, deduped by signature.
   for sigkey in "${order[@]}"; do
-    local title body existing rest fields f1
-    # unpack the 6 fields separated by \x01
-    fields="${best_by_sig[$sigkey]}"
-    s=""; sc=""; fi=""; ca=""; de=""; re=""
-    f1="${fields%%\x01*}"; rest="${fields#*\x01*}"
-    s="$f1"
-    f1="${rest%%\x01*}"; rest="${rest#*\x01*}"
-    sc="$f1"
-    f1="${rest%%\x01*}"; rest="${rest#*\x01*}"
-    fi="$f1"
-    f1="${rest%%\x01*}"; rest="${rest#*\x01*}"
-    ca="$f1"
-    f1="${rest%%\x01*}"; rest="${rest#*\x01*}"
-    de="$f1"
-    re="$rest"
+    local title body existing
+    s="${sig_s[$sigkey]:-}"; sc="${sig_sc[$sigkey]:-}"; fi="${sig_fi[$sigkey]:-}"
+    ca="${sig_ca[$sigkey]:-}"; de="${sig_de[$sigkey]:-}"; re="${sig_re[$sigkey]:-}"
 
     title="[Bug-Hunt] ${s}: ${de}"
     title="${title:0:100}"
