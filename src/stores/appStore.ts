@@ -103,6 +103,7 @@ interface AppState {
   
   // UI state
   sidebarCollapsed: boolean;
+  mobileSidebarOpen: boolean;
   activeView: 'files' | 'queue' | 'mixer' | 'library' | 'settings';
   
   // Actions
@@ -156,6 +157,8 @@ interface AppState {
   
   // UI actions
   toggleSidebar: () => void;
+  openMobileSidebar: () => void;
+  closeMobileSidebar: () => void;
   setActiveView: (view: AppState['activeView']) => void;
 }
 
@@ -343,6 +346,7 @@ export const useAppStore = create<AppState>()(
       downloadedModels: [],
       settings: DEFAULT_PROCESSING_SETTINGS,
       sidebarCollapsed: false,
+      mobileSidebarOpen: false,
       activeView: 'files',
       
       // File actions
@@ -785,6 +789,8 @@ export const useAppStore = create<AppState>()(
       
       // UI actions
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      openMobileSidebar: () => set({ mobileSidebarOpen: true }),
+      closeMobileSidebar: () => set({ mobileSidebarOpen: false }),
       
       setActiveView: (view) => set({ activeView: view }),
     }),

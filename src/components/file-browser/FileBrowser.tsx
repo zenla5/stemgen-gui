@@ -186,14 +186,14 @@ export function FileBrowser() {
       {/* File list */}
       {audioFiles.length > 0 && (
         <div className="flex-1 overflow-auto" role="listbox" aria-label="Selected audio files" aria-multiselectable="true" data-testid="file-list">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium" role="status" aria-live="polite" data-testid="file-count">
+          <div className="mb-2 flex min-w-0 items-center justify-between">
+            <h3 className="min-w-0 truncate text-sm font-medium" role="status" aria-live="polite" data-testid="file-count">
               {audioFiles.length} file{audioFiles.length !== 1 ? 's' : ''} selected
             </h3>
             <button
               data-testid="clear-all-files-btn"
               onClick={() => audioFiles.forEach((f) => removeFile(f.path))}
-              className="text-xs text-muted-foreground hover:text-destructive"
+              className="shrink-0 whitespace-nowrap text-xs text-muted-foreground hover:text-destructive"
               aria-label="Clear all selected files"
             >
               Clear all
@@ -222,9 +222,9 @@ export function FileBrowser() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10" aria-hidden="true">
                   <Music className="h-5 w-5 text-primary" />
                 </div>
-                <div className="flex-1 overflow-hidden">
+                <div className="min-w-0 flex-1 overflow-hidden">
                   <p className="truncate font-medium">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="break-words text-xs text-muted-foreground">
                     {file.format.toUpperCase()} • {formatDuration(file.duration)} •{' '}
                     {formatFileSize(file.size)} • {file.sample_rate / 1000}kHz
                   </p>
