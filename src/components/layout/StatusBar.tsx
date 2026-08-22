@@ -48,7 +48,7 @@ export function StatusBar() {
       </div>
 
       {/* Right side - Info */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex min-w-0 items-center justify-end gap-2 whitespace-nowrap">
         {/* File count */}
         <span>{audioFiles.length} file{audioFiles.length !== 1 ? 's' : ''} loaded</span>
 
