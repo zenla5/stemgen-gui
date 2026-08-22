@@ -48,10 +48,17 @@ cd tools/bug-hunt
 ./bug_hunt.sh                  # default MAX_ITER=40
 MAX_ITER=5 ./bug_hunt.sh       # bounded trial
 TOKEN_CAP=2000000 ./bug_hunt.sh  # soft token/cost guard
+CREATE_ISSUES=1 ./bug_hunt.sh    # opt-in: file one GitHub issue per distinct unfixed bug
 ```
 The loop: gates → fresh capture → vision-review → merge to `hunt-input.txt` →
 green if gates+vision+layout clean, else `bug-hunter` fixes (one commit per
 fix) → repeat.
+
+**Issue filing is opt-in.** By default a non-green end (GIVEUP / STALLED /
+BUDGET) leaves findings only in `hunt-input.txt` / `summary.txt`. With
+`CREATE_ISSUES=1` it files one GitHub issue per distinct bug against
+`BUG_HUNT_REPO` (auto-derived from `git remote get-url origin`; override with
+`BUG_HUNT_REPO=owner/repo`). Best-effort, never fatal; CI behavior is unchanged.
 
 ## Exit codes & how to read them
 | Code | Meaning | Where to look |

@@ -186,13 +186,6 @@ Output ONLY findings in EXACTLY this format, one entry per finding:
 [CATEGORY] layout|overflow|color|typography|interaction|state|console|crash|other
 [DESCRIPTION] one precise sentence
 [REPRO]    how to reproduce
-Report clean screenshots too, one entry per clean file, as:
-[SEVERITY] cosmetic
-[SCREEN]   state_theme
-[FILE]     filename
-[CATEGORY] other
-[DESCRIPTION] clean
-[REPRO]    n/a
 If every screenshot looks clean, output exactly: [CLEAN]"
   local vtmp="$HUNT_DIR/.vision.tmp"
   : > "$vtmp"
@@ -274,6 +267,12 @@ build_input() {
     else if (s ~ /^\[[Mm][Aa][Jj][Oo][Rr]\]/)              s="[SEVERITY] major";
     else if (s ~ /^\[[Mm][Ii][Nn][Oo][Rr]\]/)              s="[SEVERITY] minor";
     else if (s ~ /^\[[Cc][Oo][Ss][Mm][Ee][Tt][Ii][Cc]\]/) s="[SEVERITY] cosmetic";
+    # Noise blocks must never count as findings: a clean-screen entry
+    # (`[DESCRIPTION] clean`) or an unfillable empty description (`n/a`) is not a
+    # defect and cannot be fixed, so drop it here — otherwise the GREEN gate
+    # (any [SEVERITY] present) could never be satisfied.
+    if (de ~ /^\[DESCRIPTION\] *clean/ || de ~ /^\[DESCRIPTION\] *n\/a/) next;
+    if (sc=="") sc="[SCREEN] n/a";
     if (sc=="") sc="[SCREEN] n/a";
     if (fi=="") fi="[FILE] n/a";
     if (ca=="") ca="[CATEGORY] other";
@@ -364,17 +363,18 @@ file_issues() {
     re="$(printf '%s\n' "$blk" | sed -n 's/^\[REPRO\] *//p' | head -1)"
     s="${s:-unknown}"; ca="${ca:-other}"; de="${de:-n/a}"
 
-    # Never file noise / clean blocks.
-    if [ "$(echo "$ca" | tr 'A-Z' 'a-z')" = "other" ] || \
-       [ "$(echo "$de" | tr 'A-Z' 'a-z')" = "clean" ] || \
+    # Never file noise / clean blocks. Only descriptions that are explicitly
+    # clean or unfillable (n/a) are dropped; a genuine `other`-category defect is
+    # still a real finding and stays fileable.
+    if [ "$(echo "$de" | tr 'A-Z' 'a-z')" = "clean" ] || \
        [ "$de" = "n/a" ] || [ "$sc" = "n/a" ]; then
       continue
     fi
 
     # Canonical signature: CATEGORY + a normalized description fingerprint
-    # (first 6 significant tokens). The screen is deliberately NOT part of the
-    # key so the same root cause (e.g. a footer/clipped-content bug) that shows
-    # up across many views files as ONE issue, not one per screen/theme.
+    # (first up to 3 significant tokens). The screen is deliberately NOT part of
+    # the key so the same root cause (e.g. a footer/clipped-content bug) that
+    # shows up across many views files as ONE issue, not one per screen/theme.
     local dekey
     dekey="$(echo "$de" | tr 'A-Z' 'a-z' \
               | sed -E 's/\([^)]*\)//g; s/"[^"]*"//g' \

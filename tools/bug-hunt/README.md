@@ -34,10 +34,23 @@ cd tools/bug-hunt
 ./bug_hunt.sh                 # default MAX_ITER=40
 MAX_ITER=3 ./bug_hunt.sh      # cap iterations
 TOKEN_CAP=2000000 ./bug_hunt.sh   # soft token/cost guard
+CREATE_ISSUES=1 ./bug_hunt.sh     # opt-in: file GitHub issues for unfixed bugs
 ```
 
 Requirements: Node + npm deps installed (`npm i`), `opencode` CLI on PATH with
 the two agents configured, `OPENROUTER_API_KEY` set. No Rust/Tauri build needed.
+
+### Issue filing (opt-in via `CREATE_ISSUES=1`)
+
+By default a non-green local run (STALLED / BUDGET / GIVEUP) only leaves findings
+in `hunt-input.txt` and `summary.txt`. Set `CREATE_ISSUES=1` to also file one
+real GitHub issue per **distinct** unfixed bug against `BUG_HUNT_REPO`. The repo
+slug is auto-derived from `git remote get-url origin` (override with
+`BUG_HUNT_REPO=owner/repo`). Dedup is by a canonical signature (category +
+normalized description fingerprint) so the same root cause seen across many
+screens files once; clean/n/a noise blocks are never filed. Filing is
+best-effort — failures are logged, never fatal — and CI behavior is unchanged
+(it keeps its own single give-up Issue and issue-filing stays off there).
 
 CI: an optional `.github/workflows/bug-hunt.yml` runs the same loop on a GitHub
 runner (manual `workflow_dispatch`; installs `opencode-ai` and reads the repo's
