@@ -9,10 +9,18 @@
  */
 import { defineConfig, devices } from '@playwright/test';
 import { resolve, dirname } from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, '../..');
+
+// Prefer the NixOS system Chromium when present — the bundled Playwright
+// binaries cannot run on NixOS ("NixOS cannot run dynamically linked
+// executables..."). launchOptions.executablePath (not use.executablePath) is
+// what Playwright's test runner honors for the browser binary on NixOS.
+const CHROMIUM_PATH = '/run/current-system/sw/bin/chromium';
+const sysChromium = existsSync(CHROMIUM_PATH) ? { executablePath: CHROMIUM_PATH } : {};
 
 export default defineConfig({
   testDir: resolve(ROOT, 'src/__tests__/e2e'),
@@ -28,7 +36,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     headless: false,
-    channel: 'chromium',
+    launchOptions: sysChromium,
   },
   webServer: {
     command: 'npm run dev',
@@ -45,7 +53,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         headless: false,
-        channel: 'chromium',
+        launchOptions: sysChromium,
       },
     },
   ],

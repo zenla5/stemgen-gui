@@ -39,13 +39,40 @@ TOKEN_CAP="${TOKEN_CAP:-4000000}"   # soft cost/token guard (reported, enforced 
 START_EPOCH="$(date +%s)"
 START_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
+# Remote issue filing (opt-in). When CREATE_ISSUES=1, every distinct bug left in
+# hunt-input.txt at a non-green end (STALLED/BUDGET/GIVEUP) is filed as a real
+# GitHub issue (one per distinct finding) against BUG_HUNT_REPO. Defaults to off
+# so local/CI behavior is unchanged unless explicitly enabled. The repo slug is
+# derived from `git remote get-url origin` so a local run files against the real
+# remote instead of only a local branch.
+CREATE_ISSUES="${CREATE_ISSUES:-0}"
+FILE_TOOLING_ISSUES="${FILE_TOOLING_ISSUES:-1}"   # 0 = drop harness/env findings ([SCREEN] vision/gates)
+MAX_ISSUES="${MAX_ISSUES:-20}"                    # cap distinct issues filed per run
+BUG_HUNT_REPO="${BUG_HUNT_REPO:-}"
+if [ -z "$BUG_HUNT_REPO" ] && command -v git >/dev/null 2>&1; then
+  BUG_HUNT_REPO="$(cd "$ROOT" 2>/dev/null && git remote get-url origin 2>/dev/null || true)"
+  case "$BUG_HUNT_REPO" in
+    git@github.com:*) BUG_HUNT_REPO="${BUG_HUNT_REPO#git@github.com:}"; BUG_HUNT_REPO="${BUG_HUNT_REPO%.git}";;
+    https://github.com/*) BUG_HUNT_REPO="${BUG_HUNT_REPO#https://github.com/}"; BUG_HUNT_REPO="${BUG_HUNT_REPO%.git}";;
+    *) BUG_HUNT_REPO="";;
+  esac
+fi
+
 # E2E gate scope. `npm run test:e2e` (playwright test) runs BOTH the `chromium`
 # project (dev-server, observable React UI) AND the `binary` project (compiled
 # Tauri app over CDP). The `binary` project is out of scope for this harness
 # (it needs the Rust build / is the Rust shell, see README) and is unrunnable in
 # a clean checkout without a Rust toolchain. We therefore gate on the `chromium`
 # project, which exercises the reachable, observable UI.
-E2E_CMD=(npx playwright test --project=chromium)
+# On NixOS the bundled Playwright chromium cannot launch, so we prefer the
+# repo's `playwright.bughunt.config.ts`, which launches the system Chromium via
+# launchOptions.executablePath when available; otherwise it falls back to the
+# plain bundled-chromium run (e.g. GitHub Actions / plain Linux).
+if [ -e /run/current-system/sw/bin/chromium ]; then
+  E2E_CMD=(npx playwright test --config tools/bug-hunt/playwright.bughunt.config.ts --project=chromium)
+else
+  E2E_CMD=(npx playwright test --project=chromium)
+fi
 
 # Detach from any host opencode session so `opencode run --agent …` works.
 unset OPENCODE_CLIENT OPENCODE_SERVER_PASSWORD OPENCODE_SERVER_USERNAME 2>/dev/null || true
@@ -55,6 +82,11 @@ mkdir -p "$SHOTS"
 
 log() { printf '%s | %s\n' "$(date -u '+%H:%M:%S')" "$*" | tee -a "$LOG"; }
 die() { log "FATAL: $*"; exit 1; }
+
+# Warn early (must come after log() is defined, see above) when the user opted
+# into issue filing but no remote slug could be resolved for the repo.
+[ "$CREATE_ISSUES" = "1" ] && [ -z "$BUG_HUNT_REPO" ] && \
+  log "WARNING: CREATE_ISSUES=1 but BUG_HUNT_REPO is unresolved (no origin remote slug); issue filing will be skipped"
 
 # ---------------------------------------------------------------------------
 # Gates — returns 0 only if all four pass. Records per-gate output so gate
@@ -122,14 +154,37 @@ vision_review() {
   fi
   local -a files=()
   local f
-  for f in "$SHOTS"/*.png; do [ -e "$f" ] || continue; files+=( -f "$f" ); done
+  local name_list=""
+  for f in "$SHOTS"/*.png; do [ -e "$f" ] || continue; files+=( -f "$f" ); name_list+="$(basename "$f")\n"; done
   [ "${#files[@]}" -eq 0 ] && { log 'vision: no screenshots'; return 0; }
   local prompt
-  prompt="Open EVERY attached PNG plus the console log at $CONSOLE and the layout
-report at $LAYOUT. For each image report every visible defect (layout, overflow,
-clipping, overlap, color contrast, alignment, typography, truncation, missing
-content/state). Also report page/console errors. Output ONLY findings in EXACTLY
-this format, one entry per finding:
+  prompt="Open EVERY attached PNG (${#files[@]} attached screenshots) plus the
+console log at $CONSOLE and the layout report at $LAYOUT. The screenshots are:
+${name_list}
+You do NOT need to run any shell command — the images are attached; never call
+ls or list the directory. Inspect EACH image carefully and report EVERY defect.
+Focus hard on these common defect classes, and be especially rigorous for
+_mobile.png viewport shots:
+- TEXT TRUNCATION / CLIPPING: any label, filename, button, chip, badge, or
+  metadata that is cut off mid-word or mid-char (e.g. 's..', 'Refre', 'Cle', 'A',
+  'Not foun', 'CP'). This is a bug, not acceptable.
+- HORIZONTAL OVERFLOW: content spilling past the right edge of the viewport.
+- ELEMENT OVERLAP: any two elements that visually collide or obscure each other
+  (e.g. a footer/status bar covering a card, button, or toast).
+- CONTENT BELOW THE FOLD: cards, rows, or controls clipped at the bottom of the
+  viewport with no visible scroll affordance.
+- MISSING/WRONG STATE: a screen labeled one state (e.g. 'error') that renders
+  like another (e.g. the empty/home state) — i.e. intended UI (error banner,
+  toast, alert) not shown.
+- WRAPPED TITLES, misalignment, color contrast, truncation.
+
+Apply a STRICT bar for 'clean': a screenshot is clean ONLY if every control and
+labeled element is fully visible, no two elements overlap, nothing is clipped or
+truncated, the viewport does not overflow horizontally, and any state the
+filename promises is actually rendered. If you are unsure whether an element is
+clipped, assume it is a defect and report it.
+
+Output ONLY findings in EXACTLY this format, one entry per finding:
 [SEVERITY] (critical|major|minor|cosmetic)
 [SCREEN]   state_theme (e.g. mixer_dark)
 [FILE]     screenshot filename
@@ -137,15 +192,23 @@ this format, one entry per finding:
 [DESCRIPTION] one precise sentence
 [REPRO]    how to reproduce
 If every screenshot looks clean, output exactly: [CLEAN]"
+  local vtmp="$HUNT_DIR/.vision.tmp"
+  : > "$vtmp"
   "$oc" run "$prompt" "${files[@]}" --agent vision-review \
-    >>"$INPUT" 2>>"$LOG"
+    >>"$vtmp" 2>>"$LOG"
   local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    # A failing vision pass must not collapse to a false-clean: record it so the
-    # definition of done cannot be met until the review runs successfully.
-    log "vision-review returned rc=$rc — recording finding (no false-clean)"
-    printf '[SEVERITY] critical\n[SCREEN] vision\n[FILE] n/a\n[CATEGORY] crash\n[DESCRIPTION] vision-review (opencode run --agent vision-review) exited rc=%s instead of reporting clean; the screenshots cannot be trusted as defect-free\n[REPRO] re-run the harness to retry the multimodal vision review\n\n' "$rc" >> "$INPUT"
+  # Merge stdout into hunt-input, preserving the machine-readable blocks.
+  cat "$vtmp" >> "$INPUT"
+  # A clean verdict REQUIRES an explicit verdict or findings. Neither
+  # the absence of output nor a non-zero rc may collapse to a false-clean (e.g.
+  # a permission rejection that opencode swallows while still exiting 0).
+  # Accept any canonical severity marker (SEVERITY or inline CRITICAL/MAJOR/
+  # MINOR/COSMETIC) as a real verdict.
+  if [ "$rc" -ne 0 ] || ! grep -Eq '^\[(SEVERITY|CRITICAL|MAJOR|MINOR|COSMETIC)\]|^\[CLEAN\]' "$vtmp"; then
+    log "vision-review produced no explicit verdict (rc=$rc, no [SEVERITY]/[CLEAN] in output) — recording finding (no false-clean)"
+    printf '[SEVERITY] critical\n[SCREEN] vision\n[FILE] n/a\n[CATEGORY] crash\n[DESCRIPTION] vision-review did not return an explicit CLEAN verdict (rc=%s, no [SEVERITY]/[CLEAN] lines); the screenshots cannot be trusted as defect-free\n[REPRO] re-run the harness to retry the multimodal vision review\n\n' "$rc" >> "$INPUT"
   fi
+  rm -f "$vtmp"
 }
 
 # ---------------------------------------------------------------------------
@@ -158,10 +221,13 @@ build_input() {
   vision_review
 
   if [ -s "$GATE_FILE" ]; then
-    while IFS= read -r block; do
+    # GATE_FILE holds blank-line-separated multi-field blocks; read them as
+    # paragraphs so each block's 6 fields stay together (a line-by-line read
+    # would split one finding into six n/a fragments).
+    awk 'BEGIN{RS="";FS="\n";OFS="\n"} {printf "%s\0",$0}' "$GATE_FILE" | while IFS= read -r -d '' block; do
       [ -z "${block:-}" ] && continue
       printf '%s\n\n' "$block" >> "$INPUT"
-    done < "$GATE_FILE"
+    done
   fi
 
   if [ -s "$LAYOUT" ]; then
@@ -181,12 +247,17 @@ build_input() {
   # Normalize every finding into a canonical 6-field machine-readable block and
   # de-duplicate WITHIN this iteration only (so a recurring defect keeps
   # surfacing across iterations and the stall detector can catch it).
+  # The vision model may emit severity either as a `[SEVERITY] <level>` line or
+  # inline as the block's first line (`[CRITICAL] state_theme`, `[MAJOR] ...`,
+  # `[MINOR] ...`, `[COSMETIC] ...`). Both are accepted and normalized here so
+  # a valid finding can never be dropped into a false-clean.
   awk 'BEGIN { RS="\n\n"; FS="\n" }
   {
     s=sc=fi=ca=de=re="";
     for (i=1;i<=NF;i++) {
       ln=$i; gsub(/\r$/,"",ln); gsub(/^[ \t]+|[ \t]+$/,"",ln);
-      if      (ln ~ /^\[SEVERITY\]/) s=ln;
+      if      (ln ~ /^\[SEVERITY\]/)            { s=ln; }
+      else if (ln ~ /^\[(CRITICAL|MAJOR|MINOR|COSMETIC)\]/) { s=ln; }
       else if (ln ~ /^\[SCREEN\]/)   sc=ln;
       else if (ln ~ /^\[FILE\]/)     fi=ln;
       else if (ln ~ /^\[CATEGORY\]/) ca=ln;
@@ -194,6 +265,18 @@ build_input() {
       else if (ln ~ /^\[REPRO\]/)    re=ln;
     }
     if (s=="") next;
+    # Canonical severity line: if the model opened the block with an inline
+    # [CRITICAL]/[MAJOR]/[MINOR]/[COSMETIC] marker, normalize to [SEVERITY].
+    # (Standard awk has no /i flag; use explicit case-insensitive classes.)
+    if (s ~ /^\[[Cc][Rr][Ii][Tt][Ii][Cc][Aa][Ll]\]/)      s="[SEVERITY] critical";
+    else if (s ~ /^\[[Mm][Aa][Jj][Oo][Rr]\]/)              s="[SEVERITY] major";
+    else if (s ~ /^\[[Mm][Ii][Nn][Oo][Rr]\]/)              s="[SEVERITY] minor";
+    else if (s ~ /^\[[Cc][Oo][Ss][Mm][Ee][Tt][Ii][Cc]\]/) s="[SEVERITY] cosmetic";
+    # Noise blocks must never count as findings: a clean-screen entry
+    # (`[DESCRIPTION] clean`) or an unfillable empty description (`n/a`) is not a
+    # defect and cannot be fixed, so drop it here — otherwise the GREEN gate
+    # (any [SEVERITY] present) could never be satisfied.
+    if (de ~ /^\[DESCRIPTION\] *clean/ || de ~ /^\[DESCRIPTION\] *n\/a/) next;
     if (sc=="") sc="[SCREEN] n/a";
     if (fi=="") fi="[FILE] n/a";
     if (ca=="") ca="[CATEGORY] other";
@@ -250,6 +333,177 @@ over_budget() {
 }
 
 # ---------------------------------------------------------------------------
+# file_issues. When CREATE_ISSUES=1 and the run ends non-green with unfixed
+# findings left in hunt-input.txt, file one real GitHub issue per DISTINCT bug
+# (normalized finding) against BUG_HUNT_REPO. Dedup is by a canonical signature
+# (root cause CATEGORY + a normalized description fingerprint) so the same root
+# cause — which the vision model may word slightly differently across
+# screens/themes — collapses into ONE issue instead of many near-duplicates;
+# the screen/theme is deliberately not part of the key. Dedup consults open
+# issues by title AND body (the filed body embeds [DESCRIPTION]), and a search
+# ERROR is treated as "skip, log" — never "create" — so a transient gh failure
+# cannot produce a duplicate. Harness/env findings ([SCREEN] vision/gates) are
+# dropped unless FILE_TOOLING_ISSUES=1. At most MAX_ISSUES distinct issues are
+# filed per run. clean/n/a noise and cosmetic-other blocks are never filed.
+# Returns 0 always (filing is best-effort; failures are logged, never fatal).
+# ---------------------------------------------------------------------------
+file_issues() {
+  [ "$CREATE_ISSUES" = "1" ] || return 0
+  [ -s "$INPUT" ] || { log 'file_issues: no findings to file (clean)'; return 0; }
+  command -v gh >/dev/null 2>&1 || { log 'file_issues: gh CLI not found — skipping issue filing'; return 0; }
+  [ -n "$BUG_HUNT_REPO" ] || { log 'file_issues: BUG_HUNT_REPO empty — skipping issue filing'; return 0; }
+  # No canonical severity line → nothing fileable (only [CLEAN] / noise blocks).
+  # Bail before any gh call so a clean-ish INPUT can't result in a needless search.
+  if ! grep -q '^\[SEVERITY\]' "$INPUT"; then
+    log 'file_issues: no [SEVERITY] findings to file (clean)'
+    return 0
+  fi
+
+  # Two passes: first reduce every block to one canonical representative per
+  # signature (highest severity). Then file one issue per signature.
+  # Per-sigkey field arrays (avoids packing/unpacking with an escape separator,
+  # which corrupted field values).
+  local -A best_sev_by_sig=() sig_s=() sig_sc=() sig_fi=() sig_ca=() sig_de=() sig_re=()
+  local -a order=()
+
+  local blk s sc fi ca de re
+  while IFS= read -r -d '' blk; do
+    [ -z "$blk" ] && continue
+    s="$(printf '%s\n' "$blk" | sed -n 's/^\[SEVERITY\] *//p' | head -1)"
+    # Also accept inline severity markers ([CRITICAL]/[MAJOR]/[MINOR]/[COSMETIC])
+    # so a block that reaches this function without build_input normalization is
+    # still ranked correctly instead of filing under `unknown`.
+    if [ -z "$s" ]; then
+      s="$(printf '%s\n' "$blk" | sed -n 's/^\[\(CRITICAL\|MAJOR\|MINOR\|COSMETIC\)\].*/\L\1/p' | head -1 | tr 'A-Z' 'a-z')"
+    fi
+    sc="$(printf '%s\n' "$blk" | sed -n 's/^\[SCREEN\] *//p' | head -1)"
+    fi="$(printf '%s\n' "$blk" | sed -n 's/^\[FILE\] *//p' | head -1)"
+    ca="$(printf '%s\n' "$blk" | sed -n 's/^\[CATEGORY\] *//p' | head -1)"
+    de="$(printf '%s\n' "$blk" | sed -n 's/^\[DESCRIPTION\] *//p' | head -1)"
+    re="$(printf '%s\n' "$blk" | sed -n 's/^\[REPRO\] *//p' | head -1)"
+    s="${s:-unknown}"; ca="${ca:-other}"; de="${de:-n/a}"
+
+    # Never file noise / clean blocks. Only descriptions that are explicitly
+    # clean or unfillable (n/a) are dropped; a genuine `other`-category defect is
+    # still a real finding and stays fileable.
+    if [ "$(echo "$de" | tr 'A-Z' 'a-z')" = "clean" ] || \
+       [ "$de" = "n/a" ] || [ "$sc" = "n/a" ]; then
+      continue
+    fi
+    # Harness/env findings ([SCREEN] vision / gates) are not product defects: a
+    # missing opencode CLI, a vision-review failure, or a gate-failure crash
+    # block. Dropped unless the user explicitly opts in via FILE_TOOLING_ISSUES=1.
+    if [ "$FILE_TOOLING_ISSUES" != "1" ] && \
+       { [ "$sc" = "vision" ] || [ "$sc" = "gates" ]; }; then
+      continue
+    fi
+
+    # Canonical signature: CATEGORY + a normalized description fingerprint
+    # (first up to 5 significant tokens). The screen is deliberately NOT part of
+    # the key so the same root cause (e.g. a footer/clipped-content bug) that
+    # shows up across many views files as ONE issue, not one per screen/theme.
+    local dekey
+    dekey="$(echo "$de" | tr 'A-Z' 'a-z' \
+              | sed -E 's/\([^)]*\)//g; s/"[^"]*"//g' \
+              | sed -E 's/[0-9]+//g' \
+              | grep -oE '[a-z]+' \
+              | grep -vE '^(a|an|the|to|is|of|at|are|and|it|on|for)$' \
+              | tr '\n' ' ' | tr -s ' ')"
+    dekey="$(echo "$dekey" | grep -oE '([a-z]+ ){0,4}[a-z]+' | head -1 | tr -s ' ')"
+    local sigkey
+    sigkey="${ca}|${dekey}"
+
+    local rank=3
+    case "$s" in critical) rank=0;; major) rank=1;; minor) rank=2;; cosmetic) rank=3;; esac
+
+    if [ -z "${best_sev_by_sig[$sigkey]:-}" ] || [ "$rank" -lt "${best_sev_by_sig[$sigkey]:-999}" ]; then
+      if [ -z "${best_sev_by_sig[$sigkey]:-}" ]; then order+=( "$sigkey" ); fi
+      best_sev_by_sig[$sigkey]="$rank"
+      sig_s[$sigkey]="$s"; sig_sc[$sigkey]="$sc"; sig_fi[$sigkey]="$fi"
+      sig_ca[$sigkey]="$ca"; sig_de[$sigkey]="$de"; sig_re[$sigkey]="$re"
+    fi
+  done < <(awk 'BEGIN{RS="";FS="\n";OFS="\n"} {printf "%s\0",$0}' "$INPUT")
+
+  # File in insertion order, deduped by signature. `created` enforces the
+  # per-run MAX_ISSUES cap; `filed` remembers signatures created THIS run so a
+  # duplicate signature close behind an earlier one can't slip past
+  # eventual-consistent GitHub search.
+  local -A filed
+  local created=0
+  for sigkey in "${order[@]}"; do
+    [ "$created" -ge "$MAX_ISSUES" ] && { log "file_issues: MAX_ISSUES=$MAX_ISSUES reached — stopping filing"; break; }
+    local title body
+    s="${sig_s[$sigkey]:-}"; sc="${sig_sc[$sigkey]:-}"; fi="${sig_fi[$sigkey]:-}"
+    ca="${sig_ca[$sigkey]:-}"; de="${sig_de[$sigkey]:-}"; re="${sig_re[$sigkey]:-}"
+
+    title="[Bug-Hunt] ${s}: ${de}"
+    # Sanitize: raw model/gate descriptions may contain newlines, control
+    # chars, or literal double quotes. A `"` would terminate the quoted token
+    # in the `gh issue list --search "\"${title}\""` dedup query and break the
+    # roundtrip, so collapse whitespace to single spaces and replace `"` with a
+    # safe em-dash before truncating.
+    title="$(printf '%s' "$title" | tr '\n\r\t' '   ' | tr -s ' ' | sed 's/"/–/g')"
+    title="${title:0:100}"
+
+    # In-run dedup: skip if this signature was already filed this invocation.
+    if [ -n "${filed[$sigkey]:-}" ]; then
+      log "file_issues: skip (filed earlier this run): $title"
+      continue
+    fi
+
+    # Dedup against already-open issues. GitHub search is eventually consistent,
+    # so a search ERROR must NOT be treated as "no match" (that would create a
+    # duplicate); on error we skip + log instead. Match by title AND body (the
+    # filed body embeds [DESCRIPTION]), and report the matched issue number.
+    local dup_file="$HUNT_DIR/.issuedup.json" dup_num="0"
+    gh issue list --repo "$BUG_HUNT_REPO" --state open --label bug \
+      --search "\"${title}\"" --limit "$MAX_ISSUES" --json number,title,body >"$dup_file" 2>/dev/null
+    local rc_match=$?
+    if [ "$rc_match" -ne 0 ]; then
+      rm -f "$dup_file"
+      log "file_issues: dedup search FAILED (rc=$rc_match) — skipping (will not create a duplicate): $title"
+      continue
+    fi
+    local dup_num="0" iout
+    iout="$(env DEDUP_FILE="$dup_file" DEDUP_TITLE="$title" DEDUP_DESC="$de" "$HUNT_DIR/issue-dedup.cjs" 2>/dev/null)"
+    local rc_dedup=$?
+    rm -f "$dup_file"
+    if [ "$rc_dedup" -ne 0 ]; then
+      log "file_issues: dedup helper FAILED (rc=$rc_dedup) — skipping (will not create a duplicate): $title"
+      continue
+    fi
+    dup_num="$(printf '%s' "$iout" | sed -n 's/^DUP://p' | grep -oE '[0-9]+' | head -1)"
+    if [ -n "$dup_num" ]; then
+      filed[$sigkey]=1
+      log "file_issues: skip (already open #$dup_num): $title"
+      continue
+    fi
+
+    log "file_issues: creating issue: $title"
+    filled_body="Automated finding from the local bug-hunt harness (CREATE_ISSUES=1). One representative screen/theme shown; the same defect may affect related views.
+
+\`\`\`
+[SEVERITY] $s
+[SCREEN]   $sc
+[FILE]     $fi
+[CATEGORY] $ca
+[DESCRIPTION] $de
+[REPRO]    $re
+\`\`\`
+
+**Screenshot:** see \`tools/bug-hunt/screenshots/$fi\` and the console log \`tools/bug-hunt/screenshots/console-errors.log\`."
+    if gh issue create --repo "$BUG_HUNT_REPO" --title "$title" --body "$filled_body" --label bug \
+      >>"$LOG" 2>&1; then
+      filed[$sigkey]=1
+      created=$((created+1))
+    else
+      log "file_issues: FAILED to create issue: $title"
+    fi
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
 log "bug_hunt started $START_DATE (repo: $ROOT) MAX_ITER=$MAX_ITER TOKEN_CAP=$TOKEN_CAP"
@@ -293,22 +547,23 @@ for i in $(seq 1 "$MAX_ITER"); do
 
   if stalled; then
     log 'stalling — stopping with signature'
+    file_issues
     exit 1
   fi
 
   if over_budget; then
     log 'exceeded token/cost cap — stopping'
     printf 'BUDGET\nExceeded TOKEN_CAP=%s\n' "$TOKEN_CAP" > "$SUMMARY"
+    file_issues
     exit 1
   fi
 
-  local oc
-  oc="$(command -v opencode 2>/dev/null || true)"
-  if [ -z "$oc" ]; then
+  oc_path="$(command -v opencode 2>/dev/null || true)"
+  if [ -z "$oc_path" ]; then
     log 'bug-hunter UNAVAILABLE: opencode CLI not on PATH — cannot fix findings'
   else
     log 'calling bug-hunter (one commit per fix, then re-gates)'
-    "$oc" run \
+    "$oc_path" run \
       "Read $INPUT. Fix EACH distinct finding with exactly ONE commit per finding (never one batch commit). After each fix re-run: npm run check, npm run lint, npm run test — all must pass before you stop. Only report which gates pass; never claim the loop done." \
       --agent bug-hunter >>"$LOG" 2>&1 || log 'bug-hunter returned nonzero (loop continues)'
   fi
@@ -317,4 +572,5 @@ done
 log "MAX_ITER=$MAX_ITER reached without converging"
 printf 'GIVEUP\nReached MAX_ITER=%s without all gates + vision + layout green.\n' "$MAX_ITER" > "$SUMMARY"
 log '======== GIVEUP (iteration cap) ========'
+file_issues
 exit 1

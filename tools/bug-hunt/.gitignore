@@ -7,4 +7,6 @@ smoke.log
 .scratch-branch
 _gates/
 screenshots/
+.vision.tmp
+.issuedup.json
 ci-hunt.log
