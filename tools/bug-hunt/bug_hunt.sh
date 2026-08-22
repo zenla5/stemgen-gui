@@ -153,19 +153,46 @@ vision_review() {
   for f in "$SHOTS"/*.png; do [ -e "$f" ] || continue; files+=( -f "$f" ); name_list+="$(basename "$f")\n"; done
   [ "${#files[@]}" -eq 0 ] && { log 'vision: no screenshots'; return 0; }
   local prompt
-  prompt="Open EVERY attached PNG (there are ${#files[@]} attached screenshots) plus
-the console log at $CONSOLE and the layout report at $LAYOUT. The screenshots are:
+  prompt="Open EVERY attached PNG (${#files[@]} attached screenshots) plus the
+console log at $CONSOLE and the layout report at $LAYOUT. The screenshots are:
 ${name_list}
-For each image report every visible defect (layout, overflow, clipping, overlap,
-color contrast, alignment, typography, truncation, missing content/state). Also
-report page/console errors. You do NOT need to run any shell command — the images
-are attached. Output ONLY findings in EXACTLY this format, one entry per finding:
+You do NOT need to run any shell command — the images are attached; never call
+ls or list the directory. Inspect EACH image carefully and report EVERY defect.
+Focus hard on these common defect classes, and be especially rigorous for
+_mobile.png viewport shots:
+- TEXT TRUNCATION / CLIPPING: any label, filename, button, chip, badge, or
+  metadata that is cut off mid-word or mid-char (e.g. 's..', 'Refre', 'Cle', 'A',
+  'Not foun', 'CP'). This is a bug, not acceptable.
+- HORIZONTAL OVERFLOW: content spilling past the right edge of the viewport.
+- ELEMENT OVERLAP: any two elements that visually collide or obscure each other
+  (e.g. a footer/status bar covering a card, button, or toast).
+- CONTENT BELOW THE FOLD: cards, rows, or controls clipped at the bottom of the
+  viewport with no visible scroll affordance.
+- MISSING/WRONG STATE: a screen labeled one state (e.g. 'error') that renders
+  like another (e.g. the empty/home state) — i.e. intended UI (error banner,
+  toast, alert) not shown.
+- WRAPPED TITLES, misalignment, color contrast, truncation.
+
+Apply a STRICT bar for 'clean': a screenshot is clean ONLY if every control and
+labeled element is fully visible, no two elements overlap, nothing is clipped or
+truncated, the viewport does not overflow horizontally, and any state the
+filename promises is actually rendered. If you are unsure whether an element is
+clipped, assume it is a defect and report it.
+
+Output ONLY findings in EXACTLY this format, one entry per finding:
 [SEVERITY] (critical|major|minor|cosmetic)
 [SCREEN]   state_theme (e.g. mixer_dark)
 [FILE]     screenshot filename
 [CATEGORY] layout|overflow|color|typography|interaction|state|console|crash|other
 [DESCRIPTION] one precise sentence
 [REPRO]    how to reproduce
+Report clean screenshots too, one entry per clean file, as:
+[SEVERITY] cosmetic
+[SCREEN]   state_theme
+[FILE]     filename
+[CATEGORY] other
+[DESCRIPTION] clean
+[REPRO]    n/a
 If every screenshot looks clean, output exactly: [CLEAN]"
   local vtmp="$HUNT_DIR/.vision.tmp"
   : > "$vtmp"
@@ -174,10 +201,12 @@ If every screenshot looks clean, output exactly: [CLEAN]"
   local rc=$?
   # Merge stdout into hunt-input, preserving the machine-readable blocks.
   cat "$vtmp" >> "$INPUT"
-  # A clean verdict REQUIRES an explicit [CLEAN] marker or findings. Neither
+  # A clean verdict REQUIRES an explicit verdict or findings. Neither
   # the absence of output nor a non-zero rc may collapse to a false-clean (e.g.
   # a permission rejection that opencode swallows while still exiting 0).
-  if [ "$rc" -ne 0 ] || ! grep -Eq '^\[SEVERITY\]|^\[CLEAN\]' "$vtmp"; then
+  # Accept any canonical severity marker (SEVERITY or inline CRITICAL/MAJOR/
+  # MINOR/COSMETIC) as a real verdict.
+  if [ "$rc" -ne 0 ] || ! grep -Eq '^\[(SEVERITY|CRITICAL|MAJOR|MINOR|COSMETIC)\]|^\[CLEAN\]' "$vtmp"; then
     log "vision-review produced no explicit verdict (rc=$rc, no [SEVERITY]/[CLEAN] in output) — recording finding (no false-clean)"
     printf '[SEVERITY] critical\n[SCREEN] vision\n[FILE] n/a\n[CATEGORY] crash\n[DESCRIPTION] vision-review did not return an explicit CLEAN verdict (rc=%s, no [SEVERITY]/[CLEAN] lines); the screenshots cannot be trusted as defect-free\n[REPRO] re-run the harness to retry the multimodal vision review\n\n' "$rc" >> "$INPUT"
   fi
@@ -220,12 +249,17 @@ build_input() {
   # Normalize every finding into a canonical 6-field machine-readable block and
   # de-duplicate WITHIN this iteration only (so a recurring defect keeps
   # surfacing across iterations and the stall detector can catch it).
+  # The vision model may emit severity either as a `[SEVERITY] <level>` line or
+  # inline as the block's first line (`[CRITICAL] state_theme`, `[MAJOR] ...`,
+  # `[MINOR] ...`, `[COSMETIC] ...`). Both are accepted and normalized here so
+  # a valid finding can never be dropped into a false-clean.
   awk 'BEGIN { RS="\n\n"; FS="\n" }
   {
     s=sc=fi=ca=de=re="";
     for (i=1;i<=NF;i++) {
       ln=$i; gsub(/\r$/,"",ln); gsub(/^[ \t]+|[ \t]+$/,"",ln);
-      if      (ln ~ /^\[SEVERITY\]/) s=ln;
+      if      (ln ~ /^\[SEVERITY\]/)            { s=ln; }
+      else if (ln ~ /^\[(CRITICAL|MAJOR|MINOR|COSMETIC)\]/) { s=ln; }
       else if (ln ~ /^\[SCREEN\]/)   sc=ln;
       else if (ln ~ /^\[FILE\]/)     fi=ln;
       else if (ln ~ /^\[CATEGORY\]/) ca=ln;
@@ -233,6 +267,13 @@ build_input() {
       else if (ln ~ /^\[REPRO\]/)    re=ln;
     }
     if (s=="") next;
+    # Canonical severity line: if the model opened the block with an inline
+    # [CRITICAL]/[MAJOR]/[MINOR]/[COSMETIC] marker, normalize to [SEVERITY].
+    # (Standard awk has no /i flag; use explicit case-insensitive classes.)
+    if (s ~ /^\[[Cc][Rr][Ii][Tt][Ii][Cc][Aa][Ll]\]/)      s="[SEVERITY] critical";
+    else if (s ~ /^\[[Mm][Aa][Jj][Oo][Rr]\]/)              s="[SEVERITY] major";
+    else if (s ~ /^\[[Mm][Ii][Nn][Oo][Rr]\]/)              s="[SEVERITY] minor";
+    else if (s ~ /^\[[Cc][Oo][Ss][Mm][Ee][Tt][Ii][Cc]\]/) s="[SEVERITY] cosmetic";
     if (sc=="") sc="[SCREEN] n/a";
     if (fi=="") fi="[FILE] n/a";
     if (ca=="") ca="[CATEGORY] other";
