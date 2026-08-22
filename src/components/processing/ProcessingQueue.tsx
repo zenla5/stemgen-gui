@@ -36,8 +36,8 @@ export function ProcessingQueue() {
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Processing Queue</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="min-w-0 truncate text-lg font-semibold">Processing Queue</h2>
         <div className="flex gap-2">
           {hasJobs && (
             <button
@@ -201,8 +201,8 @@ function JobItem({
         <p className="truncate font-medium">
           {job.input_path.split(/[/\\]/).pop() || 'Unknown file'}
         </p>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="text-muted-foreground/70">{job.model}</span>
+        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          <span className="min-w-0 truncate text-muted-foreground/70">{job.model}</span>
           <span className="text-muted-foreground/50">•</span>
           <span className={cn(
             job.status === 'completed' && 'text-green-600',
@@ -254,7 +254,7 @@ function JobItem({
       {job.status === 'processing' && (() => {
         const isCloud = useSettingsStore.getState().activeProvider !== 'local';
         return (
-        <div className="w-24">
+        <div className="w-16 sm:w-24">
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             <div
               className={cn(

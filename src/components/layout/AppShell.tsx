@@ -104,7 +104,7 @@ export function AppShell() {
       
       {/* Processing indicator */}
       {isProcessing && currentJobId && (
-        <div className="fixed bottom-16 right-4 z-40">
+        <div className="fixed top-20 right-4 z-40">
           <ProcessingIndicator />
         </div>
       )}
