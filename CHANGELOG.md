@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.7] — 2026-08-23 — Mobile Layout Fixes
+
+### Fixed
+
+- **[FIX-HEADER-STACKING]** #139 Header now gets an explicit stacking context (`relative z-50`) so the mobile drawer backdrop no longer dims the close button.
+- **[FIX-DRAWER-Z]** #139 Mobile off-canvas drawer + backdrop now start below the header (`top-14`), so nav items are not hidden behind it.
+- **[FIX-TOAST-TIER]** #140 Level the floating processing indicator to its own `z-[60]` tier, above the drawer/header stack.
+- **[FIX-QUEUE-TOAST]** #136 Dropped the floating processing toast on the Queue view (it already renders its own inline batch status), so it can no longer overlap the "Cancel All" bar.
+- **[FIX-QUEUE-TRUNC]** Removed the `truncate` class on the Queue heading so binary E2E text extraction reads the full title.
+- **[FIX-ERR-BANNER-Z]** Raised the sidecar-deploy error banner to `z-[70]` so it stays visible above the processing toast.
+- **[FIX-ERR-ALERT]** #137 Hardened the sidecar-deploy-error banner with `role=alert` + warning icon; fixed the bug-hunt event mock to deliver `{ payload }` so the error state is actually captured and verified.
+
+### Internal
+
+- **Version consistency** — All version strings bumped to `1.4.7`: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+- **[TESTS]** Added AppShell processing-indicator gating coverage; locked in header stacking, drawer z-tier, and banner alert semantics.
+
 ## [1.4.6] — 2026-08-22 — Version Bump
 
 ### Changed
