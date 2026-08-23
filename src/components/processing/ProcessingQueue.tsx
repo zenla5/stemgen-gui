@@ -37,7 +37,7 @@ export function ProcessingQueue() {
   return (
     <div className="flex h-full flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="min-w-0 truncate text-lg font-semibold">Processing Queue</h2>
+        <h2 className="text-lg font-semibold">Processing Queue</h2>
         <div className="flex gap-2">
           {hasJobs && (
             <button

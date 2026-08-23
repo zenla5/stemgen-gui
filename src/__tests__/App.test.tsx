@@ -371,6 +371,7 @@ describe('App', () => {
         const banner = screen.getByTestId('sidecar-error-banner');
         expect(banner).toBeInTheDocument();
         expect(banner).toHaveTextContent('Sidecar script not found');
+        expect(banner).toHaveAttribute('role', 'alert');
       });
     });
 

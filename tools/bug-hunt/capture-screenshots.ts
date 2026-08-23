@@ -128,7 +128,9 @@ const TAURI_MOCK = `
     const ids = listeners.get(event) || new Set();
     for (const id of ids) {
       const c = callbacks.get(id);
-      if (c) { try { c.cb(payload); } catch (e) { console.error('__MOCK_EMIT_ERR__', e); } }
+      // Tauri v2 delivers events to a listen() handler as { payload }, so wrap
+      // the emitted payload accordingly (mirrors App.tsx reading event.payload).
+      if (c) { try { c.cb({ payload }); } catch (e) { console.error('__MOCK_EMIT_ERR__', e); } }
     }
   };
 

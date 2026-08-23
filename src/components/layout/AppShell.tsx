@@ -102,9 +102,9 @@ export function AppShell() {
         </div>
       )}
       
-      {/* Processing indicator */}
-      {isProcessing && currentJobId && (
-        <div className="fixed top-20 right-4 z-40">
+      {/* Processing indicator (queue view shows its own inline batch status) */}
+      {isProcessing && currentJobId && activeView !== 'queue' && (
+        <div className="fixed top-20 right-4 z-[60]">
           <ProcessingIndicator />
         </div>
       )}

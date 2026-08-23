@@ -41,6 +41,14 @@ describe('Header', () => {
     expect(buttons.length).toBeGreaterThanOrEqual(3);
   });
 
+  it('keeps the header above the mobile drawer backdrop', () => {
+    render(<Header />);
+    const header = screen.getByText('Stemgen-GUI').closest('header');
+    expect(header).toBeTruthy();
+    expect(header).toHaveClass('relative');
+    expect(header).toHaveClass('z-50');
+  });
+
   it.each(['light', 'dark', 'system'] as const)(
     'renders without error when theme is %s',
     (theme) => {
