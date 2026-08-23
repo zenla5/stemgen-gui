@@ -80,4 +80,18 @@ describe('Sidebar', () => {
     screen.getByText('nav.library').click();
     expect(useAppStore.getState().activeView).toBe('library');
   });
+
+  it('resolves the mobile drawer below the header and above the backdrop', () => {
+    useAppStore.setState({ mobileSidebarOpen: true });
+    render(<Sidebar collapsed={false} />);
+    // The off-canvas drawer mounts beneath the fixed header (top-14) so nav items
+    // are not hidden behind it, and sits above the backdrop (z-30).
+    const drawerAsides = screen.getAllByRole('complementary');
+    const mobileDrawer = drawerAsides.find((el) => el.className.includes('fixed'));
+    expect(mobileDrawer).toBeTruthy();
+    expect(mobileDrawer).toHaveClass('top-14');
+    expect(mobileDrawer).toHaveClass('z-40');
+    const backdrop = screen.getByTestId('sidebar-backdrop');
+    expect(backdrop).toBeTruthy();
+  });
 });

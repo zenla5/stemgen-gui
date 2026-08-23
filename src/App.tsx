@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import { Toaster } from 'sonner';
 import { useAppStore } from './stores/appStore';
@@ -69,9 +70,11 @@ function App() {
       {sidecarError && (
         <div
           data-testid="sidecar-error-banner"
-          className="fixed top-0 left-0 right-0 z-50 bg-destructive px-4 py-3 text-center text-sm text-destructive-foreground"
+          role="alert"
+          className="fixed top-0 left-0 right-0 z-50 flex items-center gap-2 bg-destructive px-4 py-3 text-center text-sm text-destructive-foreground"
         >
-          {sidecarError}
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>{sidecarError}</span>
         </div>
       )}
       <AppShell />

@@ -33,7 +33,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         <>
           <aside
             aria-label="Sidebar navigation"
-            className="fixed inset-y-0 left-0 z-40 w-56 flex flex-col border-r border-border bg-card transition-transform duration-200"
+            className="fixed top-14 bottom-0 left-0 z-40 w-56 flex flex-col border-r border-border bg-card transition-transform duration-200"
           >
             {renderSidebar(navItems, false, activeView, selectMobileView, t)}
           </aside>
@@ -43,7 +43,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
             data-testid="sidebar-backdrop"
             aria-label="Close navigation menu"
             type="button"
-            className="fixed inset-0 z-30 bg-background/60"
+            className="fixed top-14 bottom-0 left-0 z-30 bg-background/60"
             onClick={closeMobileSidebar}
           />
         </>
