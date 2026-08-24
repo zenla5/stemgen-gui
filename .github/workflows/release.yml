@@ -387,8 +387,14 @@ jobs:
           VERSION="${{ steps.appimage.outputs.version }}"
           APPIMAGE="${{ github.workspace }}/${{ steps.appimage.outputs.path }}"
           echo "=== Building NixOS package (version $VERSION) ==="
+          # The AppImage artifact name may contain spaces ("Stemgen GUI_..."),
+          # which would break an unquoted path in the Nix expression. Copy it
+          # to a space-free staging path first, then pass it unquoted so Nix
+          # realizes the file into the store (importate it).
+          SRC_IMAGE="/tmp/stemgen-gui.AppImage"
+          cp -f "$APPIMAGE" "$SRC_IMAGE"
           nix build --impure \
-            --expr "with import <nixpkgs> { }; import \"$GITHUB_WORKSPACE/pkgs/stemgen-gui\" { inherit pkgs; version = \"$VERSION\"; src = $APPIMAGE; }" \
+            --expr "with import <nixpkgs> { }; import \"$GITHUB_WORKSPACE/pkgs/stemgen-gui\" { inherit pkgs; version = \"$VERSION\"; src = $SRC_IMAGE; }" \
             --print-out-paths -o /tmp/stemgen-gui-result
           echo ""
           echo "=== Built result ==="
