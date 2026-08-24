@@ -507,7 +507,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           mkdir -p artifacts
-          MANIFEST="{\"name\":\"Stemgen GUI\",\"version\":\"$VERSION\",\"notes\":\"Stemgen GUI v$VERSION\",\"date\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"apple\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_aarch64.dmg\",\"isDarkModeSupported\":true},\"windows\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_x64-setup.exe\",\"isDarkModeSupported\":true},\"linux\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_amd64.AppImage\"}}"
+          MANIFEST="{\"name\":\"Stemgen GUI\",\"version\":\"$VERSION\",\"notes\":\"Stemgen GUI v$VERSION\",\"date\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"apple\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen-GUI_${VERSION}_aarch64.dmg\",\"isDarkModeSupported\":true},\"windows\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen.GUI_${VERSION}_x64-setup.exe\",\"isDarkModeSupported\":true},\"linux\":{\"url\":\"https://github.com/zenla5/stemgen-gui/releases/download/v$VERSION/Stemgen.GUI_${VERSION}_amd64.AppImage\"}}"
           echo "$MANIFEST" > artifacts/latest.json
           echo "Latest manifest:"
           cat artifacts/latest.json

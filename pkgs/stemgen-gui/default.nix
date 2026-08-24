@@ -38,7 +38,7 @@ let
       src
     else
       pkgs.fetchurl {
-        url = "https://github.com/zenla5/stemgen-gui/releases/download/v${version}/Stemgen-GUI_${version}_amd64.AppImage";
+        url = "https://github.com/zenla5/stemgen-gui/releases/download/v${version}/Stemgen.GUI_${version}_amd64.AppImage";
         sha256 = amd64Hash;
       };
 in
