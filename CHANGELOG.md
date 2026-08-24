@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] — 2026-08-24 — NixOS Packaging
+
+### Added
+
+- **NixOS package support** — The "Release Build" CI workflow now produces a native NixOS derivation and installable launcher. A new `build-nixos` job natively `nix build`s the package from the release AppImage and attaches a rendered `stemgen-gui.nix` (pinned to the release version and SHA-256) plus the built `stemgen-gui` launcher to every release. NixOS users install with `programs.appimage.enable` + `environment.systemPackages`, documented in the README.
+- **[PKG]** `pkgs/stemgen-gui/default.nix` — fetchurl-based derivation wrapping the release AppImage (the AppImage bundles the Python sidecar). Supports building from a local `src` override for pre-release CI.
+- **[TOOL]** `scripts/render-nix.mjs` — computes the AppImage SHA-256 (nix SRI format) and injects the release version + hash into `default.nix` during CI, so the shipped package is reproducible.
+
+### Fixed
+
+- **[NIX-URL]** Corrected the AppImage filename in the Nix derivation URL from `Stemgen-GUI_…_amd64.AppImage` to the actual release asset `Stemgen.GUI_…_amd64.AppImage` (dot), so `fetchurl` resolves on install.
+- **[UPDATER-URL]** Corrected the `latest.json` updater manifest Linux/Windows asset URLs (`Stemgen-GUI…` → `Stemgen.GUI…`), so Tauri auto-update resolves the correct release assets for existing users.
+
+### Internal
+
+- **Version consistency** — All version strings bumped to `1.5.0`: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+
 ## [1.4.7] — 2026-08-23 — Mobile Layout Fixes
 
 ### Fixed
