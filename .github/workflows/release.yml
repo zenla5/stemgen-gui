@@ -339,11 +339,88 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-nixos:
+    name: Build NixOS package (derivation)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    needs: [build-linux]
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Download Linux AppImage artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-packages
+          path: artifacts-linux
+      - name: Locate AppImage and derive version
+        id: appimage
+        run: |
+          set -euo pipefail
+          APPIMAGE=$(find artifacts-linux -name "*.AppImage" | head -1)
+          if [ -z "$APPIMAGE" ]; then
+            echo "ERROR: No AppImage found in linux-packages artifact"
+            find artifacts-linux -type f | head -20
+            exit 1
+          fi
+          echo "AppImage: $APPIMAGE"
+          echo "path=$APPIMAGE" >> "$GITHUB_OUTPUT"
+          VERSION=$(echo "$(basename "$APPIMAGE")" | sed -E 's/.*_([0-9]+\.[0-9]+\.[0-9]+)_.*/\1/')
+          echo "Derived version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Inject version and SHA-256 into Nix derivation
+        run: |
+          node scripts/render-nix.mjs "${{ steps.appimage.outputs.version }}" "${{ steps.appimage.outputs.path }}"
+          echo "=== Rendered default.nix ==="
+          cat pkgs/stemgen-gui/default.nix
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v30
+        with:
+          nix_path: "nixpkgs=channel:nixos-unstable"
+      - name: Build NixOS package from AppImage
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.appimage.outputs.version }}"
+          APPIMAGE="${{ github.workspace }}/${{ steps.appimage.outputs.path }}"
+          echo "=== Building NixOS package (version $VERSION) ==="
+          nix build --impure \
+            --expr "with import <nixpkgs> { }; import \"$GITHUB_WORKSPACE/pkgs/stemgen-gui\" { inherit pkgs; version = \"$VERSION\"; src = $APPIMAGE; }" \
+            --print-out-paths -o /tmp/stemgen-gui-result
+          echo ""
+          echo "=== Built result ==="
+          find /tmp/stemgen-gui-result -maxdepth 3 -ls
+          echo ""
+          echo "=== Launcher check ==="
+          /tmp/stemgen-gui-result/bin/stemgen-gui --help 2>&1 | head -5 || true
+          test -x /tmp/stemgen-gui-result/bin/stemgen-gui && echo "PASS: bin/stemgen-gui is executable"
+          test -f /tmp/stemgen-gui-result/libexec/Stemgen-GUI.AppImage && echo "PASS: AppImage bundled"
+      - name: Stage NixOS release artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p nixos-dist
+          cp -L /tmp/stemgen-gui-result/bin/stemgen-gui nixos-dist/stemgen-gui
+          cp pkgs/stemgen-gui/default.nix nixos-dist/stemgen-gui.nix
+          echo "=== Staged files ==="
+          ls -lhR nixos-dist
+      - name: Upload NixOS artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nixos-package
+          path: |
+            nixos-dist/stemgen-gui
+            nixos-dist/stemgen-gui.nix
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Create Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos, build-linux, build-nixos]
     permissions:
       contents: write
     steps:
@@ -466,6 +543,8 @@ jobs:
             artifacts/**/*.AppImage
             artifacts/**/*.deb
             artifacts/**/*.rpm
+            artifacts/**/*.nix
+            artifacts/**/stemgen-gui
             artifacts/**/*.zip
             artifacts/**/SHA256SUMS.txt
             artifacts/**/latest.json
@@ -477,7 +556,7 @@ jobs:
     name: Notify on Failure
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [build-windows, build-macos, build-linux, release]
+    needs: [build-windows, build-macos, build-linux, build-nixos, release]
     if: failure()
     steps:
       - name: Send Telegram notification

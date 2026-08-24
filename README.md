@@ -114,9 +114,34 @@ Audio File (MP3/FLAC/WAV/OGG)
 
 ### Latest Release
 
-All installers are available from the **[latest GitHub release page](https://github.com/zenla5/stemgen-gui/releases/latest)**. Each release page includes installers for **Windows** (`.exe` / `.msi`), **macOS** (`.dmg`), and **Linux** (`.AppImage` / `.deb` / `.rpm`).
+All installers are available from the **[latest GitHub release page](https://github.com/zenla5/stemgen-gui/releases/latest)**. Each release page includes installers for **Windows** (`.exe` / `.msi`), **macOS** (`.dmg`), **Linux** (`.AppImage` / `.deb` / `.rpm`), and a **NixOS package** (`stemgen-gui.nix` + launcher).
 
 📦 **All releases:** [github.com/zenla5/stemgen-gui/releases](https://github.com/zenla5/stemgen-gui/releases)
+
+### NixOS
+
+Stemgen GUI for NixOS is shipped as a Nix package (derivation) that wraps the release AppImage (which bundles the Python sidecar). Each release attaches a rendered `stemgen-gui.nix` alongside a `stemgen-gui` launcher.
+
+Enable AppImage support and add the package to your system:
+
+```nix
+{ config, pkgs, ... }:
+{
+  programs.appimage.enable = true;
+
+  environment.systemPackages = [
+    (import ./stemgen-gui.nix { inherit pkgs; })
+  ];
+}
+```
+
+Download `stemgen-gui.nix` from the release page into the same directory as your `configuration.nix` (or wherever you reference it from), then rebuild:
+
+```bash
+sudo nixos-rebuild switch
+```
+
+The derivation is pinned to the exact release version and SHA-256, so installation is reproducible. You can also review the file (or `nix flake show` / `nix eval --file stemgen-gui.nix`) before installing. The attached `stemgen-gui` binary is the built NixOS launcher.
 
 ### Verifying Downloads
 
