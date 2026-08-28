@@ -58,6 +58,9 @@ impl NoWindow for tokio::process::Command {
 /// mode (the legacy `PYTHONUTF8=1` behavior) in one step.
 ///
 /// Usage: `Command::new(python).python_env().arg("--version")`
+///
+/// It is safe to call on any `Command`: non-Python programs ignore these
+/// variables, so `python_env()` is effectively a no-op for them.
 pub trait PythonEnv {
     fn python_env(&mut self) -> &mut Self;
 }
@@ -550,13 +553,15 @@ mod tests {
         let output = Command::new(if cfg!(windows) { "cmd" } else { "sh" })
             .python_env()
             .args(python_env_marker_args())
-            .output()
-            .expect("env marker command failed to run");
+            .output();
 
-        // Clean up the pollution we injected (also covers any panic path).
+        // Clean up the pollution we injected before unwrapping, so a spawn
+        // failure (which panics) cannot leak the vars to other tests.
         for name in ["PYTHONHOME", "PYTHONPATH", "PYTHONUTF8"] {
             std::env::remove_var(name);
         }
+
+        let output = output.expect("env marker command failed to run");
 
         assert!(output.status.success());
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -586,12 +591,15 @@ mod tests {
             .python_env()
             .args(python_env_marker_args())
             .output()
-            .await
-            .expect("env marker command failed to run");
+            .await;
 
+        // Clean up the pollution we injected before unwrapping, so a spawn
+        // failure (which panics) cannot leak the vars to other tests.
         for name in ["PYTHONHOME", "PYTHONPATH", "PYTHONUTF8"] {
             std::env::remove_var(name);
         }
+
+        let output = output.expect("env marker command failed to run");
 
         assert!(output.status.success());
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
