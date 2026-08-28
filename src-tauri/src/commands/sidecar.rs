@@ -12,7 +12,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use super::probe::{is_windows_store_stub, NoWindow};
+use super::probe::{is_windows_store_stub, NoWindow, PythonEnv};
 
 /// Represents a running separation process
 pub struct SeparationProcess {
@@ -86,7 +86,7 @@ impl SidecarManager {
                 // Verify it's working
                 let output = Command::new(&path)
                     .args(["--version"])
-                    .env("PYTHONUTF8", "1")
+                    .python_env()
                     .output()
                     .await
                     .context("Failed to check Python version")?;
@@ -181,7 +181,7 @@ impl SidecarManager {
         }
 
         let mut child = cmd
-            .env("PYTHONUTF8", "1")
+            .python_env()
             .no_window()
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

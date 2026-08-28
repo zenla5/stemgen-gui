@@ -300,7 +300,7 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
 
 /// Download a model via the Python sidecar (for multi-file model bags)
 async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<(), String> {
-    use super::probe::{find_python, get_data_dir, NoWindow};
+    use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
 
     let python = find_python().ok_or("Python not found — cannot download model via sidecar")?;
     let sidecar = get_data_dir().join("stemgen_sidecar.py");
@@ -328,6 +328,7 @@ async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<
 
     let output = tokio::process::Command::new(&python)
         .args([sidecar.to_str().unwrap(), "--download-model", &model_id])
+        .python_env()
         .no_window()
         .output()
         .await
@@ -405,7 +406,7 @@ pub fn cancel_download(model_id: String) -> Result<(), String> {
 /// JSON response to determine availability.
 #[tauri::command]
 pub async fn check_model_downloaded(model_id: String, _app: AppHandle) -> Result<bool, String> {
-    use super::probe::{find_python, get_data_dir, NoWindow};
+    use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
 
     let python = find_python().ok_or("Python not found — cannot check model availability")?;
     let sidecar = get_data_dir().join("stemgen_sidecar.py");
@@ -420,6 +421,7 @@ pub async fn check_model_downloaded(model_id: String, _app: AppHandle) -> Result
         std::time::Duration::from_secs(10),
         tokio::process::Command::new(&python)
             .args([sidecar.to_str().unwrap(), "--check-model", &model_id])
+            .python_env()
             .no_window()
             .output(),
     )
@@ -443,7 +445,7 @@ pub async fn check_model_downloaded(model_id: String, _app: AppHandle) -> Result
 /// `"available": true`.
 #[tauri::command]
 pub async fn list_downloaded_models(_app: AppHandle) -> Result<Vec<String>, String> {
-    use super::probe::{find_python, get_data_dir, NoWindow};
+    use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
 
     let python = find_python().ok_or("Python not found — cannot list downloaded models")?;
     let sidecar = get_data_dir().join("stemgen_sidecar.py");
@@ -458,6 +460,7 @@ pub async fn list_downloaded_models(_app: AppHandle) -> Result<Vec<String>, Stri
         std::time::Duration::from_secs(10),
         tokio::process::Command::new(&python)
             .args([sidecar.to_str().unwrap(), "--list-models"])
+            .python_env()
             .no_window()
             .output(),
     )
