@@ -59,35 +59,28 @@ export function FirstRunWizard({ onComplete, onSkip }: FirstRunWizardProps) {
             </div>
           )}
 
-          {/* Step: Check — DependencyCheckPanel handles the full lifecycle */}
-          {step === 'check' && (
+          {/* Step: Check / Results — keep a single panel mounted across the
+              step transition so the computed dependency statuses are not lost. */}
+          {(step === 'check' || step === 'results') && (
             <div className="space-y-4">
-              <h2 className="font-semibold text-slate-800 dark:text-slate-200">Checking dependencies...</h2>
+              <h2 className="font-semibold text-slate-800 dark:text-slate-200">
+                {step === 'check' ? 'Checking dependencies...' : 'Dependency Check Complete'}
+              </h2>
               <DependencyCheckPanel
                 autoCheckOnMount
                 showCheckButton={false}
                 onCheckComplete={() => setStep('results')}
               />
-            </div>
-          )}
-
-          {/* Step: Results — panel has already completed its check */}
-          {step === 'results' && (
-            <div className="space-y-4">
-              <h2 className="font-semibold text-slate-800 dark:text-slate-200">Dependency Check Complete</h2>
-              <DependencyCheckPanel
-                autoCheckOnMount={false}
-                showCheckButton={false}
-                onAllDependenciesOk={onComplete}
-              />
-              <div className="flex gap-3 pt-2">
-                <Button data-testid="wizard-complete" onClick={onComplete} className="flex-1">
-                  Continue
-                </Button>
-                <Button variant="outline" onClick={onSkip}>
-                  Skip Setup
-                </Button>
-              </div>
+              {step === 'results' && (
+                <div className="flex gap-3 pt-2">
+                  <Button data-testid="wizard-complete" onClick={onComplete} className="flex-1">
+                    Continue
+                  </Button>
+                  <Button variant="outline" onClick={onSkip}>
+                    Skip Setup
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

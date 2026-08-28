@@ -236,6 +236,52 @@ describe('FirstRunWizard — results step', () => {
     }, { timeout: 5000 });
   });
 
+  it('shows dependency results (not pending) after the scan completes', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'validate_environment') {
+        return {
+          ffmpeg: { missing: 'FFmpeg not found' },
+          python: 'available',
+          pythonVersion: '3.12.0',
+          pytorch: 'available',
+          pytorchVersion: '2.1.0',
+          demucs: 'available',
+          cuda: { unavailable: 'CUDA not available' },
+        };
+      }
+      return null;
+    });
+
+    render(<FirstRunWizard />);
+
+    // Click Start Check
+    fireEvent.click(screen.getByRole('button', { name: /start check/i }));
+
+    // Wait for the results step (Continue button visible)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    // Each dependency row must show its computed status, not a pending/grey placeholder
+    const statusByKey: Record<string, HTMLElement> = {};
+    screen.getAllByTestId('wizard-dep-status').forEach(el => {
+      const row = el.closest('[data-dep-key]');
+      const key = row?.getAttribute('data-dep-key');
+      if (key) statusByKey[key] = el;
+    });
+
+    expect(statusByKey.ffmpeg).toHaveTextContent('FFmpeg not found');
+    expect(statusByKey.python).toHaveTextContent('v3.12.0');
+    expect(statusByKey.pytorch).toHaveTextContent('v2.1.0');
+    expect(statusByKey.demucs).toHaveTextContent('Ready');
+    expect(statusByKey.cuda).toHaveTextContent('CUDA not available');
+
+    // No row should be pending (grey/empty status)
+    Object.values(statusByKey).forEach(el => {
+      expect(el.textContent).not.toBe('');
+    });
+  });
+
   it('Continue button calls onComplete in results step', async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'validate_environment') {
