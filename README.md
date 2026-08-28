@@ -143,6 +143,16 @@ sudo nixos-rebuild switch
 
 The derivation is pinned to the exact release version and SHA-256, so installation is reproducible. You can also review the file (or `nix flake show` / `nix eval --file stemgen-gui.nix`) before installing. The attached `stemgen-gui` binary is the built NixOS launcher.
 
+#### Blank window / EGL_BAD_PARAMETER on Wayland?
+
+The AppImage ships an older `libwayland-client.so.0` in `usr/lib`, which can shadow
+the host Mesa stack and make WebKitGTK's WebProcess abort with
+`Could not create default EGL display: EGL_BAD_PARAMETER`, leaving a blank/white
+window. The `stemgen-gui` launcher already applies the fix (it preloads the host
+`libwayland-client.so.0` and points libEGL at the host Mesa vendor). If you run the
+raw `.AppImage` directly instead of the launcher, set the same environment — full
+recipe and root-cause analysis in [`docs/NIXOS_WEBVIEW_EGL_BLANK_FIX.md`](docs/NIXOS_WEBVIEW_EGL_BLANK_FIX.md).
+
 ### Verifying Downloads
 
 Every release includes a `SHA256SUMS.txt` file listing the SHA-256 hash of each binary. Always verify your download:
