@@ -41,12 +41,30 @@ let
         url = "https://github.com/zenla5/stemgen-gui/releases/download/v${version}/Stemgen.GUI_${version}_amd64.AppImage";
         sha256 = amd64Hash;
       };
+  libglvnd = pkgs.libglvnd;
+  mesa = pkgs.mesa;
+  wayland = pkgs.wayland;
+  # Host graphics stack. The AppImage bundles an old libwayland-client.so.0 in
+  # usr/lib, which its AppRun prepends to LD_LIBRARY_PATH, shadowing host Mesa.
+  # WebKit's EGL Wayland platform then fails with EGL_BAD_PARAMETER, the WebKit
+  # WebProcess aborts and the window renders blank. Forcing the host
+  # libwayland-client (via LD_PRELOAD) plus host glvnd/Mesa (via path + vendor
+  # ICD + DRI drivers) restores rendering.
+  eglEnv = ''
+    export LD_LIBRARY_PATH="${libglvnd}/lib:${mesa}/lib:${wayland}/lib:/run/opengl-driver/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export LD_PRELOAD="${wayland}/lib/libwayland-client.so.0"
+    export EGL_VENDOR_LIBRARY_FILES="${mesa}/share/glvnd/egl_vendor.d/50_mesa.json"
+    export LIBGL_DRIVERS_PATH="${mesa}/lib/dri"
+    unset WEBKIT_DISABLE_COMPOSITING_MODE
+    export WEBKIT_DISABLE_DMABUF_RENDERER=1
+  '';
 in
 pkgs.runCommand "stemgen-gui-${version}" { } ''
   mkdir -p $out/bin $out/libexec
   install -Dm755 ${appImage} $out/libexec/Stemgen-GUI.AppImage
   cat > $out/bin/stemgen-gui <<EOF
   #!/usr/bin/env bash
+  ${eglEnv}
   exec ${pkgs.appimage-run}/bin/appimage-run $out/libexec/Stemgen-GUI.AppImage "\$@"
   EOF
   chmod +x $out/bin/stemgen-gui

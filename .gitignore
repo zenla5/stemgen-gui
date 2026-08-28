@@ -37,6 +37,9 @@ src-tauri/resources/stemgen_sidecar.py
 **/*.rs.bk
 Cargo.lock
 
+# Python virtual environments (device-specific)
+.venv/
+
 # Test coverage
 coverage/
 *.lcov
