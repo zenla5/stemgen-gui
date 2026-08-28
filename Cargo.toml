@@ -43,7 +43,7 @@ audioadapter-buffers = "2"
 mp4 = "0.14"
 
 # Media metadata
-lofty = "0.18"
+lofty = "0.25"
 
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
