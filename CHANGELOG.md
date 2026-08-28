@@ -2,11 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.5.1] — 2026-08-28 — NixOS WebView EGL Fix
 
 ### Fixed
 
 - **[NIX-EGL]** Blank/white window on NixOS + Wayland. The AppImage bundles an old `libwayland-client.so.0` that shadows host Mesa; WebKit's EGL Wayland platform then fails with `EGL_BAD_PARAMETER`, the WebKit WebProcess aborts, and the window never paints. The `pkgs/stemgen-gui` derivation now bakes the host GL stack into its generated launcher (host `libwayland-client.so.0` via `LD_PRELOAD`, plus glvnd/Mesa `LD_LIBRARY_PATH`, `EGL_VENDOR_LIBRARY_FILES`, `LIBGL_DRIVERS_PATH`), fixing installs out of the box. Root-cause analysis and raw-AppImage recipe in `docs/NIXOS_WEBVIEW_EGL_BLANK_FIX.md`.
+
+### Changed
+
+- **Version consistency** — All version strings bumped to 1.5.1: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
 
 ## [1.5.0] — 2026-08-24 — NixOS Packaging
 
