@@ -44,6 +44,40 @@ impl NoWindow for tokio::process::Command {
     }
 }
 
+/// Prepare a `Command`'s environment for running a Python interpreter.
+///
+/// GUI-launched processes can inherit a polluted Python environment: the
+/// AppImage runtime extracts to `~/.cache/.../usr/` and exports `PYTHONHOME`
+/// and `PYTHONPATH` pointing into its own payload. A child interpreter then
+/// resolves its stdlib from that dir instead of its own prefix and dies during
+/// startup with `Fatal Python error: Failed to import encodings module`
+/// (`sys.prefix` == AppImage `usr/` while `sys.executable` is the real one).
+///
+/// This helper strips those two variables from the child environment so the
+/// interpreter bootstraps from its own `pyvenv.cfg`/prefix, and forces UTF-8
+/// mode (the legacy `PYTHONUTF8=1` behavior) in one step.
+///
+/// Usage: `Command::new(python).python_env().arg("--version")`
+pub trait PythonEnv {
+    fn python_env(&mut self) -> &mut Self;
+}
+
+impl PythonEnv for std::process::Command {
+    fn python_env(&mut self) -> &mut Self {
+        self.env("PYTHONUTF8", "1")
+            .env_remove("PYTHONHOME")
+            .env_remove("PYTHONPATH")
+    }
+}
+
+impl PythonEnv for tokio::process::Command {
+    fn python_env(&mut self) -> &mut Self {
+        self.env("PYTHONUTF8", "1")
+            .env_remove("PYTHONHOME")
+            .env_remove("PYTHONPATH")
+    }
+}
+
 /// Decode process output bytes, trying strict UTF-8 first, falling back to lossy.
 fn decode_output(bytes: &[u8]) -> String {
     String::from_utf8(bytes.to_vec())
@@ -170,7 +204,7 @@ pub fn probe_python_version(python: &Path) -> Option<String> {
     run_command_with_timeout(
         Command::new(python)
             .arg("--version")
-            .env("PYTHONUTF8", "1")
+            .python_env()
             .no_window(),
         PROBE_TIMEOUT_SECS,
     )
@@ -194,7 +228,7 @@ pub fn probe_python_import(python: &Path, import_statement: &str) -> bool {
     run_command_with_timeout(
         Command::new(python)
             .args(["-c", import_statement])
-            .env("PYTHONUTF8", "1")
+            .python_env()
             .no_window(),
         PROBE_TIMEOUT_SECS,
     )
@@ -209,7 +243,7 @@ pub fn probe_python_package_version(python: &Path, module: &str) -> Option<Strin
     run_command_with_timeout(
         Command::new(python)
             .args(["-c", &code])
-            .env("PYTHONUTF8", "1")
+            .python_env()
             .no_window(),
         PROBE_TIMEOUT_SECS,
     )
@@ -237,7 +271,7 @@ pub fn probe_torch_cuda(python: &Path) -> bool {
                 "-c",
                 "import torch; print('yes' if torch.cuda.is_available() else 'no')",
             ])
-            .env("PYTHONUTF8", "1")
+            .python_env()
             .no_window(),
         PROBE_TIMEOUT_SECS,
     )
@@ -268,7 +302,7 @@ pub fn probe_torch_device(python: &Path) -> Option<String> {
     run_command_with_timeout(
         Command::new(python)
             .args(["-c", "import torch; print('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')"])
-            .env("PYTHONUTF8", "1")
+            .python_env()
             .no_window(),
         PROBE_TIMEOUT_SECS,
     )
@@ -471,6 +505,102 @@ mod tests {
         let _ = probe_binary_version("echo", "");
         let elapsed = start.elapsed();
         assert!(elapsed.as_secs() < 5, "probe took too long: {elapsed:?}");
+    }
+
+    /// Args for a command that prints `PYTHONHOME`, `PYTHONPATH`, `PYTHONUTF8`
+    /// as `<NAME>=SET`/`<NAME>=UNSET` (in that order). Uses `if defined` (CMD)
+    /// / `${VAR+x}` (sh) so an unset and a set-empty variable are both reported
+    /// unambiguously.
+    fn python_env_marker_args() -> Vec<String> {
+        let script = if cfg!(windows) {
+            "if defined PYTHONHOME (echo PYTHONHOME=SET) else (echo PYTHONHOME=UNSET) & \
+             if defined PYTHONPATH (echo PYTHONPATH=SET) else (echo PYTHONPATH=UNSET) & \
+             if defined PYTHONUTF8 (echo PYTHONUTF8=SET) else (echo PYTHONUTF8=UNSET)"
+        } else {
+            "if [ -n \"${PYTHONHOME+x}\" ]; then echo PYTHONHOME=SET; else echo PYTHONHOME=UNSET; fi; \
+             if [ -n \"${PYTHONPATH+x}\" ]; then echo PYTHONPATH=SET; else echo PYTHONPATH=UNSET; fi; \
+             if [ -n \"${PYTHONUTF8+x}\" ]; then echo PYTHONUTF8=SET; else echo PYTHONUTF8=UNSET; fi"
+        }
+        .to_string();
+
+        if cfg!(windows) {
+            vec!["/C".to_string(), script]
+        } else {
+            vec!["-c".to_string(), script]
+        }
+    }
+
+    /// Check that `python_env()` strips `PYTHONHOME`/`PYTHONPATH` from the
+    /// child environment and forces `PYTHONUTF8=1`, even when the parent
+    /// process has all three polluted. Guards the AppImage crash
+    /// (`Failed to import encodings module`) regression: the runtime exports
+    /// `PYTHONHOME`/`PYTHONPATH` pointing into its own payload, which breaks
+    /// every spawned interpreter unless the child strips them.
+    #[test]
+    fn test_python_env_strips_appimage_pollution() {
+        // Simulate the AppImage runtime polluting the parent environment.
+        for (name, value) in [
+            ("PYTHONHOME", "/tmp/fake-appimage/pythonhome"),
+            ("PYTHONPATH", "/tmp/fake-appimage/pyshared:"),
+            ("PYTHONUTF8", "0"),
+        ] {
+            std::env::set_var(name, value);
+        }
+
+        let output = Command::new(if cfg!(windows) { "cmd" } else { "sh" })
+            .python_env()
+            .args(python_env_marker_args())
+            .output()
+            .expect("env marker command failed to run");
+
+        // Clean up the pollution we injected (also covers any panic path).
+        for name in ["PYTHONHOME", "PYTHONPATH", "PYTHONUTF8"] {
+            std::env::remove_var(name);
+        }
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let markings: Vec<&str> = stdout.lines().map(|l| l.trim()).collect();
+        assert_eq!(
+            markings,
+            ["PYTHONHOME=UNSET", "PYTHONPATH=UNSET", "PYTHONUTF8=SET"],
+            "python_env() must strip PYTHONHOME/PYTHONPATH and force PYTHONUTF8=1; got: {stdout:?}"
+        );
+    }
+
+    /// tokio variant of `test_python_env_strips_appimage_pollution` — guards
+    /// the `tokio::process::Command` impl used by model downloads and
+    /// dependency installs.
+    #[tokio::test]
+    async fn test_python_env_tokio_strips_appimage_pollution() {
+        for (name, value) in [
+            ("PYTHONHOME", "/tmp/fake-appimage/pythonhome"),
+            ("PYTHONPATH", "/tmp/fake-appimage/pyshared:"),
+            ("PYTHONUTF8", "0"),
+        ] {
+            std::env::set_var(name, value);
+        }
+
+        let program = if cfg!(windows) { "cmd" } else { "sh" };
+        let output = tokio::process::Command::new(program)
+            .python_env()
+            .args(python_env_marker_args())
+            .output()
+            .await
+            .expect("env marker command failed to run");
+
+        for name in ["PYTHONHOME", "PYTHONPATH", "PYTHONUTF8"] {
+            std::env::remove_var(name);
+        }
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let markings: Vec<&str> = stdout.lines().map(|l| l.trim()).collect();
+        assert_eq!(
+            markings,
+            ["PYTHONHOME=UNSET", "PYTHONPATH=UNSET", "PYTHONUTF8=SET"],
+            "python_env() must strip PYTHONHOME/PYTHONPATH and force PYTHONUTF8=1; got: {stdout:?}"
+        );
     }
 
     #[test]

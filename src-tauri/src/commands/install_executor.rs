@@ -6,7 +6,7 @@
 use super::install_manifest::{
     command_display, current_platform, get_manifest, AvailableInstaller, PackageManager,
 };
-use super::probe::NoWindow;
+use super::probe::{NoWindow, PythonEnv};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::process::Stdio;
@@ -100,6 +100,7 @@ pub async fn get_available_installers(dep_name: String) -> Result<Vec<AvailableI
         let detected = which_found
             || Command::new(&pm.detect_command)
                 .args(&pm.detect_args)
+                .python_env()
                 .no_window()
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -202,6 +203,7 @@ pub async fn install_dependency(
     // Spawn the install process
     let mut child = Command::new(&cmd)
         .args(&args)
+        .python_env()
         .no_window()
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -396,6 +398,7 @@ pub async fn cancel_install(install_id: String) -> Result<(), String> {
 async fn is_dependency_installed(detect_command: &str, detect_args: &[String]) -> bool {
     Command::new(detect_command)
         .args(detect_args)
+        .python_env()
         .no_window()
         .stdout(Stdio::null())
         .stderr(Stdio::null())

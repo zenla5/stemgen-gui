@@ -398,7 +398,15 @@ pub async fn validate_environment(app: tauri::AppHandle) -> Result<EnvironmentVa
                     }
                     validation.python_version = Some(version);
                 } else {
-                    validation.python = Some(PackageStatus::Available);
+                    // The interpreter was found but crashed or produced no
+                    // output (e.g. an inherited PYTHONHOME/PYTHONPATH pointing
+                    // at an AppImage payload — "Failed to import encodings
+                    // module"). Do NOT mark it Available: that silently masked
+                    // a broken Python as green.
+                    validation.python = Some(PackageStatus::Warning(format!(
+                        "Python found at {} but failed to report a version — it may be misconfigured or broken",
+                        path.display()
+                    )));
                 }
             }
             None => {
