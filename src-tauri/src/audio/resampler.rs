@@ -5,7 +5,7 @@
 //! Uses rubato v1.0.1 Fft synchronous resampler.
 
 use anyhow::Result;
-use audioadapter::{Adapter, AdapterMut};
+use audioadapter::Adapter;
 use audioadapter_buffers::owned::InterleavedOwned;
 use rubato::{Fft, FixedSync, Resampler};
 use tracing::debug;
@@ -33,8 +33,9 @@ impl AudioResampler {
 
     /// Resample audio to target sample rate
     ///
-    /// Uses rubato v1 Fft synchronous resampler with FixedSync::Input mode.
-    /// The process method handles the full resampling with InterleavedOwned buffers.
+    /// Uses rubato v5 Fft synchronous resampler with FixedSync::Both mode.
+    /// The whole clip is resampled with process_all, which trims the
+    /// resampler's startup delay and returns an exactly-sized buffer.
     pub fn resample(&mut self, samples: &SampleData) -> Result<SampleData> {
         let input_sample_rate = samples.sample_rate as f64;
         let output_sample_rate = self.target_sample_rate as f64;
@@ -48,50 +49,33 @@ impl AudioResampler {
         let num_channels = samples.channels as usize;
         let num_frames = samples.samples.len() / num_channels;
 
-        // rubato v1 Fft::new signature:
-        // new(sample_rate_input, sample_rate_output, chunk_size, sub_chunks, nbr_channels, fixed)
-        // Use FixedSync::Input - fixed input chunk, variable output
+        // rubato v5 Fft::new signature:
+        // new(sample_rate_input, sample_rate_output, chunk_size, nbr_channels, fixed)
+        // Use FixedSync::Both - both chunk sizes are fixed to the resampling ratio.
         let chunk_size = 8192.min(num_frames.max(1));
         let mut resampler = Fft::new(
             input_sample_rate as usize,
             output_sample_rate as usize,
             chunk_size,
-            1, // sub_chunks
             num_channels,
-            FixedSync::Input,
+            FixedSync::Both,
         )?;
 
-        // Create input InterleavedOwned buffer from flat samples
-        let mut input_buf = InterleavedOwned::<f32>::new(0.0f32, num_channels, num_frames);
+        // Wrap the flat interleaved samples in an InterleavedOwned adapter.
+        // The samples are already stored in interleaved form
+        // [ch0_s0, ch1_s0, ch0_s1, ch1_s1, ...], matching InterleavedOwned.
+        let input_buf =
+            InterleavedOwned::<f32>::new_from(samples.samples.clone(), num_channels, num_frames)
+                .map_err(|e| anyhow::anyhow!("failed to build input buffer: {e}"))?;
 
-        // Copy samples into the interleaved buffer
-        // InterleavedOwned stores samples as [ch0_s0, ch1_s0, ch0_s1, ch1_s1, ...]
-        for frame in 0..num_frames {
-            for ch in 0..num_channels {
-                let idx = frame * num_channels + ch;
-                if idx < samples.samples.len() {
-                    // InterleavedOwned uses interleaved layout
-                    let _ = input_buf.write_sample(ch, frame, &samples.samples[idx]);
-                }
-            }
-        }
+        // Resample the whole clip. process_all resets the resampler, trims the
+        // startup delay, and returns an InterleavedOwned holding exactly the
+        // resampled frames (no leading silence, no trailing padding).
+        let output_buf = resampler.process_all(&input_buf, num_frames, None)?;
 
-        // Process all audio
-        let output_buf = resampler.process(&input_buf, 0, None)?;
-
-        // Get output dimensions
         let output_frames = output_buf.frames();
         let output_chans = output_buf.channels();
-
-        // Read resampled samples back into flat Vec<f32>
-        let mut interleaved = Vec::with_capacity(output_frames * output_chans);
-        for frame in 0..output_frames {
-            for ch in 0..output_chans {
-                if let Some(sample) = output_buf.read_sample(ch, frame) {
-                    interleaved.push(sample);
-                }
-            }
-        }
+        let interleaved = output_buf.take_data();
 
         debug!(
             "Resampling complete: {} Hz -> {} Hz ({} frames -> {} frames)",
