@@ -58,7 +58,7 @@
     "lucide-react": "^0.460.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-dropzone": "^14.2.10",
+    "react-dropzone": "^20.1.1",
     "react-hook-form": "^7.53.2",
     "react-i18next": "^17.0.11",
     "recharts": "^2.14.1",
