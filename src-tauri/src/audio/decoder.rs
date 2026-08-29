@@ -4,12 +4,13 @@
 
 use anyhow::{Context, Result};
 use std::path::Path;
-use symphonia::core::audio::{AudioBufferRef, Signal};
-use symphonia::core::codecs::DecoderOptions;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::audio::{Audio, GenericAudioBufferRef};
+use symphonia::core::codecs::audio::AudioDecoderOptions;
+use symphonia::core::codecs::CodecParameters;
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
 
 /// Supported audio formats
 const SUPPORTED_FORMATS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "aac", "wma", "aiff"];
@@ -81,42 +82,43 @@ impl AudioDecoder {
         let format_opts = FormatOptions::default();
         let metadata_opts = MetadataOptions::default();
 
-        let probed = symphonia::default::get_probe()
-            .format(&hint, mss, &format_opts, &metadata_opts)
+        let mut format = symphonia::default::get_probe()
+            .probe(&hint, mss, format_opts, metadata_opts)
             .context("Unsupported audio format")?;
 
-        let mut format = probed.format;
+        // Get the default audio track
+        let track = format
+            .default_track(TrackType::Audio)
+            .context("No audio track found")?;
 
-        // Get the default track
-        let track = format.default_track().context("No audio track found")?;
+        // Extract audio codec parameters (in 0.6 these are nested inside the
+        // CodecParameters enum rather than a flat struct).
+        let audio_codec_params = match track.codec_params.as_ref() {
+            Some(CodecParameters::Audio(audio)) => audio,
+            _ => anyhow::bail!("Track has no audio codec parameters"),
+        };
 
-        let codec_params = track.codec_params.clone();
         let track_id = track.id;
-        let sample_rate = codec_params.sample_rate.unwrap_or(44100);
-        let channels = codec_params.channels.map(|c| c.count() as u8).unwrap_or(2);
+        let sample_rate = audio_codec_params.sample_rate.unwrap_or(44100);
+        let channels = audio_codec_params
+            .channels
+            .as_ref()
+            .map(|c| c.count() as u8)
+            .unwrap_or(2);
 
         // Create the decoder
-        let decoder_opts = DecoderOptions::default();
+        let decoder_opts = AudioDecoderOptions::default();
         let mut decoder = symphonia::default::get_codecs()
-            .make(&codec_params, &decoder_opts)
+            .make_audio_decoder(audio_codec_params, &decoder_opts)
             .context("Failed to create decoder")?;
 
         // Decode all samples
         let mut all_samples = Vec::new();
 
-        loop {
-            let packet = match format.next_packet() {
-                Ok(packet) => packet,
-                Err(symphonia::core::errors::Error::IoError(ref e))
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
-                {
-                    break
-                }
-                Err(_) => break,
-            };
-
+        // Ok(None) = end of stream; any error is non-fatal here.
+        while let Ok(Some(packet)) = format.next_packet() {
             // Skip non-audio packets
-            if packet.track_id() != track_id {
+            if packet.track_id != track_id {
                 continue;
             }
 
@@ -126,19 +128,24 @@ impl AudioDecoder {
                 Err(_) => continue,
             };
 
-            // Convert to f32 samples
+            // Convert to f32 samples. In 0.6 the generic wrapper is
+            // GenericAudioBufferRef and per-channel access is via the Audio
+            // trait's plane() (channel 0 == front center / first channel).
             match decoded {
-                AudioBufferRef::F32(buf) => {
-                    let samples = buf.chan(0);
-                    all_samples.extend_from_slice(samples);
+                GenericAudioBufferRef::F32(buf) => {
+                    if let Some(samples) = buf.plane(0) {
+                        all_samples.extend_from_slice(samples);
+                    }
                 }
-                AudioBufferRef::S16(buf) => {
-                    let samples = buf.chan(0);
-                    all_samples.extend(samples.iter().map(|&s| s as f32 / 32768.0));
+                GenericAudioBufferRef::S16(buf) => {
+                    if let Some(samples) = buf.plane(0) {
+                        all_samples.extend(samples.iter().map(|&s| s as f32 / 32768.0));
+                    }
                 }
-                AudioBufferRef::S32(buf) => {
-                    let samples = buf.chan(0);
-                    all_samples.extend(samples.iter().map(|&s| s as f32 / 2147483648.0));
+                GenericAudioBufferRef::S32(buf) => {
+                    if let Some(samples) = buf.plane(0) {
+                        all_samples.extend(samples.iter().map(|&s| s as f32 / 2147483648.0));
+                    }
                 }
                 _ => {}
             }
