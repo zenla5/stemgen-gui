@@ -18,7 +18,7 @@ fn compute_file_sha256(path: &std::path::Path) -> std::io::Result<String> {
     use sha2::{Digest, Sha256};
     let data = std::fs::read(path)?;
     let hash = Sha256::digest(&data);
-    Ok(format!("{:x}", hash))
+    Ok(hex::encode(hash))
 }
 
 /// Application state shared across commands
