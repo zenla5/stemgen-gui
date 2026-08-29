@@ -114,7 +114,7 @@ pub fn load_api_key(provider: &str) -> Result<Option<String>, String> {
 /// Delete a stored API key from the OS keychain.
 pub fn delete_api_key(provider: &str) -> Result<(), String> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, provider).map_err(|e| e.to_string())?;
-    match entry.delete_password() {
+    match entry.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()), // already absent
         Err(e) => Err(e.to_string()),
