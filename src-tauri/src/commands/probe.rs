@@ -447,12 +447,12 @@ mod tests {
         // If CREATE_NO_WINDOW is mis-applied (e.g. wrong flag) the process
         // will still spawn; we just verify it exits normally.
         // Use platform-specific commands that are always available.
+        // Use absolute paths so the command is found even if a concurrently
+        // running test temporarily overrides PATH.
         let mut cmd = Command::new(if cfg!(windows) {
             "cmd"
-        } else if cfg!(target_os = "macos") {
-            "/bin/echo"
         } else {
-            "echo"
+            "/bin/echo"
         });
         if cfg!(windows) {
             cmd.args(["/C", "echo", "hello"]);
