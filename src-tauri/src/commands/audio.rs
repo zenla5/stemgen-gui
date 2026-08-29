@@ -1,4 +1,4 @@
-use lofty::{Accessor, AudioFile, TaggedFileExt};
+use lofty::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::info;
@@ -158,8 +158,8 @@ pub async fn get_audio_info(path: String) -> Result<AudioInfo, String> {
         if let Some(album) = tag.album() {
             meta.insert("album".to_string(), album.to_string());
         }
-        if let Some(year) = tag.year() {
-            meta.insert("year".to_string(), year.to_string());
+        if let Some(date) = tag.date() {
+            meta.insert("year".to_string(), date.year.to_string());
         }
         if let Some(genre) = tag.genre() {
             meta.insert("genre".to_string(), genre.to_string());
