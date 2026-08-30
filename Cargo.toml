@@ -46,7 +46,7 @@ mp4 = "0.14"
 lofty = "0.18"
 
 # Database
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 # HTTP client (for inference providers)
 reqwest = { version = "0.13", features = ["json", "rustls", "stream"], default-features = false }
