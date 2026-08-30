@@ -5,12 +5,12 @@ status check is the **"All Checks Passed"** aggregator job defined in
 `.github/workflows/ci.yml` (the `check` job), which depends on and verifies the
 result of every core CI job.
 
-The canonical set of core CI jobs is defined once as the `x-core-jobs` YAML
-anchor in `.github/workflows/ci.yml` and consumed by the `check` aggregator.
+The canonical set of core CI jobs is defined once as the `check` job's `needs`
+list in `.github/workflows/ci.yml` and consumed by the `check` aggregator.
 All core jobs are gating (i.e. contribute to the "All Checks Passed" merge
-gate). Do not edit the list in multiple places: change the anchor and re-run
-`.github/scripts/verify-core-job-list.sh`, which also checks the references in
-`AGENT_GUIDE.md`.
+gate). Do not edit the list in multiple places: change the `check` job's
+`needs` in `ci.yml` and re-run `.github/scripts/verify-core-job-list.sh`, which
+also checks the references in `AGENT_GUIDE.md`.
 
 core job ids: frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv
 

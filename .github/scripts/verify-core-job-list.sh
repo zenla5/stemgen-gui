@@ -2,14 +2,18 @@
 #
 # verify-core-job-list.sh
 #
-# Ensures the "core CI job" list used by the `check` aggregator (defined once as
-# the `x-core-jobs` YAML anchor in .github/workflows/ci.yml) does not silently
-# drift from the canonical lists referenced in the docs. See issue #203.
+# Ensures the "core CI job" list used by the `check` aggregator (the single
+# `needs:` list on the `check` job in .github/workflows/ci.yml) does not
+# silently drift from the canonical lists referenced in the docs. See issue
+# #203. `check` is the sole place in ci.yml that enumerates gating jobs
+# (`notify-failure` depends only on `check`), so its `needs:` is the source of
+# truth.
 #
 # Each doc file carries a single machine-readable line of the form:
 #   core job ids: <comma-separated job ids>
-# This script extracts the anchor from ci.yml and compares it (order-insensitive)
-# against every doc's list. Exits non-zero on any mismatch.
+# This script extracts the `check` job's `needs` list from ci.yml and compares
+# it (order-insensitive) against every doc's list. Exits non-zero on any
+# mismatch.
 #
 # Usage:
 #   .github/scripts/verify-core-job-list.sh
@@ -20,29 +24,36 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
 
-# --- Extract the canonical list from the YAML anchor -------------------------
-# The anchor looks like:
-#   x-core-jobs: &core-jobs [frontend, integration, backend, ...]
-# We capture everything inside the square brackets, split on commas, trim.
-ANCHOR_LINE="$(grep -E '^\s*x-core-jobs:\s+&core-jobs\s*\[' "$CI_YML")"
-if [[ -z "$ANCHOR_LINE" ]]; then
-  echo "error: could not find the 'x-core-jobs' anchor in $CI_YML" >&2
+# --- Extract the canonical list from the `check` job's `needs:` ------------
+# The `check` aggregator declares the largest `needs:` list in the file (it
+# lists every gating job). `notify-failure` also declares `needs: [check]`, but
+# that is a single-element list. We pick the `needs:` line with the most
+# comma-separated job ids, which is unambiguously `check`'s.
+CHECK_NEEDS_LINE="$(grep -nE '\s+needs:\s*\[' "$CI_YML" \
+  | while IFS=: read -r ln _; do
+      printf '%s %s\n' "$(sed -n "${ln}p" "$CI_YML" | grep -o ',' | wc -l)" "$ln"
+    done \
+  | sort -k1,1nr | head -n1 | awk '{print $2;}')"
+
+if [[ -z "$CHECK_NEEDS_LINE" ]]; then
+  echo "error: could not locate a 'needs: [ ... ]' list in $CI_YML" >&2
   exit 1
 fi
 
-CANONICAL="$(printf '%s' "$ANCHOR_LINE" \
-  | sed -E 's/^[^[]*\[//; s/\][^]]*$//' \
+NEEDS_RAW="$(sed -n "${CHECK_NEEDS_LINE}p" "$CI_YML")"
+CANONICAL="$(printf '%s' "$NEEDS_RAW" \
+  | sed -E 's/^.*needs:\s*\[//; s/\]\s*$//' \
   | tr ',' '\n' \
   | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
   | grep -v '^$' \
   | sort -u)"
 
 if [[ -z "$CANONICAL" ]]; then
-  echo "error: parsed an empty core-job list from the anchor in $CI_YML" >&2
+  echo "error: could not parse the 'check' job's needs list from $CI_YML" >&2
   exit 1
 fi
 
-echo "Canonical core job ids (from .github/workflows/ci.yml):"
+echo "Canonical core job ids (from the check job needs list in .github/workflows/ci.yml):"
 printf '  %s\n' "$CANONICAL"
 
 # --- Docs to validate --------------------------------------------------------

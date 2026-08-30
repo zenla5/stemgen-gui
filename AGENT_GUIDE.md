@@ -111,10 +111,10 @@ stemgen-gui/
 
 ### CI Pipeline (`.github/workflows/ci.yml`)
 Core jobs on every push/PR, gated by the **Check** aggregator. The canonical set
-of core job ids is the `x-core-jobs` anchor in `.github/workflows/ci.yml` — this
-is the single source of truth. Do not edit this list manually in more than one
-place; `.github/scripts/verify-core-job-list.sh` fails CI if the anchor above,
-this list, and `docs/CI_GATE.md` drift apart.
+of core job ids is the `check` job's `needs` list in `.github/workflows/ci.yml`
+— this is the single source of truth. Do not edit this list manually in more
+than one place; `.github/scripts/verify-core-job-list.sh` fails CI if the
+`check` job's `needs` list, this list, and `docs/CI_GATE.md` drift apart.
 
 core job ids: frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv
 

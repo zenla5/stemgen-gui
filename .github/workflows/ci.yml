@@ -21,13 +21,6 @@ env:
   CARGO_TERM_COLOR: always
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# Single source of truth for the "core CI jobs" list. Every place that needs to
-# know the full set of gating jobs (the `check` aggregator, `notify-failure`,
-# docs/CI_GATE.md, AGENT_GUIDE.md) must derive from this anchor. When adding or
-# removing a core job, update this list AND the two doc files — the
-# `validate-core-job-list` job below fails CI if they drift.
-x-core-jobs: &core-jobs [frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv]
-
 jobs:
   # Frontend tests and linting
   frontend:
@@ -412,8 +405,8 @@ jobs:
       - name: Validate CHANGELOG structure
         run: node .github/scripts/check-changelog.mjs
 
-  # Verifies the canonical core-CI-job list (the `x-core-jobs` anchor at the top
-  # of this file) has not drifted from the docs that reference it (issue #203).
+  # Verifies the canonical core-CI-job list (the `check` job's `needs:` list)
+  # has not drifted from the docs that reference it (issue #203).
   validate-core-job-list:
     name: Validate Core Job List
     runs-on: ubuntu-latest
@@ -426,11 +419,17 @@ jobs:
         run: .github/scripts/verify-core-job-list.sh
 
   # Final check
+  # NOTE: the 'needs' list below is the SINGLE source of truth for the core CI
+  # jobs that form the merge gate. `notify-failure` depends only on this job,
+  # and `.github/scripts/verify-core-job-list.sh` (run by the
+  # `validate-core-job-list` job) asserts docs/CI_GATE.md and AGENT_GUIDE.md
+  # match this list exactly (issue #203). Add/remove a gating job here AND in
+  # the two docs, or CI fails.
   check:
     name: All Checks Passed
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: *core-jobs
+    needs: [frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv]
     if: always()
 
     steps:
