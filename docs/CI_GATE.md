@@ -10,8 +10,13 @@ result of every core CI job (`frontend`, `integration`, `backend`, `e2e`,
 
 - **Require status checks to pass** before merging — at minimum the
   `All Checks Passed` job.
-- **Require a pull request** before merging, with **1 approving review**
-  (no `CODEOWNERS` file is currently maintained, so no code-owner review).
+- **Require a pull request** before merging, with a **required approving review
+  count of 0** (no `CODEOWNERS` file is currently maintained, so no code-owner
+  review). Since the repo has a single author/reviewer account (`zenla5`) and
+  GitHub does not count an author's own review toward the requirement, requiring
+  1 approval would make every self-authored PR unmergeable — so the effective
+  gate is the **"All Checks Passed"** status check. Raise this back to 1 if a
+  second reviewer identity (a BOT App or maintainer account) is added.
 - **Enforce for admins** — these rules apply to everyone.
 - Force pushes and branch deletions are **disabled**.
 - `strict` mode is **off** — branch does not need to be up to date before

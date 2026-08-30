@@ -8,8 +8,12 @@
 # Policy (mirrors issue #194):
 #   - Require status checks to pass before merging (the "All Checks Passed"
 #     aggregator job from .github/workflows/ci.yml).
-#   - Require a pull request before merging, with 1 approving review.
-#     (No CODEOWNERS file is maintained, so no code-owner review is required.)
+#   - Require a pull request before merging, with a required approving review
+#     count of 0. There is currently only one author/reviewer account (zenla5),
+#     and GitHub does not count an author's own review, so requiring 1 approval
+#     would make every self-authored PR unmergeable. The effective gate is
+#     therefore the "All Checks Passed" status check. Raise this back to 1 if a
+#     second reviewer identity (BOT App / maintainer account) is added.
 #   - Enforce the above for admins too.
 #   - Force pushes and deletions are disabled.
 #   - `strict` is deliberately left off so dependency bump PRs (npm dependabot
@@ -42,7 +46,7 @@ gh api \
     "contexts": ["All Checks Passed"]
   },
   "required_pull_request_reviews": {
-    "required_approving_review_count": 1,
+    "required_approving_review_count": 0,
     "dismiss_stale_reviews": false,
     "require_code_owner_reviews": false,
     "require_last_push_approval": false
