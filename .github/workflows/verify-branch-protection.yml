@@ -9,10 +9,10 @@ name: Verify Branch Protection
 # manually re-verifying.
 #
 # Token: reading branch protection requires more than the default GITHUB_TOKEN.
-# This workflow uses the BRANCH_PROTECTION_PAT repository secret
-# (PAT with `repo` / `admin:repo` scope). On scheduled runs, if that secret is
-# absent the job is skipped so it doesn't fail red every week; a manual
-# workflow_dispatch run still attempts the check and will report clearly.
+# The workflow uses the BRANCH_PROTECTION_PAT repository secret (PAT with
+# `repo` / `admin:repo` scope). On scheduled runs, if that secret is absent the
+# verify step skips itself (so a missing secret doesn't turn the weekly run
+# red); a manual workflow_dispatch run always attempts the check.
 
 on:
   schedule: # weekly, Sunday 03:17 UTC
@@ -34,12 +34,13 @@ jobs:
 
     env:
       GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || github.token }}
+      # Whether the admin:repo PAT secret is configured (used by the script to
+      # decide whether a scheduled run can read live protection).
+      BRANCH_PROTECTION_PAT_CONFIGURED: ${{ secrets.BRANCH_PROTECTION_PAT != '' }}
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Skip scheduled runs while the token secret isn't configured yet, so a
-      # missing secret doesn't turn the weekly run red. Manual runs always try.
       - name: Verify live branch protection matches scripted policy
-        if: secrets.BRANCH_PROTECTION_PAT != '' || github.event_name == 'workflow_dispatch'
         run: .github/scripts/verify-branch-protection.sh

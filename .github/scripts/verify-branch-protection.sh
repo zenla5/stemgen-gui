@@ -51,6 +51,17 @@ if [[ ! -f "$APPLY_SCRIPT" ]]; then
   exit 1
 fi
 
+# On a scheduled run without the admin:repo PAT configured, we cannot read live
+# protection; exit 0 ("skip") so a missing secret doesn't turn a weekly run red.
+# Manual/workflow_dispatch runs always proceed so the need for the secret is
+# visible. (The workflow passes this via env; env, unlike `if:` conditions,
+# supports the secrets context.)
+if [[ "${BRANCH_PROTECTION_PAT_CONFIGURED:-false}" == "false" && "${GITHUB_EVENT_NAME:-}" == "schedule" ]]; then
+  echo "SKIP: BRANCH_PROTECTION_PAT not configured; skipping scheduled verification."
+  echo "Configure the BRANCH_PROTECTION_PAT secret (PAT with repo/admin:repo scope) to enable the weekly check."
+  exit 0
+fi
+
 # --- Determine target repo ---------------------------------------------------
 REPO="${1:-}"
 if [[ $TEST_MODE -eq 1 ]]; then
