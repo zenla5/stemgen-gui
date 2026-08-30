@@ -2,7 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+> **Editing this file?** See `docs/CHANGELOG_GUIDE.md` for the `[Unreleased]`
+> convention (issue #200): append new entries at the **bottom** of the relevant
+> existing `### <Category>` subsection, and create missing subsections at the
+> end of `[Unreleased]` in canonical order. CI enforces this structure.
+
 ## [Unreleased]
+
+### Fixed
+
+- **[THEME-COLOR-SCHEME]** Restored `color-scheme` for the class-toggled dark theme after the Tailwind v4 migration (`src/index.css` now sets `color-scheme: light` on `:root` and `color-scheme: dark` on `.dark`). Without it the browser picked the native scheme heuristically, so native UI elements (native `<select>`/`<option>` dropdowns, scrollbars, checkbox/radio/input chrome, and form auto-fill styling) did not switch with dark mode.
+
+- **[PYTHON-ENV]** All Python subprocesses (Demucs model downloads, PyTorch/demucs installs, sidecar separation, and environment probes) now strip `PYTHONHOME`/`PYTHONPATH` from their child environment before spawning. The AppImage runtime exports these pointing into its own payload (`~/.cache/appimage-run/<sha>/usr/`), so any spawned interpreter inherited the wrong stdlib and died on startup with `Fatal Python error: Failed to import encodings module` — breaking model downloads with `Model download failed:` and torch installs with `Installation failed with exit code Some(1)`. A new shared `python_env()` spawn helper (extending the existing `NoWindow` pattern in `probe.rs`) sets `PYTHONUTF8=1` and removes both variables in one step, and is now used by every Python spawn site (`probe.rs`, `sidecar.rs`, `models.rs`, `install_executor.rs`). Environment validation no longer reports a Python that fails to report a version as `Available` — it now shows a `Warning` instead of silently passing as green. Note: removing these variables is unconditional, so a `PYTHONPATH` deliberately set by the user for other purposes is also cleared for these subprocesses. This is the standard fix — only custom `PYTHONPATH` overlays are affected, and they are not needed by the venv/system Python the app uses.
 
 ### Internal
 
@@ -10,11 +21,7 @@ All notable changes to this project will be documented in this file.
 
 - **[CI-EXTRACT]** Extracted the duplicated Rust backend setup (frontend build with `VITE_BUILD_DATE`, sidecar copy, universe/apt webkit+gtk system deps, Rust toolchain install, and `Swatinem/rust-cache` scoped to the `src-tauri` workspace) from the `backend` and `msrv` jobs into a single reusable composite action at `.github/actions/setup-rust-backend`. Both jobs now invoke it with their own `rust-toolchain` (`stable` vs the declared MSRV `1.89.0`), so the MSRV check can no longer drift from the real build environment when new frontend build steps, env vars, or system libraries are added.
 
-### Fixed
-
-- **[THEME-COLOR-SCHEME]** Restored `color-scheme` for the class-toggled dark theme after the Tailwind v4 migration (`src/index.css` now sets `color-scheme: light` on `:root` and `color-scheme: dark` on `.dark`). Without it the browser picked the native scheme heuristically, so native UI elements (native `<select>`/`<option>` dropdowns, scrollbars, checkbox/radio/input chrome, and form auto-fill styling) did not switch with dark mode.
-
-- **[PYTHON-ENV]** All Python subprocesses (Demucs model downloads, PyTorch/demucs installs, sidecar separation, and environment probes) now strip `PYTHONHOME`/`PYTHONPATH` from their child environment before spawning. The AppImage runtime exports these pointing into its own payload (`~/.cache/appimage-run/<sha>/usr/`), so any spawned interpreter inherited the wrong stdlib and died on startup with `Fatal Python error: Failed to import encodings module` — breaking model downloads with `Model download failed:` and torch installs with `Installation failed with exit code Some(1)`. A new shared `python_env()` spawn helper (extending the existing `NoWindow` pattern in `probe.rs`) sets `PYTHONUTF8=1` and removes both variables in one step, and is now used by every Python spawn site (`probe.rs`, `sidecar.rs`, `models.rs`, `install_executor.rs`). Environment validation no longer reports a Python that fails to report a version as `Available` — it now shows a `Warning` instead of silently passing as green. Note: removing these variables is unconditional, so a `PYTHONPATH` deliberately set by the user for other purposes is also cleared for these subprocesses. This is the standard fix — only custom `PYTHONPATH` overlays are affected, and they are not needed by the venv/system Python the app uses.
+- **[CHANGELOG-CONV]** Adopted a changelog convention to stop `[Unreleased]` merge conflicts (issue #200): new entries are **appended at the bottom** of the appropriate existing `### <Category>` subsection instead of inserted at the top, and missing subsections are created at the end of `[Unreleased]` in canonical order (`Added`, `Changed`, `Fixed`, `Removed`, `Security`, `Internal`). Documented in `docs/CHANGELOG_GUIDE.md` and enforced by a new `changelog` CI job running `.github/scripts/check-changelog.mjs`.
 
 ## [1.5.1] — 2026-08-28 — NixOS WebView EGL Fix
 
