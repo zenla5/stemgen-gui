@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// Compute SHA-256 of a file as a lowercase hex string.
 fn sha256_hex(path: &Path) -> String {
     let data = std::fs::read(path).expect("failed to read file for hashing");
-    format!("{:x}", Sha256::digest(&data))
+    hex::encode(Sha256::digest(&data))
 }
 
 /// Replicate the stem collection logic from SidecarManager::collect_stems
