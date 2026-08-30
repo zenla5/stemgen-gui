@@ -84,6 +84,61 @@ describe('InstallProgress', () => {
     expect(writeText).toHaveBeenCalledWith('ffmpeg -i x');
   });
 
+  it('copies the full diagnostic output (command + log + error) on failure', () => {
+    const writeText = vi.fn();
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const { container } = render(
+      <InstallProgress
+        lines={['Python path configuration:', 'Fatal Python error: Failed to import encodings module', 'ModuleNotFoundError: No module named encodings']}
+        isRunning={false}
+        commandDisplay="python3 -m pip install --user torch torchaudio"
+        result={{ success: false, alreadyInstalled: false, error: 'Installation failed with exit code Some(1)' }}
+      />
+    );
+    const copyButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Copy'));
+    copyButton?.click();
+    const payload = writeText.mock.calls[0][0] as string;
+    expect(payload).toContain('python3 -m pip install --user torch torchaudio');
+    expect(payload).toContain('Fatal Python error: Failed to import encodings module');
+    expect(payload).toContain('ModuleNotFoundError: No module named encodings');
+    expect(payload).toContain('Installation failed with exit code Some(1)');
+    expect(payload).not.toBe('python3 -m pip install --user torch torchaudio');
+  });
+
+  it('copies command + error when there are no log lines on failure', () => {
+    const writeText = vi.fn();
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const { container } = render(
+      <InstallProgress
+        lines={[]}
+        isRunning={false}
+        commandDisplay="python3 -m pip install --user torch torchaudio"
+        result={{ success: false, alreadyInstalled: false, error: 'boom' }}
+      />
+    );
+    const copyButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Copy'));
+    copyButton?.click();
+    const payload = writeText.mock.calls[0][0] as string;
+    expect(payload).toContain('python3 -m pip install --user torch torchaudio');
+    expect(payload).toContain('boom');
+  });
+
+  it('copies only the command while running (no full output)', () => {
+    const writeText = vi.fn();
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const { container } = render(
+      <InstallProgress
+        lines={['some streaming output']}
+        isRunning
+        commandDisplay="python3 -m pip install --user torch torchaudio"
+        result={null}
+      />
+    );
+    const copyButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Copy'));
+    copyButton?.click();
+    expect(writeText).toHaveBeenCalledWith('python3 -m pip install --user torch torchaudio');
+  });
+
   it('shows the cancel button only while running with onCancel', () => {
     const withCancel = render(
       <InstallProgress lines={[]} isRunning onCancel={vi.fn()} result={null} />
