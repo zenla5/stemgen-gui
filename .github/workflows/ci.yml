@@ -21,6 +21,13 @@ env:
   CARGO_TERM_COLOR: always
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Single source of truth for the "core CI jobs" list. Every place that needs to
+# know the full set of gating jobs (the `check` aggregator, `notify-failure`,
+# docs/CI_GATE.md, AGENT_GUIDE.md) must derive from this anchor. When adding or
+# removing a core job, update this list AND the two doc files — the
+# `validate-core-job-list` job below fails CI if they drift.
+x-core-jobs: &core-jobs [frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv]
+
 jobs:
   # Frontend tests and linting
   frontend:
@@ -405,12 +412,25 @@ jobs:
       - name: Validate CHANGELOG structure
         run: node .github/scripts/check-changelog.mjs
 
+  # Verifies the canonical core-CI-job list (the `x-core-jobs` anchor at the top
+  # of this file) has not drifted from the docs that reference it (issue #203).
+  validate-core-job-list:
+    name: Validate Core Job List
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check core job list is in sync across ci.yml and docs
+        run: .github/scripts/verify-core-job-list.sh
+
   # Final check
   check:
     name: All Checks Passed
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, e2e-binary, security, python, changelog]
+    needs: *core-jobs
     if: always()
 
     steps:
@@ -476,6 +496,22 @@ jobs:
             echo "Changelog structure check was cancelled"
             exit 1
           fi
+          if [[ "${{ needs.security.result }}" == "failure" ]]; then
+            echo "Security audit failed"
+            exit 1
+          fi
+          if [[ "${{ needs.security.result }}" == "cancelled" ]]; then
+            echo "Security audit was cancelled"
+            exit 1
+          fi
+          if [[ "${{ needs.msrv.result }}" == "failure" ]]; then
+            echo "MSRV check failed"
+            exit 1
+          fi
+          if [[ "${{ needs.msrv.result }}" == "cancelled" ]]; then
+            echo "MSRV check was cancelled"
+            exit 1
+          fi
           echo "All critical checks passed!"
 
   # Failure notification via Telegram
@@ -483,7 +519,7 @@ jobs:
     name: Notify on Failure
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, e2e-binary, python, changelog, check]
+    needs: [check]
     if: failure()
     steps:
       - name: Send Telegram notification
