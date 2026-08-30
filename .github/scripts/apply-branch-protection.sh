@@ -9,11 +9,14 @@
 #   - Require status checks to pass before merging (the "All Checks Passed"
 #     aggregator job from .github/workflows/ci.yml).
 #   - Require a pull request before merging, with a required approving review
-#     count of 0. There is currently only one author/reviewer account (zenla5),
-#     and GitHub does not count an author's own review, so requiring 1 approval
+#     count of 0. There is only one author/reviewer account (zenla5), and
+#     GitHub does not count an author's own review, so requiring 1 approval
 #     would make every self-authored PR unmergeable. The effective gate is
-#     therefore the "All Checks Passed" status check. Raise this back to 1 if a
-#     second reviewer identity (BOT App / maintainer account) is added.
+#     therefore the "All Checks Passed" status check. The maintainer has
+#     deliberately decided NOT to add a second reviewer identity for now (see
+#     docs/CI_GATE.md "Decision log", issue #199), so this value stays at 0.
+#     If a second reviewer identity (BOT App / maintainer account) is ever
+#     added, raise this to 1 and re-apply.
 #   - Enforce the above for admins too.
 #   - Force pushes and deletions are disabled.
 #   - `strict` is deliberately left off so dependency bump PRs (npm dependabot

@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - **[CI-EXTRACT]** Extracted the duplicated Rust backend setup (frontend build with `VITE_BUILD_DATE`, sidecar copy, universe/apt webkit+gtk system deps, Rust toolchain install, and `Swatinem/rust-cache` scoped to the `src-tauri` workspace) from the `backend` and `msrv` jobs into a single reusable composite action at `.github/actions/setup-rust-backend`. Both jobs now invoke it with their own `rust-toolchain` (`stable` vs the declared MSRV `1.89.0`), so the MSRV check can no longer drift from the real build environment when new frontend build steps, env vars, or system libraries are added.
 
+- **[CI-GATE-REVIEW]** Recorded the decision on issue #199 to keep `main`'s `required_approving_review_count` at `0`. The repo remains solo-maintained (`zenla5`); the maintainer does not intend to add a second reviewer identity, so the effective merge gate stays the **"All Checks Passed"** status check. The policy and the revisit trigger (raise to `1` if a second reviewer identity is ever added) are now documented as an explicit decision log in `docs/CI_GATE.md`, and the live branch-protection setting was verified to match it.
+
 ### Fixed
 
 - **[THEME-COLOR-SCHEME]** Restored `color-scheme` for the class-toggled dark theme after the Tailwind v4 migration (`src/index.css` now sets `color-scheme: light` on `:root` and `color-scheme: dark` on `.dark`). Without it the browser picked the native scheme heuristically, so native UI elements (native `<select>`/`<option>` dropdowns, scrollbars, checkbox/radio/input chrome, and form auto-fill styling) did not switch with dark mode.
