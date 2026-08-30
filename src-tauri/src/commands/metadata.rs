@@ -2,7 +2,7 @@
 //!
 //! Reads audio metadata, BPM, key, and NI stem metadata from files.
 
-use lofty::{Accessor, AudioFile, TaggedFileExt};
+use lofty::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::{debug, info, warn};
@@ -91,7 +91,7 @@ pub async fn read_audio_metadata(path: String) -> Result<AudioMetadata, String> 
         title = tag.title().map(|t| t.to_string());
         artist = tag.artist().map(|a| a.to_string());
         album = tag.album().map(|a| a.to_string());
-        year = tag.year();
+        year = tag.date().map(|d| d.year as u32);
         genre = tag.genre().map(|g| g.to_string());
     }
 
