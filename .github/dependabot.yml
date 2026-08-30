@@ -18,6 +18,13 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     target-branch: main
+    ignore:
+      # TypeScript 7 is the new native (Go-based) compiler. Migration is tracked
+      # in issue "Migrate to TypeScript 7" and remains blocked until the
+      # @typescript-eslint toolchain supports TS 7 (peer cap is <6.1.0). Hide the
+      # 7.x major from dependabot until that lands.
+      - dependency-name: "typescript"
+        versions: ["7.x"]
 
   # Python sidecar dependencies
   - package-ecosystem: pip
