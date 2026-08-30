@@ -100,7 +100,7 @@ function ReplicateVersionDropdown({ onVersionSelected, selectedVersion }: Replic
         <select
           value={selectedVersion || ''}
           onChange={handleSelect}
-          className="w-full rounded-md border border-muted px-3 py-2 text-sm"
+          className="w-full rounded-md border border-muted px-3 py-2 text-sm text-foreground"
         >
           <option value="">Select version...</option>
           {versions.map((version) => (

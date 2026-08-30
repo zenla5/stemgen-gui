@@ -283,7 +283,7 @@ export function LibraryRootSettings({ onClose }: LibraryRootSettingsProps) {
                       output_strategy: e.target.value as EditForm['output_strategy'],
                     }))
                   }
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                   data-testid="output-strategy-select"
                 >
                   <option value="alongside">{t('library.alongside')}</option>
