@@ -496,7 +496,7 @@ export function SettingsPanel() {
           data-testid="language-select"
           value={settings.language}
           onChange={(e) => settings.setLanguage(e.target.value)}
-          className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
         >
           {supportedLanguages.map((lang) => (
             <option key={lang.code} value={lang.code}>

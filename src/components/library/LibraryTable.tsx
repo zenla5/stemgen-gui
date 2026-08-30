@@ -306,7 +306,7 @@ export function LibraryTable() {
           <select
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
             data-testid="group-select"
           >
             <option value="none">{t('library.noGrouping')}</option>
