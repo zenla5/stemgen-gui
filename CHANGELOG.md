@@ -21,6 +21,8 @@ All notable changes to this project will be documented in this file.
 
 - **[CI-EXTRACT]** Extracted the duplicated Rust backend setup (frontend build with `VITE_BUILD_DATE`, sidecar copy, universe/apt webkit+gtk system deps, Rust toolchain install, and `Swatinem/rust-cache` scoped to the `src-tauri` workspace) from the `backend` and `msrv` jobs into a single reusable composite action at `.github/actions/setup-rust-backend`. Both jobs now invoke it with their own `rust-toolchain` (`stable` vs the declared MSRV `1.89.0`), so the MSRV check can no longer drift from the real build environment when new frontend build steps, env vars, or system libraries are added.
 
+- **[CI-GATE-REVIEW]** Recorded the decision on issue #199 to keep `main`'s `required_approving_review_count` at `0`. The repo remains solo-maintained (`zenla5`); the maintainer does not intend to add a second reviewer identity, so the effective merge gate stays the **"All Checks Passed"** status check. The policy and the revisit trigger (raise to `1` if a second reviewer identity is ever added) are now documented as an explicit decision log in `docs/CI_GATE.md`, and the live branch-protection setting was verified to match it.
+
 - **[CHANGELOG-CONV]** Adopted a changelog convention to stop `[Unreleased]` merge conflicts (issue #200): new entries are **appended at the bottom** of the appropriate existing `### <Category>` subsection instead of inserted at the top, and missing subsections are created at the end of `[Unreleased]` in canonical order (`Added`, `Changed`, `Fixed`, `Removed`, `Security`, `Internal`). Documented in `docs/CHANGELOG_GUIDE.md` and enforced by a new `changelog` CI job running `.github/scripts/check-changelog.mjs`.
 
 ## [1.5.1] — 2026-08-28 — NixOS WebView EGL Fix
