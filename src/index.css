@@ -1,10 +1,109 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Class-based dark mode (matches the old `darkMode: ['class']`, applied by
+   toggling `.dark` on <html>). */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Tailwind v4 design tokens. Each color references the runtime CSS variables
+ * defined in `:root` / `.dark` below so light/dark themes switch by variable
+ * (the appearance the app already uses).
+ */
+@theme {
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  /* Stem colors (NI-compatible) */
+  --color-stem-drums: #ff6b6b;
+  --color-stem-bass: #4ecdc4;
+  --color-stem-other: #ffe66d;
+  --color-stem-vocals: #95e1d3;
+
+  /* DJ software brand colors */
+  --color-traktor: #ffcc00;
+  --color-rekordbox: #0e7bba;
+  --color-serato: #00d084;
+  --color-mixxx: #ff5722;
+  --color-djay: #00c7ff;
+  --color-virtualdj: #01d2ff;
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --font-sans:
+    'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:
+    'JetBrains Mono', 'Consolas', monospace;
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-pulse-ring: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  --animate-waveform-bar: waveform-bar 1s ease-in-out infinite;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+
+  @keyframes pulse-ring {
+    0%,
+    100% {
+      transform: scale(0.8);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.4);
+      opacity: 0;
+    }
+  }
+
+  @keyframes waveform-bar {
+    0%,
+    100% {
+      height: 20%;
+    }
+    50% {
+      height: 100%;
+    }
+  }
+}
+
+/* Register the shadcn/tailwindcss-animate plugin (v4 uses `@plugin`). */
+@plugin "tailwindcss-animate";
 
 @layer base {
   :root {
-    color-scheme: light;
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
@@ -26,14 +125,13 @@
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
     /* NI Stem colors */
-    --stem-drums: #FF6B6B;
-    --stem-bass: #4ECDC4;
-    --stem-other: #FFE66D;
-    --stem-vocals: #95E1D3;
+    --stem-drums: #ff6b6b;
+    --stem-bass: #4ecdc4;
+    --stem-other: #ffe66d;
+    --stem-vocals: #95e1d3;
   }
 
   .dark {
-    color-scheme: dark;
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
     --card: 240 10% 3.9%;
@@ -60,13 +158,9 @@
   * {
     @apply border-border;
   }
-  select,
-  option {
-    @apply text-foreground;
-  }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
   }
 }
 
@@ -94,8 +188,13 @@
 
 /* Waveform animation */
 @keyframes waveform {
-  0%, 100% { transform: scaleY(0.3); }
-  50% { transform: scaleY(1); }
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
 }
 
 .animate-waveform {
@@ -104,8 +203,13 @@
 
 /* Drop zone pulse */
 @keyframes dropzone-pulse {
-  0%, 100% { border-color: hsl(var(--primary)); }
-  50% { border-color: hsl(var(--accent)); }
+  0%,
+  100% {
+    border-color: hsl(var(--primary));
+  }
+  50% {
+    border-color: hsl(var(--accent));
+  }
 }
 
 .animate-dropzone-pulse {
