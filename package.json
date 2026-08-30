@@ -61,7 +61,7 @@
     "react-dropzone": "^20.1.1",
     "react-hook-form": "^7.86.0",
     "react-i18next": "^17.0.11",
-    "recharts": "^2.14.1",
+    "recharts": "^3.10.1",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
