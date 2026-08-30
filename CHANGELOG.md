@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Internal
+
+- **[CI-EXTRACT]** Extracted the duplicated Rust backend setup (frontend build with `VITE_BUILD_DATE`, sidecar copy, universe/apt webkit+gtk system deps, Rust toolchain install, and `Swatinem/rust-cache` scoped to the `src-tauri` workspace) from the `backend` and `msrv` jobs into a single reusable composite action at `.github/actions/setup-rust-backend`. Both jobs now invoke it with their own `rust-toolchain` (`stable` vs the declared MSRV `1.89.0`), so the MSRV check can no longer drift from the real build environment when new frontend build steps, env vars, or system libraries are added.
+
 ### Fixed
 
 - **[THEME-COLOR-SCHEME]** Restored `color-scheme` for the class-toggled dark theme after the Tailwind v4 migration (`src/index.css` now sets `color-scheme: light` on `:root` and `color-scheme: dark` on `.dark`). Without it the browser picked the native scheme heuristically, so native UI elements (native `<select>`/`<option>` dropdowns, scrollbars, checkbox/radio/input chrome, and form auto-fill styling) did not switch with dark mode.
