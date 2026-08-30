@@ -541,4 +541,59 @@ mod tests {
         let result = infer_dj_software(&None);
         assert_eq!(result, None);
     }
+
+    // --------------------------------------------------------------------
+    // Year metadata extraction across formats (lofty date() migration, #174)
+    // --------------------------------------------------------------------
+    fn fixture_audio_dir() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("tests")
+            .join("fixtures")
+            .join("audio")
+    }
+
+    async fn read_year_from_fixture(file_name: &str) -> Option<u32> {
+        let path = fixture_audio_dir().join(file_name);
+        assert!(path.exists(), "missing fixture: {}", path.display());
+        let meta = read_audio_metadata(path.to_string_lossy().to_string())
+            .await
+            .unwrap_or_else(|e| panic!("read_audio_metadata failed for {file_name}: {e}"));
+        meta.year
+    }
+
+    #[tokio::test]
+    async fn test_year_extracts_from_full_date_mp3() {
+        // MP3 stores an ID3 date of "2024-05-17" (full date); lofty still
+        // exposes the year component.
+        assert_eq!(
+            read_year_from_fixture("year-mp3-full-date.mp3").await,
+            Some(2024)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_year_extracts_from_bare_year_flac() {
+        // FLAC Vorbis comment stores a bare "2024".
+        assert_eq!(
+            read_year_from_fixture("year-flac-bare-year.flac").await,
+            Some(2024)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_year_extracts_from_bare_year_m4a() {
+        // M4A/MP4 stores a bare "2024" via the ©day atom.
+        assert_eq!(
+            read_year_from_fixture("year-m4a-bare-year.m4a").await,
+            Some(2024)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_year_is_none_when_no_date_tag() {
+        // No date tag => year must be None (not a bogus 0 or a crash).
+        assert_eq!(read_year_from_fixture("year-mp3-no-date.mp3").await, None);
+    }
 }
