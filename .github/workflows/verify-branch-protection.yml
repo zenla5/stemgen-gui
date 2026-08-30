@@ -1,0 +1,45 @@
+name: Verify Branch Protection
+
+# Detects drift between the LIVE branch-protection policy on `main` and the
+# SCRIPTED policy in .github/scripts/apply-branch-protection.sh (issue #204).
+#
+# Branch protection is a repository-settings change that CI cannot apply, so
+# this is the only thing that can surface drift (e.g. a required status check
+# renamed, `strict` toggled, or approval count changed) without a maintainer
+# manually re-verifying.
+#
+# Token: reading branch protection requires more than the default GITHUB_TOKEN.
+# This workflow uses the BRANCH_PROTECTION_PAT repository secret
+# (PAT with `repo` / `admin:repo` scope). On scheduled runs, if that secret is
+# absent the job is skipped so it doesn't fail red every week; a manual
+# workflow_dispatch run still attempts the check and will report clearly.
+
+on:
+  schedule: # weekly, Sunday 03:17 UTC
+    - cron: '17 3 * * 0'
+  workflow_dispatch: # manual trigger
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-branch-protection
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify Branch Protection
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Skip scheduled runs when the token secret isn't configured yet, so a
+    # missing secret doesn't spam a red weekly result. Manual runs always try.
+    if: github.event_name != 'schedule' || secrets.BRANCH_PROTECTION_PAT != ''
+
+    env:
+      GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || github.token }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify live branch protection matches scripted policy
+        run: .github/scripts/verify-branch-protection.sh

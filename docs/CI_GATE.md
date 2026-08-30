@@ -44,6 +44,30 @@ needed. If a second reviewer identity is added later, flip the value to `1` in
 `.github/scripts/apply-branch-protection.sh`, re-run the script, and update this
 log.
 
+### 2026-08-30 — automate drift detection (issue #204)
+
+Previously the live `main` policy was only verified by hand, once. That left no
+signal if it ever drifted from the scripted policy (e.g. a required status check
+renamed, `strict` toggled, or approval count changed) without a maintainer
+re-checking. Added:
+
+- `.github/scripts/verify-branch-protection.sh` — GETs the live policy via the
+  GitHub API and compares it against the expected policy **parsed from
+  `apply-branch-protection.sh`** (that script remains the single source of
+  truth). Exits non-zero on mismatch, with a readable diff.
+- `.github/workflows/verify-branch-protection.yml` — runs it manually
+  (`workflow_dispatch`) and weekly on a schedule. Uses the
+  `BRANCH_PROTECTION_PAT` repository secret, which needs `repo` / `admin:repo`
+  scope to read live protection. If a mismatch is detected, the run fails.
+  Scheduled runs are skipped until the secret is present so a missing secret
+  doesn't turn the weekly run red.
+
+To re-verify by hand this is the one-liner used by CI:
+
+```bash
+.github/scripts/verify-branch-protection.sh
+```
+
 ## Applying / re-applying
 
 Branch protection is a repository-settings change and cannot be configured via
