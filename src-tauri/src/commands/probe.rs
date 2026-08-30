@@ -165,8 +165,20 @@ pub fn is_windows_store_stub(_path: &Path) -> bool {
 ///
 /// Tries `python3`, `python`, `py` (Windows), and common install paths.
 pub fn find_python() -> Option<PathBuf> {
+    find_python_in_path(None)
+}
+
+/// Find a Python executable by searching an explicit PATH list.
+///
+/// `paths` is a PATH-format string (colon/semicolon separated) searched
+/// instead of the process environment when `Some`. Passing `None` falls back
+/// to the ambient `PATH`. Keeping the search path explicit lets tests probe
+/// arbitrary directories without mutating the process-global environment
+/// (which would race with other parallel tests that spawn children).
+fn find_python_in_path(paths: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     for name in ["python3", "python", "py"] {
-        if let Ok(path) = which::which(name) {
+        if let Ok(path) = which::which_in(name, paths, &cwd) {
             if !is_windows_store_stub(&path) {
                 return Some(path);
             }
@@ -608,24 +620,20 @@ mod tests {
 
     #[test]
     fn test_find_python_returns_none_when_no_python_in_path() {
-        // Save the original PATH
-        let original_path = std::env::var("PATH").unwrap_or_default();
-
-        // Set PATH to a directory that doesn't contain Python
+        // Build a PATH pointing only at an empty temp dir (no python, no sh)
+        // and pass it explicitly. Crucially we do NOT mutate the process-global
+        // environment: doing so would race with other tests in this module that
+        // spawn children (e.g. `sh`) using `PATH`, causing spurious CI failures.
         let temp_dir = std::env::temp_dir().join("stemgen-test-no-python");
         std::fs::create_dir_all(&temp_dir).ok();
-        std::env::set_var("PATH", temp_dir.to_string_lossy().to_string());
+        let isolated_path = Some(temp_dir.as_os_str());
 
-        // find_python should return None
-        let result = find_python();
-
-        // Restore the original PATH
-        std::env::set_var("PATH", &original_path);
+        let result = find_python_in_path(isolated_path);
 
         // Clean up temp dir
         let _ = std::fs::remove_dir_all(&temp_dir);
 
-        // Assert that no Python was found
+        // Assert that no Python was found in the isolated PATH
         assert!(
             result.is_none(),
             "find_python should return None when no Python is in PATH"
