@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Internal
+
+- **[CI-GATE]** Added branch protection on `main` requiring the full CI gate. The "All Checks Passed" aggregator job is now a required status check, PRs require 1 approving review, rules are enforced for admins, and force-pushes/deletions are disabled (`strict` left off to avoid npm-dependabot `package-lock.json` rebase friction). Policy is documented in `docs/CI_GATE.md` and (re)appliable via the idempotent `.github/scripts/apply-branch-protection.sh`.
+
 ### Fixed
 
 - **[PYTHON-ENV]** All Python subprocesses (Demucs model downloads, PyTorch/demucs installs, sidecar separation, and environment probes) now strip `PYTHONHOME`/`PYTHONPATH` from their child environment before spawning. The AppImage runtime exports these pointing into its own payload (`~/.cache/appimage-run/<sha>/usr/`), so any spawned interpreter inherited the wrong stdlib and died on startup with `Fatal Python error: Failed to import encodings module` — breaking model downloads with `Model download failed:` and torch installs with `Installation failed with exit code Some(1)`. A new shared `python_env()` spawn helper (extending the existing `NoWindow` pattern in `probe.rs`) sets `PYTHONUTF8=1` and removes both variables in one step, and is now used by every Python spawn site (`probe.rs`, `sidecar.rs`, `models.rs`, `install_executor.rs`). Environment validation no longer reports a Python that fails to report a version as `Available` — it now shows a `Warning` instead of silently passing as green. Note: removing these variables is unconditional, so a `PYTHONPATH` deliberately set by the user for other purposes is also cleared for these subprocesses. This is the standard fix — only custom `PYTHONPATH` overlays are affected, and they are not needed by the venv/system Python the app uses.
