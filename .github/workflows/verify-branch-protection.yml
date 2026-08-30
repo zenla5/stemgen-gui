@@ -31,9 +31,6 @@ jobs:
     name: Verify Branch Protection
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Skip scheduled runs when the token secret isn't configured yet, so a
-    # missing secret doesn't spam a red weekly result. Manual runs always try.
-    if: github.event_name != 'schedule' || secrets.BRANCH_PROTECTION_PAT != ''
 
     env:
       GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || github.token }}
@@ -41,5 +38,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Skip scheduled runs while the token secret isn't configured yet, so a
+      # missing secret doesn't turn the weekly run red. Manual runs always try.
       - name: Verify live branch protection matches scripted policy
+        if: secrets.BRANCH_PROTECTION_PAT != '' || github.event_name == 'workflow_dispatch'
         run: .github/scripts/verify-branch-protection.sh
