@@ -156,4 +156,126 @@ mod tests {
     fn test_target_sample_rate_constant() {
         assert_eq!(TARGET_SAMPLE_RATE, 44100);
     }
+
+    /// Build a stereo (or mono) signal with a distinct per-channel constant so
+    /// resampling preserves the interleaving and leaves no leading/trailing
+    /// silence. `left` is placed on even indices, `right` on odd indices.
+    fn constant_stereo(frames: usize, left: f32, right: f32) -> SampleData {
+        let mut samples = Vec::with_capacity(frames * 2);
+        for _ in 0..frames {
+            samples.push(left);
+            samples.push(right);
+        }
+        SampleData {
+            samples,
+            sample_rate: 48000,
+            channels: 2,
+        }
+    }
+
+    #[test]
+    fn test_resample_frame_count_matches_ratio() {
+        // 48000 Hz -> 44100 Hz = 0.91875 ratio.
+        let frames = 48_000usize;
+        let data = constant_stereo(frames, 1.0, -1.0);
+
+        let mut resampler = AudioResampler::new_44100();
+        let out = resampler.resample(&data).expect("resample ok");
+
+        let ratio = 44_100.0 / 48_000.0;
+        let expected = (frames as f64 * ratio) as usize;
+        let out_frames = out.samples.len() / 2;
+        let tolerance = (expected as f64 * 0.02).ceil() as usize + 2;
+
+        assert_eq!(out.sample_rate, 44_100);
+        assert_eq!(out.channels, 2);
+        assert!(
+            (out_frames as isize - expected as isize).abs() <= tolerance as isize,
+            "output frame count {out_frames} not within {tolerance} of expected {expected}"
+        );
+    }
+
+    #[test]
+    fn test_resample_no_leading_silence_or_trailing_padding() {
+        let frames = 48_000usize;
+        let data = constant_stereo(frames, 1.0, -1.0);
+
+        let mut resampler = AudioResampler::new_44100();
+        let out = resampler.resample(&data).expect("resample ok");
+
+        assert!(out.samples.len() >= 2, "output buffer too small");
+
+        // A constant DC signal should resample to a constant DC signal. If
+        // leading silence or trailing padding were introduced, the first/last
+        // samples would collapse toward 0 instead of staying near the original.
+        let nose = 8usize.min(out.samples.len());
+        for i in 0..nose {
+            let mag = out.samples[i].abs();
+            assert!(
+                mag > 0.5,
+                "leading sample {i} = {} looks like leading silence",
+                out.samples[i]
+            );
+        }
+        let tail_from = out.samples.len() - nose;
+        for i in tail_from..out.samples.len() {
+            let mag = out.samples[i].abs();
+            assert!(
+                mag > 0.5,
+                "trailing sample {i} = {} looks like trailing padding",
+                out.samples[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_resample_preserves_multichannel_interleaving() {
+        let frames = 48_000usize;
+        let data = constant_stereo(frames, 1.0, -1.0);
+
+        let mut resampler = AudioResampler::new_44100();
+        let out = resampler.resample(&data).expect("resample ok");
+
+        // Interleaved [ch0, ch1, ch0, ch1, ...]: even = left (+1), odd = right (-1).
+        let n = out.samples.len();
+        assert!(n % 2 == 0, "stereo output must be 2-interleaved");
+        for i in 0..(n / 2) {
+            let left = out.samples[2 * i];
+            let right = out.samples[2 * i + 1];
+            assert!(
+                (left - 1.0).abs() < 0.5,
+                "left channel sample {i} = {left} not preserved"
+            );
+            assert!(
+                (right + 1.0).abs() < 0.5,
+                "right channel sample {i} = {right} not preserved"
+            );
+        }
+    }
+
+    #[test]
+    fn test_resample_upsample_frame_count() {
+        // 22050 Hz -> 44100 Hz = 2.0 ratio (2x upsampling), mono.
+        let frames = 22_050usize;
+        let data = SampleData {
+            samples: vec![0.5f32; frames],
+            sample_rate: 22_050,
+            channels: 1,
+        };
+
+        let mut resampler = AudioResampler::new_44100();
+        let out = resampler.resample(&data).expect("resample ok");
+
+        let expected = frames * 2;
+        let out_frames = out.samples.len();
+        // rubato's exact output may differ by a frame or two around the ratio.
+        let tolerance = (expected as f64 * 0.02).ceil() as usize + 2;
+
+        assert_eq!(out.sample_rate, 44_100);
+        assert_eq!(out.channels, 1);
+        assert!(
+            (out_frames as isize - expected as isize).abs() <= tolerance as isize,
+            "upsample output frames {out_frames} not within {tolerance} of {expected}"
+        );
+    }
 }
