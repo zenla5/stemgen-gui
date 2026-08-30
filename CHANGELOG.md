@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Internal
 
+- **[CI-GATE]** Added branch protection on `main` requiring the full CI gate. The "All Checks Passed" aggregator job is a required status check, rules are enforced for admins, and force-pushes/deletions are disabled. `required_approving_review_count` is set to `0` because there is currently only one author/reviewer account (`zenla5`), so the effective gate is the "All Checks Passed" status check; the setting should be raised back to `1` if a second reviewer identity (a BOT App or maintainer account) is added. `strict` is left off to avoid npm-dependabot `package-lock.json` rebase friction. Policy is documented in `docs/CI_GATE.md` and (re)appliable via the idempotent `.github/scripts/apply-branch-protection.sh`.
+
 - **[CI-EXTRACT]** Extracted the duplicated Rust backend setup (frontend build with `VITE_BUILD_DATE`, sidecar copy, universe/apt webkit+gtk system deps, Rust toolchain install, and `Swatinem/rust-cache` scoped to the `src-tauri` workspace) from the `backend` and `msrv` jobs into a single reusable composite action at `.github/actions/setup-rust-backend`. Both jobs now invoke it with their own `rust-toolchain` (`stable` vs the declared MSRV `1.89.0`), so the MSRV check can no longer drift from the real build environment when new frontend build steps, env vars, or system libraries are added.
 
 ### Fixed
