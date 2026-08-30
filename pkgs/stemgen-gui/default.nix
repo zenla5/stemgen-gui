@@ -65,6 +65,18 @@ pkgs.runCommand "stemgen-gui-${version}" { } ''
   cat > $out/bin/stemgen-gui <<EOF
   #!/usr/bin/env bash
   ${eglEnv}
+  # Cosmetic warning: the AppImage bundles its own atk-bridge which talks over
+  # D-Bus to the host AT-SPI2 daemon. If the bundled GLib/atk-bridge protocol
+  # version differs from the host's, GLib prints a single benign line at
+  # startup:
+  #   ** (stemgen-gui:NNNNN): WARNING **: atk-bridge: get_device_events_reply:
+  #   unknown signature
+  # It has no functional impact (accessibility still works, the window renders
+  # fine). The mismatch originates from the bundled atk-bridge inside the
+  # shipped AppImage, which is not built here, so it cannot be cleanly pinned
+  # or patched from this launcher. Setting NO_AT_BRIDGE=1 would hide it but
+  # disables accessibility entirely and is NOT done here. Tracked as wontfix
+  # (see issue #169).
   exec ${pkgs.appimage-run}/bin/appimage-run $out/libexec/Stemgen-GUI.AppImage "\$@"
   EOF
   chmod +x $out/bin/stemgen-gui
