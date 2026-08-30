@@ -73,11 +73,24 @@ export function InstallProgress({
   };
 
   const handleCopy = async () => {
-    if (commandDisplay) {
-      await navigator.clipboard.writeText(commandDisplay);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    if (!commandDisplay) return;
+
+    // On failure, share the full diagnostic output (command + log + error).
+    // On success/while running, keep the concise command-only behaviour.
+    const isFailed =
+      result !== null && result !== undefined && !result.success;
+
+    let payload = commandDisplay;
+    if (isFailed) {
+      const sections = [commandDisplay];
+      if (lines.length > 0) sections.push(lines.join('\n'));
+      if (result?.error) sections.push(result.error);
+      payload = sections.join('\n\n');
     }
+
+    await navigator.clipboard.writeText(payload);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const isFinished = result !== null && result !== undefined;
