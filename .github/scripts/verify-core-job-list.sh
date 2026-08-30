@@ -18,34 +18,45 @@
 # Usage:
 #   .github/scripts/verify-core-job-list.sh
 #
-# Requires: bash, grep, sed, tr, sort.
+# Requires: bash, grep, sed, tr, sort, awk.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
 
 # --- Extract the canonical list from the `check` job's `needs:` ------------
-# The `check` aggregator declares the largest `needs:` list in the file (it
-# lists every gating job). `notify-failure` also declares `needs: [check]`, but
-# that is a single-element list. We pick the `needs:` line with the most
-# comma-separated job ids, which is unambiguously `check`'s.
-CHECK_NEEDS_LINE="$(grep -nE '\s+needs:\s*\[' "$CI_YML" \
-  | while IFS=: read -r ln _; do
-      printf '%s %s\n' "$(sed -n "${ln}p" "$CI_YML" | grep -o ',' | wc -l)" "$ln"
-    done \
-  | sort -k1,1nr | head -n1 | awk '{print $2;}')"
+# We anchor explicitly on the `check:` job block instead of picking the largest
+# `needs:` list in the file (that heuristic silently breaks if any other job
+# ever grows a larger list, or the list is reformatted across lines). Steps:
+#   1. Locate the `check:` job header (a top-level key at 2-space indent).
+#   2. Bound the job's block at the next top-level key (or EOF if `check` is the
+#      last job).
+#   3. Find the job-level `needs:` line (`^    needs:`) within that block. This
+#      keeps `notify-failure`'s `needs: [check]` from ever being misread.
+#   4. Collect the list from the `needs:` line plus any continuation lines
+#      indented >= 6 spaces (covers inline `[a, b]`, multi-line flow, and
+#      block-style `- a` lists), then emit every bare job-id token, dropping the
+#      literal `needs`. The block bound also excludes the `check` step's
+#      `needs.X.result` references, which are not list entries.
+CHECK_HEADER_LINE="$(grep -nE '^  check:[[:space:]]*(#.*)?$' "$CI_YML" | head -n1 | cut -d: -f1)"
+BLOCK_END="$(awk -v s="$CHECK_HEADER_LINE" 'NR > s && /^  [A-Za-z0-9_-]+:/ { print NR; exit }' "$CI_YML")"
+TOTAL_LINES="$(wc -l < "$CI_YML")"
+BLOCK_END="${BLOCK_END:-$((TOTAL_LINES + 1))}"
+CHECK_NEEDS_LINE="$(awk -v s="$CHECK_HEADER_LINE" -v e="$BLOCK_END" 'NR >= s && NR < e && /^    needs:/ { print NR; exit }' "$CI_YML")"
 
 if [[ -z "$CHECK_NEEDS_LINE" ]]; then
-  echo "error: could not locate a 'needs: [ ... ]' list in $CI_YML" >&2
+  echo "error: could not locate the 'check' job's 'needs:' list in $CI_YML" >&2
   exit 1
 fi
 
-NEEDS_RAW="$(sed -n "${CHECK_NEEDS_LINE}p" "$CI_YML")"
-CANONICAL="$(printf '%s' "$NEEDS_RAW" \
-  | sed -E 's/^.*needs:\s*\[//; s/\]\s*$//' \
-  | tr ',' '\n' \
-  | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
-  | grep -v '^$' \
+CANONICAL="$(awk -v n="$CHECK_NEEDS_LINE" -v e="$BLOCK_END" '
+  NR >= n && NR < e {
+    match($0, /^ */); ind = RLENGTH;
+    if (NR == n || ind >= 6) print;
+    else exit;
+  }' "$CI_YML" \
+  | grep -oE '[A-Za-z0-9_][A-Za-z0-9_-]*' \
+  | grep -vx 'needs' \
   | sort -u)"
 
 if [[ -z "$CANONICAL" ]]; then
