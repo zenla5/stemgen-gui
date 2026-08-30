@@ -405,12 +405,31 @@ jobs:
       - name: Validate CHANGELOG structure
         run: node .github/scripts/check-changelog.mjs
 
+  # Verifies the canonical core-CI-job list (the `check` job's `needs:` list)
+  # has not drifted from the docs that reference it (issue #203).
+  validate-core-job-list:
+    name: Validate Core Job List
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check core job list is in sync across ci.yml and docs
+        run: .github/scripts/verify-core-job-list.sh
+
   # Final check
+  # NOTE: the 'needs' list below is the SINGLE source of truth for the core CI
+  # jobs that form the merge gate. `notify-failure` depends only on this job,
+  # and `.github/scripts/verify-core-job-list.sh` (run by the
+  # `validate-core-job-list` job) asserts docs/CI_GATE.md and AGENT_GUIDE.md
+  # match this list exactly (issue #203). Add/remove a gating job here AND in
+  # the two docs, or CI fails.
   check:
     name: All Checks Passed
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, e2e-binary, security, python, changelog]
+    needs: [frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv]
     if: always()
 
     steps:
@@ -476,6 +495,22 @@ jobs:
             echo "Changelog structure check was cancelled"
             exit 1
           fi
+          if [[ "${{ needs.security.result }}" == "failure" ]]; then
+            echo "Security audit failed"
+            exit 1
+          fi
+          if [[ "${{ needs.security.result }}" == "cancelled" ]]; then
+            echo "Security audit was cancelled"
+            exit 1
+          fi
+          if [[ "${{ needs.msrv.result }}" == "failure" ]]; then
+            echo "MSRV check failed"
+            exit 1
+          fi
+          if [[ "${{ needs.msrv.result }}" == "cancelled" ]]; then
+            echo "MSRV check was cancelled"
+            exit 1
+          fi
           echo "All critical checks passed!"
 
   # Failure notification via Telegram
@@ -483,7 +518,7 @@ jobs:
     name: Notify on Failure
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, e2e-binary, python, changelog, check]
+    needs: [check]
     if: failure()
     steps:
       - name: Send Telegram notification
