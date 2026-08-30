@@ -4,7 +4,7 @@
 status check is the **"All Checks Passed"** aggregator job defined in
 `.github/workflows/ci.yml` (the `check` job), which depends on and verifies the
 result of every core CI job (`frontend`, `integration`, `backend`, `e2e`,
-`e2e-binary`, `python`, `security`).
+`e2e-binary`, `python`, `security`, `changelog`).
 
 ## Policy on `main`
 

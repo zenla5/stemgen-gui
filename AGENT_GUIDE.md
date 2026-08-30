@@ -110,13 +110,17 @@ stemgen-gui/
 ## CI/CD
 
 ### CI Pipeline (`.github/workflows/ci.yml`)
-8 jobs on every push/PR:
+Core jobs on every push/PR, gated by the **Check** aggregator:
 1. **Frontend** (×3: Ubuntu, Windows, macOS) — TypeScript check, ESLint, unit tests
 2. **Integration** (Ubuntu) — Component integration tests
 3. **E2E** (Ubuntu) — Playwright/Chromium smoke tests
-4. **Backend** (Ubuntu) — Rust clippy, fmt, build, `cargo test --lib`
-5. **Security** (Ubuntu) — `npm audit`, `cargo audit`
-6. **Check** (gating job) — Verifies all above passed
+4. **Backend** (×3: Ubuntu, Windows, macOS) — Rust clippy, fmt, build, `cargo test --lib` / `--tests`
+5. **MSRV** (Ubuntu) — `cargo check --workspace` on the declared Rust 1.89.0
+6. **E2E Binary** (×2: Ubuntu, Windows) — drives the compiled Tauri binary (WebdriverIO / CDP)
+7. **Python** (Ubuntu) — sidecar unit tests with coverage
+8. **Security** (Ubuntu) — `npm audit`, `cargo audit`
+9. **Changelog** (Ubuntu) — validates `CHANGELOG.md` structure via `check-changelog.mjs`
+10. **Check** (gating job) — verifies all core jobs passed ("All Checks Passed")
 
 ### Release Pipeline (`.github/workflows/release.yml`)
 4 platform builds on `v*` tags or manual trigger:
@@ -126,6 +130,16 @@ stemgen-gui/
 - Linux: DEB + AppImage + RPM
 
 Artifacts: installers + SHA256 checksums → GitHub draft Release
+
+## Changelog
+
+Follow the convention in `docs/CHANGELOG_GUIDE.md` (adopted in issue #200) when
+editing `CHANGELOG.md`: append new `[Unreleased]` entries at the **bottom** of
+the relevant existing `### <Category>` subsection, and create missing
+subsections at the end of `[Unreleased]` in canonical order (`Added`,
+`Changed`, `Fixed`, `Removed`, `Security`, `Internal`). CI enforces the
+structure (`changelog` job), so run
+`node .github/scripts/check-changelog.mjs` before pushing.
 
 ## Common Commands
 
