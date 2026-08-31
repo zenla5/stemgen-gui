@@ -29,6 +29,8 @@ All notable changes to this project will be documented in this file.
 
 - **[TS6]** Started the TypeScript 7 migration (issue #175) with the interim `typescript` 6.0.x line (`~6.0.3`). TypeScript 6.0 deprecates `baseUrl` (scheduled for removal in 7.0) and no longer auto-includes `@types/*` packages under `moduleResolution: "bundler"`, and it reports new `TS2882` for the untyped `./index.css` side-effect import. Accordingly `tsconfig.json` now drops `baseUrl` (the `@/*` `paths` mapping resolves relative to the config file and needs no base), lists the ambient `types` explicitly (`node`, `react`, `react-dom`), and a new `src/vite-env.d.ts` brings in the `vite/client` types. `package-lock.json` was regenerated and the full local toolchain is green (`npm run check`, `npm run build`, `npm run lint`, unit + integration tests). Full TS 7 (`tsgo`, the native Go compiler) remains blocked upstream: `@typescript-eslint` (plugin + parser, still `8.68.0`) pins `peerDependencies.typescript` to `>=4.8.4 <6.1.0` and TS 7.0.2 ships no JS compiler API for it to load — tracked in #175, which stays open.
 
+- **[TSBUILDINFO]** Fixed the ineffective `.gitignore` rule (`"*.tsbuildinfo"` was quoted, so it never matched) and untracked `tsconfig.tsbuildinfo` / `tsconfig.node.tsbuildinfo`. These per-compiler-version build caches were being committed and caused large, hard-to-review diffs on every dependency/config change. They are now regenerated locally and ignored.
+
 ## [1.5.1] — 2026-08-28 — NixOS WebView EGL Fix
 
 ### Fixed

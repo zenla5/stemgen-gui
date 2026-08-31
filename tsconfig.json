@@ -18,6 +18,9 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
+    // TS 6/7 no longer auto-includes ambient `@types/*` under moduleResolution:"bundler".
+    // This explicit allowlist is now the gatekeeper for which global ambient types ship;
+    // add any future package that declares globals here or its types are silently dropped.
     "types": ["node", "react", "react-dom"],
     "paths": {
       "@/*": ["./src/*"]
