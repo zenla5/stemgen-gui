@@ -27,6 +27,8 @@ All notable changes to this project will be documented in this file.
 
 - **[CI-JOB-LIST-ANCHOR]** Made `verify-core-job-list.sh`'s extraction of the canonical core-CI-job list explicit instead of heuristic (issue #207): it now locates the `check:` job block directly and reads that job's `needs:` list, rather than picking the largest `needs:` list in the file. This removes the risk that a future job with a larger `needs:` list silently becomes the anchor, and the parser now tolerates multi-line `needs:` lists (inline `[a, b]`, multi-line flow, and block-style `- a`).
 
+- **[TS6]** Started the TypeScript 7 migration (issue #175) with the interim `typescript` 6.0.x line (`~6.0.3`). TypeScript 6.0 deprecates `baseUrl` (scheduled for removal in 7.0) and no longer auto-includes `@types/*` packages under `moduleResolution: "bundler"`, and it reports new `TS2882` for the untyped `./index.css` side-effect import. Accordingly `tsconfig.json` now drops `baseUrl` (the `@/*` `paths` mapping resolves relative to the config file and needs no base), lists the ambient `types` explicitly (`node`, `react`, `react-dom`), and a new `src/vite-env.d.ts` brings in the `vite/client` types. `package-lock.json` was regenerated and the full local toolchain is green (`npm run check`, `npm run build`, `npm run lint`, unit + integration tests). Full TS 7 (`tsgo`, the native Go compiler) remains blocked upstream: `@typescript-eslint` (plugin + parser, still `8.68.0`) pins `peerDependencies.typescript` to `>=4.8.4 <6.1.0` and TS 7.0.2 ships no JS compiler API for it to load — tracked in #175, which stays open.
+
 ## [1.5.1] — 2026-08-28 — NixOS WebView EGL Fix
 
 ### Fixed
