@@ -165,16 +165,19 @@ pub fn is_windows_store_stub(_path: &Path) -> bool {
 ///
 /// Tries `python3`, `python`, `py` (Windows), and common install paths.
 pub fn find_python() -> Option<PathBuf> {
-    find_python_in_path(None)
+    find_python_in_path(std::env::var_os("PATH").as_deref())
 }
 
 /// Find a Python executable by searching an explicit PATH list.
 ///
 /// `paths` is a PATH-format string (colon/semicolon separated) searched
-/// instead of the process environment when `Some`. Passing `None` falls back
-/// to the ambient `PATH`. Keeping the search path explicit lets tests probe
-/// arbitrary directories without mutating the process-global environment
-/// (which would race with other parallel tests that spawn children).
+/// instead of the process environment when `Some`. Passing an explicit PATH
+/// is required: in `which` v8.x `which_in` does NOT fall back to the ambient
+/// `PATH` for a `None` path list, it fails with
+/// `CannotGetCurrentDirAndPathListEmpty`. Keeping the search path explicit
+/// lets tests probe arbitrary directories without mutating the
+/// process-global environment (which would race with other parallel tests
+/// that spawn children).
 fn find_python_in_path(paths: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     for name in ["python3", "python", "py"] {
@@ -637,6 +640,21 @@ mod tests {
         assert!(
             result.is_none(),
             "find_python should return None when no Python is in PATH"
+        );
+    }
+
+    #[test]
+    fn test_find_python_resolves_on_real_path() {
+        // Regression test for #215: find_python() passed paths=None to
+        // which_in(), which in `which` v8.x fails with
+        // CannotGetCurrentDirAndPathListEmpty instead of falling back to the
+        // ambient PATH. On CI (and this NixOS/Ubuntu runner) a python3 /
+        // python must be present on PATH, so find_python() should resolve.
+        let result = find_python();
+        let path = result.expect("find_python should resolve a Python on the real PATH");
+        assert!(
+            path.as_os_str().to_string_lossy().contains("python"),
+            "resolved python path should mention python, got: {path:?}"
         );
     }
 }
