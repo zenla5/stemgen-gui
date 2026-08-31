@@ -424,12 +424,13 @@ jobs:
   # and `.github/scripts/verify-core-job-list.sh` (run by the
   # `validate-core-job-list` job) asserts docs/CI_GATE.md and AGENT_GUIDE.md
   # match this list exactly (issue #203). Add/remove a gating job here AND in
-  # the two docs, or CI fails.
+  # the two docs, or CI fails. `validate-core-job-list` is itself a gating job
+  # (issue #209) so a drift between ci.yml and the docs blocks the merge.
   check:
     name: All Checks Passed
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv]
+    needs: [frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv, validate-core-job-list]
     if: always()
 
     steps:
@@ -509,6 +510,14 @@ jobs:
           fi
           if [[ "${{ needs.msrv.result }}" == "cancelled" ]]; then
             echo "MSRV check was cancelled"
+            exit 1
+          fi
+          if [[ "${{ needs.validate-core-job-list.result }}" == "failure" ]]; then
+            echo "Core job list validation failed"
+            exit 1
+          fi
+          if [[ "${{ needs.validate-core-job-list.result }}" == "cancelled" ]]; then
+            echo "Core job list validation was cancelled"
             exit 1
           fi
           echo "All critical checks passed!"

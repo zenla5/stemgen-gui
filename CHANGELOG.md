@@ -27,6 +27,8 @@ All notable changes to this project will be documented in this file.
 
 - **[CI-JOB-LIST-ANCHOR]** Made `verify-core-job-list.sh`'s extraction of the canonical core-CI-job list explicit instead of heuristic (issue #207): it now locates the `check:` job block directly and reads that job's `needs:` list, rather than picking the largest `needs:` list in the file. This removes the risk that a future job with a larger `needs:` list silently becomes the anchor, and the parser now tolerates multi-line `needs:` lists (inline `[a, b]`, multi-line flow, and block-style `- a`).
 
+- **[CI-JOB-LIST-GATE]** Made the core-job-list drift check genuinely gating (issue #209): `validate-core-job-list` is now part of the merge gate — added to the `check` aggregator's `needs:` list and its per-job result verification — so a red `verify-core-job-list.sh` (a `core job ids:` line in `docs/CI_GATE.md`/`AGENT_GUIDE.md` that has drifted from the `check` job's `needs:`) now blocks merges via the existing "All Checks Passed" check instead of turning a single non-gating job red. The canonical list in `ci.yml` and both docs were updated in the same change to stay in sync.
+
 ## [1.5.1] — 2026-08-28 — NixOS WebView EGL Fix
 
 ### Fixed
