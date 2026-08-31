@@ -67,13 +67,14 @@ const FILES_TO_UPDATE = [
   },
 ];
 
-// Changelog entry template
-const CHANGELOG_ENTRY = (version, date) => `## [${version}] — ${date} — Version Bump
+// Changelog release-heading template (promotes an existing [Unreleased] section).
+const CHANGELOG_HEADING = (version, date) => `## [${version}] — ${date} — Version Bump
 
 ### Changed
 
 - **Version consistency** — All version strings bumped to ${version}: \`package.json\`, \`Cargo.toml\` (workspace), \`src-tauri/Cargo.toml\`, \`src/lib/constants.ts\` (\`APP_VERSION\`), and \`src-tauri/tauri.conf.json\`.
-`;
+
+## [Unreleased]`;
 
 let VERSION;
 
@@ -146,18 +147,18 @@ function updateRegressionTest() {
 
   const content = read('src/__tests__/regression.test.ts');
 
-  // Update the hardcoded APP_VERSION assertion inside the v1.0.8 Coverage Enhancement describe block.
-  // This test hardcodes the version string to guard against accidental version regressions.
-  // Pattern: it('APP_VERSION should be 1.0.x', () => { expect(APP_VERSION).toBe('1.0.x'); });
-  const pattern = /it\('APP_VERSION should be (\d+\.\d+\.\d+)', \(\) => \{\s*expect\(APP_VERSION\)\.toBe\('(\d+\.\d+\.\d+)'\);/;
+  // The APP_VERSION assertion is now dynamic: it compares APP_VERSION against
+  // package.json ("should be current version"), so there is no hardcoded literal
+  // to bump. Only rewrite a literal if one is actually present (the old format).
+  const hardcoded = /it\('APP_VERSION should be (\d+\.\d+\.\d+)', \(\) => \{\s*expect\(APP_VERSION\)\.toBe\('(\d+\.\d+\.\d+)'\);/;
 
-  if (!pattern.test(content)) {
-    console.error('  ❌ src/__tests__/regression.test.ts: Could not find hardcoded APP_VERSION assertion');
-    process.exit(1);
+  if (!hardcoded.test(content)) {
+    console.log('  ℹ️  src/__tests__/regression.test.ts: APP_VERSION assertion is dynamic (reads package.json); nothing to update.');
+    return;
   }
 
   const updated = content.replace(
-    /it\('APP_VERSION should be (\d+\.\d+\.\d+)', \(\) => \{\s*expect\(APP_VERSION\)\.toBe\('(\d+\.\d+\.\d+)'\);/,
+    hardcoded,
     `it('APP_VERSION should be ${VERSION}', () => { expect(APP_VERSION).toBe('${VERSION}');`
   );
 
@@ -175,8 +176,16 @@ function updateChangelog() {
     day: 'numeric',
   }).replace(/,/g, '');
 
-  const entry = CHANGELOG_ENTRY(VERSION, formattedDate);
-  const newContent = content.replace(/(## \[Unreleased\]|\n## \[)/, `${entry}\n$1`);
+  // Promote the existing `## [Unreleased]` heading to a versioned release
+  // heading and prepend a fresh `## [Unreleased]` so it stays the first
+  // section (CI enforces this via check-changelog.mjs). The accumulated
+  // `### <Category>` subsections under [Unreleased] become the release body.
+  const entry = CHANGELOG_HEADING(VERSION, formattedDate);
+  if (!/^## \[Unreleased\]$/m.test(content)) {
+    console.error('  ❌ CHANGELOG.md: could not find `## [Unreleased]` heading');
+    process.exit(1);
+  }
+  const newContent = content.replace(/^## \[Unreleased\]$/m, entry);
 
   write('CHANGELOG.md', newContent);
   console.log(`  ✅ CHANGELOG.md`);
