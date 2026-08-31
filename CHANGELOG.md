@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.2] — 2026-08-31 — Bug Fixes & CI Hardening
+
 ### Fixed
 
 - **[THEME-COLOR-SCHEME]** Restored `color-scheme` for the class-toggled dark theme after the Tailwind v4 migration (`src/index.css` now sets `color-scheme: light` on `:root` and `color-scheme: dark` on `.dark`). Without it the browser picked the native scheme heuristically, so native UI elements (native `<select>`/`<option>` dropdowns, scrollbars, checkbox/radio/input chrome, and form auto-fill styling) did not switch with dark mode.
@@ -34,6 +36,10 @@ All notable changes to this project will be documented in this file.
 - **[TS6]** Started the TypeScript 7 migration (issue #175) with the interim `typescript` 6.0.x line (`~6.0.3`). TypeScript 6.0 deprecates `baseUrl` (scheduled for removal in 7.0) and no longer auto-includes `@types/*` packages under `moduleResolution: "bundler"`, and it reports new `TS2882` for the untyped `./index.css` side-effect import. Accordingly `tsconfig.json` now drops `baseUrl` (the `@/*` `paths` mapping resolves relative to the config file and needs no base), lists the ambient `types` explicitly (`node`, `react`, `react-dom`), and a new `src/vite-env.d.ts` brings in the `vite/client` types. `package-lock.json` was regenerated and the full local toolchain is green (`npm run check`, `npm run build`, `npm run lint`, unit + integration tests). Full TS 7 (`tsgo`, the native Go compiler) remains blocked upstream: `@typescript-eslint` (plugin + parser, still `8.68.0`) pins `peerDependencies.typescript` to `>=4.8.4 <6.1.0` and TS 7.0.2 ships no JS compiler API for it to load — tracked in #175, which stays open.
 
 - **[TSBUILDINFO]** Fixed the ineffective `.gitignore` rule (`"*.tsbuildinfo"` was quoted, so it never matched) and untracked `tsconfig.tsbuildinfo` / `tsconfig.node.tsbuildinfo`. These per-compiler-version build caches were being committed and caused large, hard-to-review diffs on every dependency/config change. They are now regenerated locally and ignored.
+
+### Changed
+
+- **Version consistency** — All version strings bumped to 1.5.2: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
 
 ## [1.5.1] — 2026-08-28 — NixOS WebView EGL Fix
 
