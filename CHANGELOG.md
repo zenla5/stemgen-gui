@@ -25,6 +25,8 @@ All notable changes to this project will be documented in this file.
 
 - **[CHANGELOG-CONV]** Adopted a changelog convention to stop `[Unreleased]` merge conflicts (issue #200): new entries are **appended at the bottom** of the appropriate existing `### <Category>` subsection instead of inserted at the top, and missing subsections are created at the end of `[Unreleased]` in canonical order (`Added`, `Changed`, `Fixed`, `Removed`, `Security`, `Internal`). Documented in `docs/CHANGELOG_GUIDE.md` and enforced by a new `changelog` CI job running `.github/scripts/check-changelog.mjs`.
 
+- **[CI-JOB-LIST-ANCHOR]** Made `verify-core-job-list.sh`'s extraction of the canonical core-CI-job list explicit instead of heuristic (issue #207): it now locates the `check:` job block directly and reads that job's `needs:` list, rather than picking the largest `needs:` list in the file. This removes the risk that a future job with a larger `needs:` list silently becomes the anchor, and the parser now tolerates multi-line `needs:` lists (inline `[a, b]`, multi-line flow, and block-style `- a`).
+
 ## [1.5.1] — 2026-08-28 — NixOS WebView EGL Fix
 
 ### Fixed
