@@ -12,7 +12,7 @@ gate). Do not edit the list in multiple places: change the `check` job's
 `needs` in `ci.yml` and re-run `.github/scripts/verify-core-job-list.sh`, which
 also checks the references in `AGENT_GUIDE.md`.
 
-core job ids: frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv
+core job ids: frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv, validate-core-job-list
 
 ## Policy on `main`
 

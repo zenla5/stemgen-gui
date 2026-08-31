@@ -116,7 +116,7 @@ of core job ids is the `check` job's `needs` list in `.github/workflows/ci.yml`
 than one place; `.github/scripts/verify-core-job-list.sh` fails CI if the
 `check` job's `needs` list, this list, and `docs/CI_GATE.md` drift apart.
 
-core job ids: frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv
+core job ids: frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv, validate-core-job-list
 
 1. **Frontend** (×3: Ubuntu, Windows, macOS) — TypeScript check, ESLint, unit tests
 2. **Integration** (Ubuntu) — Component integration tests
@@ -127,7 +127,8 @@ core job ids: frontend, integration, backend, e2e, e2e-binary, security, python,
 7. **Python** (Ubuntu) — sidecar unit tests with coverage
 8. **Security** (Ubuntu) — `npm audit`, `cargo audit`
 9. **Changelog** (Ubuntu) — validates `CHANGELOG.md` structure via `check-changelog.mjs`
-10. **Check** (gating job) — verifies all core jobs passed ("All Checks Passed")
+10. **Validate Core Job List** (Ubuntu) — runs `verify-core-job-list.sh` (plus its `--self-test`)
+11. **Check** (gating job) — verifies all core jobs passed ("All Checks Passed")
 
 ### Release Pipeline (`.github/workflows/release.yml`)
 4 platform builds on `v*` tags or manual trigger:

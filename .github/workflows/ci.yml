@@ -406,7 +406,9 @@ jobs:
         run: node .github/scripts/check-changelog.mjs
 
   # Verifies the canonical core-CI-job list (the `check` job's `needs:` list)
-  # has not drifted from the docs that reference it (issue #203).
+  # has not drifted from the docs that reference it (issue #203), and runs the
+  # parser's regression self-tests (issue #210). It is part of the merge gate
+  # (issue #209): the `check` aggregator depends on it.
   validate-core-job-list:
     name: Validate Core Job List
     runs-on: ubuntu-latest
@@ -418,18 +420,22 @@ jobs:
       - name: Check core job list is in sync across ci.yml and docs
         run: .github/scripts/verify-core-job-list.sh
 
+      - name: Run extractor regression self-tests
+        run: .github/scripts/verify-core-job-list.sh --self-test
+
   # Final check
   # NOTE: the 'needs' list below is the SINGLE source of truth for the core CI
   # jobs that form the merge gate. `notify-failure` depends only on this job,
   # and `.github/scripts/verify-core-job-list.sh` (run by the
   # `validate-core-job-list` job) asserts docs/CI_GATE.md and AGENT_GUIDE.md
   # match this list exactly (issue #203). Add/remove a gating job here AND in
-  # the two docs, or CI fails.
+  # the two docs, or CI fails. `validate-core-job-list` is itself a gating job
+  # (issue #209) so a drift between ci.yml and the docs blocks the merge.
   check:
     name: All Checks Passed
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv]
+    needs: [frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv, validate-core-job-list]
     if: always()
 
     steps:
@@ -509,6 +515,14 @@ jobs:
           fi
           if [[ "${{ needs.msrv.result }}" == "cancelled" ]]; then
             echo "MSRV check was cancelled"
+            exit 1
+          fi
+          if [[ "${{ needs.validate-core-job-list.result }}" == "failure" ]]; then
+            echo "Core job list validation failed"
+            exit 1
+          fi
+          if [[ "${{ needs.validate-core-job-list.result }}" == "cancelled" ]]; then
+            echo "Core job list validation was cancelled"
             exit 1
           fi
           echo "All critical checks passed!"
