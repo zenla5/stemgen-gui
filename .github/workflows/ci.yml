@@ -406,7 +406,9 @@ jobs:
         run: node .github/scripts/check-changelog.mjs
 
   # Verifies the canonical core-CI-job list (the `check` job's `needs:` list)
-  # has not drifted from the docs that reference it (issue #203).
+  # has not drifted from the docs that reference it (issue #203), and runs the
+  # parser's regression self-tests (issue #210). It is part of the merge gate
+  # (issue #209): the `check` aggregator depends on it.
   validate-core-job-list:
     name: Validate Core Job List
     runs-on: ubuntu-latest
@@ -417,6 +419,9 @@ jobs:
 
       - name: Check core job list is in sync across ci.yml and docs
         run: .github/scripts/verify-core-job-list.sh
+
+      - name: Run extractor regression self-tests
+        run: .github/scripts/verify-core-job-list.sh --self-test
 
   # Final check
   # NOTE: the 'needs' list below is the SINGLE source of truth for the core CI

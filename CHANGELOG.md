@@ -29,6 +29,8 @@ All notable changes to this project will be documented in this file.
 
 - **[CI-JOB-LIST-GATE]** Made the core-job-list drift check genuinely gating (issue #209): `validate-core-job-list` is now part of the merge gate — added to the `check` aggregator's `needs:` list and its per-job result verification — so a red `verify-core-job-list.sh` (a `core job ids:` line in `docs/CI_GATE.md`/`AGENT_GUIDE.md` that has drifted from the `check` job's `needs:`) now blocks merges via the existing "All Checks Passed" check instead of turning a single non-gating job red. The canonical list in `ci.yml` and both docs were updated in the same change to stay in sync.
 
+- **[CI-JOB-LIST-SELFTEST]** Added a `--self-test` mode to `.github/scripts/verify-core-job-list.sh` (issue #210): it feeds synthetic `ci.yml` fragments through the core-job-list extractor and asserts the parsed job-id set for inline `[a, b]`, multi-line flow, block-style `- a` lists, a decoy job with a larger `needs:` list, `check` as the last job, and `needs.X.result` references inside the `check` steps. A regression to the old "longest needs line" heuristic now fails the decoy case. The `validate-core-job-list` CI job runs the self-test so a future reformat of `ci.yml` that silently breaks the extractor (without tripping the drift check) is caught.
+
 ## [1.5.1] — 2026-08-28 — NixOS WebView EGL Fix
 
 ### Fixed
