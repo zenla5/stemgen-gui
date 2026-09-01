@@ -1,0 +1,58 @@
+name: Dependabot Auto-Merge
+
+# Enables GitHub's NATIVE auto-merge on every Dependabot PR. GitHub then
+# merges the PR the instant the branch-protection required check
+# ("All Checks Passed" from ci.yml) turns green — no polling, no race,
+# no secondary bot pushing to main.
+#
+# We trigger on `pull_request_target` (not `pull_request`) because a
+# Dependabot PR's `pull_request` run gets a read-only GITHUB_TOKEN with
+# no ability to enable auto-merge. Under `pull_request_target` the
+# token has write access to the base repo.
+#
+# SECURITY: pull_request_target executes in the context of the BASE
+# branch. This workflow NEVER checks out or executes anything from the
+# PR's head — it only reads PR metadata (dependabot/fetch-metadata,
+# which inspects the diff) and calls `gh pr merge --auto`. That is the
+# safe, well-understood pattern for acting on outsider PRs.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+# SHA-pinned actions should be updated periodically (e.g., quarterly or via
+# Dependabot, which already tracks the github-actions ecosystem weekly here).
+# Current pin date: 2026-09-01
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Enable auto-merge on Dependabot PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@d7267f607e9d3fb96fc2fbe83e0af444713e90b7 # v2-v3 line, keep updated
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Enable auto-merge (merge commit)
+        run: |
+          echo "Enabling auto-merge on dependabot PR #${PR_NUMBER}"
+          echo "  dependency: ${{ steps.metadata.outputs.dependency-names }}"
+          echo "  update-type: ${{ steps.metadata.outputs.update-type }}"
+          gh pr merge \
+            --repo "$GITHUB_REPOSITORY" \
+            "$PR_NUMBER" \
+            --auto \
+            --merge
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

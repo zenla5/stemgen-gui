@@ -58,7 +58,7 @@ gh api \
   "restrictions": null,
   "allow_force_pushes": false,
   "allow_deletions": false,
-  "allow_auto_merge": false,
+  "allow_auto_merge": true,
   "required_linear_history": false,
   "required_conversation_resolution": true
 }
