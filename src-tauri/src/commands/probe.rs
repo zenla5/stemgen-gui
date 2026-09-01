@@ -706,8 +706,7 @@ mod tests {
 
         let output = output.expect("ld_library_path marker command failed to run");
         assert!(output.status.success(), "{output:?}");
-        let child_ld_library_path =
-            String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let child_ld_library_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
         assert_eq!(
             child_ld_library_path, host_lib,
             "python_env() must remove the AppImage payload usr/lib from \
