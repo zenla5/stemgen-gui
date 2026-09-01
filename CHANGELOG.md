@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **[PYTHON-DETECT]** Fixed a regression (issue #215) where the app reported "Python not found (unknown)" even though Python was installed and on `PATH`. `find_python()` (in `src-tauri/src/commands/probe.rs`) was changed to call `which::which_in(name, None, ...)`, but in `which` v8.x passing a `None` path list makes the lookup fail with `CannotGetCurrentDirAndPathListEmpty` instead of falling back to the ambient `PATH` — so no interpreter was ever found. `find_python()` now passes the real environment `PATH` explicitly (the test-only `find_python_in_path(Some(...))` path is unaffected), and a regression test (`test_find_python_resolves_on_real_path`) was added.
+
 ## [1.5.2] — 2026-08-31 — Bug Fixes & CI Hardening
 
 ### Fixed
