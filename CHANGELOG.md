@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **[PYTHON-ENV]** Demucs model downloads no longer fail with `Model download failed: <urlopen error unknown url type: https>` when launched via an AppImage (issue #218). The AppImage runtime prepends its bundled `usr/lib` to `LD_LIBRARY_PATH`, and that directory ships an old OpenSSL (`libssl.so.3`/`libcrypto.so.3` built against OpenSSL 3.0). When a Python child inherits it ahead of its own prefix, the interpreter's `_ssl` module (built against OpenSSL ≥ 3.3) failed to import with `version 'OPENSSL_3.3.0' not found`, leaving `urllib` without an HTTPS handler and breaking every model and torch download. The shared `python_env()` spawn helper (`src-tauri/src/commands/probe.rs`) now also removes the AppImage payload `usr/lib` entry from `LD_LIBRARY_PATH` for every Python child (Demucs download, torch installs, and environment probes), so the venv's own OpenSSL is used. A regression test (`test_python_env_strips_appimage_payload_from_ld_library_path`) was added.
+
 ## [1.5.3] —  2026-09-01 — Python Detection Fix
 
 ### Fixed

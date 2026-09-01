@@ -53,20 +53,77 @@ impl NoWindow for tokio::process::Command {
 /// startup with `Fatal Python error: Failed to import encodings module`
 /// (`sys.prefix` == AppImage `usr/` while `sys.executable` is the real one).
 ///
-/// This helper strips those two variables from the child environment so the
-/// interpreter bootstraps from its own `pyvenv.cfg`/prefix, and forces UTF-8
-/// mode (the legacy `PYTHONUTF8=1` behavior) in one step.
+/// The runtime also prepends the payload's `usr/lib` to `LD_LIBRARY_PATH`.
+/// That dir ships an old OpenSSL (`libssl.so.3`/`libcrypto.so.3` built against
+/// OpenSSL 3.0). When a Python child inherits it ahead of its own prefix, the
+/// interpreter's `_ssl` module (built against OpenSSL >= 3.3) fails to import
+/// with `version 'OPENSSL_3.3.0' not found`, so `urllib` loses its HTTPS
+/// handler and model downloads fail with `unknown url type: https`.
+///
+/// This helper strips those environment entries from the child environment so
+/// the interpreter bootstraps from its own `pyvenv.cfg`/prefix with its own
+/// OpenSSL, and forces UTF-8 mode (the legacy `PYTHONUTF8=1` behavior) in one
+/// step.
 ///
 /// Usage: `Command::new(python).python_env().arg("--version")`
 ///
-/// It is safe to call on any `Command`: non-Python programs ignore these
-/// variables, so `python_env()` is effectively a no-op for them.
+/// It is safe to call on any `Command`: non-Python programs ignore most of
+/// these variables, and `python_env()` is only used on Python children anyway.
 pub trait PythonEnv {
     fn python_env(&mut self) -> &mut Self;
 }
 
+/// Whether `path` is the AppImage payload's shared-library directory
+/// (`<cache>/appimage-run/<sha>/usr/lib`), which ships an old OpenSSL that
+/// shadows the real Python interpreter's `_ssl`.
+fn is_appimage_payload_lib_dir(path: &Path) -> bool {
+    let text = path.to_string_lossy();
+    text.contains("appimage-run") && text.ends_with("usr/lib")
+}
+
+/// Return the parent's `LD_LIBRARY_PATH` with any AppImage payload `usr/lib`
+/// entry removed, so Python children load their own OpenSSL instead of the
+/// bundled one. Returns `None` if nothing meaningful survives.
+fn sanitize_ld_library_path() -> Option<String> {
+    let raw = std::env::var_os("LD_LIBRARY_PATH")?;
+    let cleaned: Vec<String> = std::env::split_paths(&raw)
+        .filter(|p| !is_appimage_payload_lib_dir(p))
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    if cleaned.is_empty() {
+        None
+    } else {
+        std::env::join_paths(&cleaned)
+            .ok()
+            .map(|v| v.to_string_lossy().into_owned())
+    }
+}
+
+fn apply_ld_library_path_sanitization(cmd: &mut std::process::Command) {
+    match sanitize_ld_library_path() {
+        Some(cleaned) => {
+            cmd.env("LD_LIBRARY_PATH", cleaned);
+        }
+        None => {
+            cmd.env_remove("LD_LIBRARY_PATH");
+        }
+    }
+}
+
+fn apply_ld_library_path_sanitization_tokio(cmd: &mut tokio::process::Command) {
+    match sanitize_ld_library_path() {
+        Some(cleaned) => {
+            cmd.env("LD_LIBRARY_PATH", cleaned);
+        }
+        None => {
+            cmd.env_remove("LD_LIBRARY_PATH");
+        }
+    }
+}
+
 impl PythonEnv for std::process::Command {
     fn python_env(&mut self) -> &mut Self {
+        apply_ld_library_path_sanitization(self);
         self.env("PYTHONUTF8", "1")
             .env_remove("PYTHONHOME")
             .env_remove("PYTHONPATH")
@@ -75,6 +132,7 @@ impl PythonEnv for std::process::Command {
 
 impl PythonEnv for tokio::process::Command {
     fn python_env(&mut self) -> &mut Self {
+        apply_ld_library_path_sanitization_tokio(self);
         self.env("PYTHONUTF8", "1")
             .env_remove("PYTHONHOME")
             .env_remove("PYTHONPATH")
@@ -618,6 +676,41 @@ mod tests {
             markings,
             ["PYTHONHOME=UNSET", "PYTHONPATH=UNSET", "PYTHONUTF8=SET"],
             "python_env() must strip PYTHONHOME/PYTHONPATH and force PYTHONUTF8=1; got: {stdout:?}"
+        );
+    }
+
+    /// Check that `python_env()` strips the AppImage payload `usr/lib` from
+    /// `LD_LIBRARY_PATH` while preserving other (host) entries. Guards the
+    /// `unknown url type: https` model-download regression #218: the runtime
+    /// prepends its bundled OpenSSL `usr/lib` to the child's loader path, which
+    /// breaks the interpreter's `_ssl` and kills `urllib` HTTPS.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn test_python_env_strips_appimage_payload_from_ld_library_path() {
+        let payload_lib = "/tmp/fake-appimage/cache/appimage-run/abc123/usr/lib";
+        let host_lib = "/nix/store/some-pkg/lib";
+        let original = std::env::var_os("LD_LIBRARY_PATH");
+        std::env::set_var("LD_LIBRARY_PATH", format!("{payload_lib}:{host_lib}"));
+
+        let output = Command::new("sh")
+            .python_env()
+            .args(["-c", "printf '%s' \"$LD_LIBRARY_PATH\""])
+            .output();
+
+        // Restore the parent env before unwrapping so a spawn failure cannot
+        // leak the injected value to other tests.
+        match original {
+            Some(v) => std::env::set_var("LD_LIBRARY_PATH", v),
+            None => std::env::remove_var("LD_LIBRARY_PATH"),
+        }
+
+        let output = output.expect("ld_library_path marker command failed to run");
+        assert!(output.status.success(), "{output:?}");
+        let child_ld_library_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        assert_eq!(
+            child_ld_library_path, host_lib,
+            "python_env() must remove the AppImage payload usr/lib from \
+             LD_LIBRARY_PATH but keep host entries; got: {child_ld_library_path:?}"
         );
     }
 
