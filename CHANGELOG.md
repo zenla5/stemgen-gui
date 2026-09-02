@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.6] — Sep 2 2026 — Version Bump
+
+### Changed
+
+- **Version consistency** — All version strings bumped to 1.5.6: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+
 ### Added
 
 - **[MODEL-DOWNLOAD-PROGRESS]** Downloading a demucs-family model (demucs/htdemucs/htdemucs_ft) now shows real, streaming progress in the AI Models panel instead of a flash of 0→100. The Python sidecar emits per-file JSON progress lines (`{"status":"progress","stage":"downloading","progress":<0..1>,"message":...}`) that the Rust backend streams to the frontend as `model-download-progress` events, and the model card shows a live percentage and message. On success/failure a toast confirms the result.
