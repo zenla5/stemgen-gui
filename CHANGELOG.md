@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **[PYTHON-ENV]** The 1.5.4 fix for the Demucs `unknown url type: https` download failure (issue #218) only stripped the AppImage payload lib dir when the `LD_LIBRARY_PATH` entry happened to end exactly in `usr/lib` (no trailing slash). In reality `appimage-run` injects the payload dir **with a trailing slash** (`.../usr/lib/`) and via subdirectories (`usr/lib/x86_64-linux-gnu/`, `usr/lib32/`, `usr/lib64/`), none of which matched the old `ends_with("usr/lib")` check — so the payload's bundled OpenSSL 3.0 still shadowed the interpreter's `_ssl` and HTTPS downloads kept failing even on 1.5.4. The `is_appimage_payload_lib_dir()` predicate in `src-tauri/src/commands/probe.rs` now drops every `LD_LIBRARY_PATH` entry derived from the AppImage payload (any path containing `appimage-run`), regardless of trailing slash or subdirectory. The regression test now covers the real entry shapes, and an end-to-end `test_python_env_allows_ssl_import_despite_appimage_payload` self-test verifies a real `python_env()`-spawned interpreter can still `import _ssl` with the payload dir present.
+
 ## [1.5.4] —  2026-09-01 — Demucs HTTPS Download Fix
 
 ### Fixed
