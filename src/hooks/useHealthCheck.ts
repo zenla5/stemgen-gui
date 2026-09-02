@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
 
 export function useHealthCheck() {
@@ -9,7 +9,15 @@ export function useHealthCheck() {
     sidecarHealth,
     validateEnvironment,
     environmentValidation,
+    refreshDownloadedModels,
   } = useAppStore();
+
+  // Refresh the downloaded-models list exactly once, when the sidecar first
+  // becomes available, so the footer "Models" indicator reflects the real
+  // backend state (HF cache + app models dir) rather than a possibly stale
+  // persisted list. Subsequent refreshes are driven by the UnifiedModelSection
+  // after download/delete.
+  const modelsRefreshed = useRef(false);
 
   useEffect(() => {
     // Check basic dependencies if not done
@@ -26,5 +34,12 @@ export function useHealthCheck() {
     if (sidecarHealth && !environmentValidation) {
       validateEnvironment();
     }
-  }, [dependenciesChecked, checkDependencies, sidecarHealth, checkSidecarHealth, environmentValidation, validateEnvironment]);
+
+    // Refresh the set of locally downloaded models once the sidecar is
+    // available (guarded so it only runs once per mount).
+    if (sidecarHealth && !modelsRefreshed.current) {
+      modelsRefreshed.current = true;
+      refreshDownloadedModels();
+    }
+  }, [dependenciesChecked, checkDependencies, sidecarHealth, checkSidecarHealth, environmentValidation, validateEnvironment, refreshDownloadedModels]);
 }

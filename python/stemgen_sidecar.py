@@ -55,6 +55,193 @@ DEMUCS_PRETRAINED_NAME: dict[str, str] = {
     "htdemucs_ft": "htdemucs_ft",
 }
 
+# Default HuggingFace namespace used by demucs (mirrors demucs.hf.DEFAULT_NAMESPACE).
+HF_NAMESPACE = "adefossez"
+
+
+def hf_repo_name(name: str) -> str:
+    """Map a demucs pretrained model name to its HuggingFace repository name,
+    mirroring `demucs.hf.hf_repo_name` (e.g. htdemucs -> HTDemucs,
+    htdemucs_ft -> HTDemucs-ft)."""
+    if name == "htdemucs":
+        return "HTDemucs"
+    if name.startswith("htdemucs_"):
+        return "HTDemucs-" + name[len("htdemucs_"):]
+    return "Demucs-" + name
+
+
+def hf_repo_id(pretrained_name: str) -> str:
+    """Full HuggingFace repo id for a demucs pretrained model name."""
+    return f"{HF_NAMESPACE}/{hf_repo_name(pretrained_name)}"
+
+
+def _progress_emit(progress: float, message: str) -> None:
+    """Emit a download progress JSON line (progress is 0..1)."""
+    emit({
+        "status": "progress",
+        "stage": "downloading",
+        "progress": round(progress, 4),
+        "message": message,
+    })
+
+
+class _ProgressTqdm:
+    """A minimal tqdm-compatible progress callback for huggingface_hub.
+
+    huggingface_hub's `snapshot_download(..., tqdm_class=...)` calls
+    `obj.update(n)` as bytes are transferred. We forward those updates to
+    stdout as JSON progress lines so the Rust backend can stream real
+    download progress to the UI.
+
+    A bare duck-typed class is not enough: huggingface_hub also calls
+    `refresh()`, `set_description()`, `set_postfix_str()`, `format_dict`,
+    `total`/`n` attribute writes and `__enter__`/`__exit__` on the object, so
+    we subclass the real `tqdm.tqdm` and only override `update` to emit JSON
+    progress. `tqdm` is a transitive dependency of huggingface_hub.
+    """
+
+    def __init__(self, total: int = 0, desc: str = "", **kwargs):
+        from tqdm import tqdm as _tqdm
+
+        self._tqdm = _tqdm(total=total, desc=desc, **kwargs)
+        self._last_pct = -1.0
+
+    @property
+    def n(self) -> int:
+        return self._tqdm.n
+
+    @n.setter
+    def n(self, value: int) -> None:
+        self._tqdm.n = value
+
+    @property
+    def total(self) -> int:
+        return self._tqdm.total
+
+    @total.setter
+    def total(self, value: int) -> None:
+        self._tqdm.total = value
+
+    @property
+    def format_dict(self) -> dict:
+        return self._tqdm.format_dict
+
+    def update(self, n: int) -> None:
+        self._tqdm.update(n)
+        pct = self._tqdm.n / self._tqdm.total if self._tqdm.total else 0.0
+        # Throttle to ~1% steps to avoid flooding the IPC bridge.
+        if pct - self._last_pct >= 0.01 or pct >= 1.0:
+            self._last_pct = pct
+            _progress_emit(pct, f"{self._tqdm.desc} ({self._tqdm.n // (1024*1024)} MB / {self._tqdm.total // (1024*1024)} MB)")
+
+    def refresh(self) -> None:
+        self._tqdm.refresh()
+
+    def close(self) -> None:
+        self._tqdm.close()
+
+    def set_description(self, desc: str, refresh: bool = True) -> None:
+        self._tqdm.set_description(desc, refresh=refresh)
+
+    def set_postfix_str(self, s: str, refresh: bool = True) -> None:
+        self._tqdm.set_postfix_str(s, refresh=refresh)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+def _download_model_weights(pretrained_name: str) -> None:
+    """Download a demucs model's weights into the HuggingFace cache.
+
+    Uses `huggingface_hub.snapshot_download` with a progress callback so the
+    caller can stream real download progress. After the snapshot is complete
+    the model is fully cached and `demucs.pretrained.get_model` will load it
+    without hitting the network.
+    """
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        raise RuntimeError(
+            "huggingface_hub is required to download demucs models. Install with: pip install huggingface_hub"
+        )
+
+    repo_id = hf_repo_id(pretrained_name)
+    _progress_emit(0.0, f"Starting download of {pretrained_name}...")
+    snapshot_download(
+        repo_id,
+        tqdm_class=_ProgressTqdm,
+    )
+    _progress_emit(1.0, f"{pretrained_name} downloaded")
+
+
+def _model_weights_available(pretrained_name: str) -> bool:
+    """True if a demucs model's weights are already fully cached locally.
+
+    This is a true cache-only check: it never contacts the network. It mirrors
+    exactly what `demucs.hf.get_hf_model` needs — the bag definition yaml plus
+    one safetensors file per model in the bag — by resolving each through
+    `hf_hub_download(..., local_files_only=True)`, which raises if the file is
+    not already cached.
+
+    The old implementation set `demucs.pretrained._IS_TEST = True`, which is a
+    no-op in demucs 4.1.0 — so a "check" would silently download the model.
+    A whole-snapshot `snapshot_download(local_files_only=True)` is too strict:
+    demucs only downloads the files it needs, so the cache can legitimately
+    hold a usable model while the snapshot is "incomplete".
+    """
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        return False
+
+    repo_id = hf_repo_id(pretrained_name)
+    try:
+        # The bag yaml lists the model signatures to load.
+        yaml_path = hf_hub_download(repo_id, f"{pretrained_name}.yaml", local_files_only=True)
+        with open(yaml_path) as f:
+            import yaml as _yaml
+            bag = _yaml.safe_load(f)
+        for sig in bag.get("models", []):
+            hf_hub_download(repo_id, f"{sig}.safetensors", local_files_only=True)
+        return True
+    except Exception:
+        return False
+
+
+def _delete_model_weights(pretrained_name: str) -> None:
+    """Remove a demucs model's weights from the HuggingFace cache.
+
+    Uses `huggingface_hub.scan_cache_dir().delete_revisions(...)` so only the
+    revisions belonging to this repo are removed (blobs shared with other
+    cached revisions are preserved). Falls back to removing the whole repo
+    directory if the cache manager cannot be used.
+    """
+    repo_id = hf_repo_id(pretrained_name)
+    try:
+        from huggingface_hub import scan_cache_dir
+    except ImportError:
+        raise RuntimeError(
+            "huggingface_hub is required to delete demucs models. Install with: pip install huggingface_hub"
+        )
+
+    cache_info = scan_cache_dir()
+    repo_ids = {repo.repo_id for repo in cache_info.repos}
+    if repo_id not in repo_ids:
+        # Nothing cached for this model — treat as already deleted.
+        return
+
+    revisions = [
+        revision.commit_hash
+        for repo in cache_info.repos
+        if repo.repo_id == repo_id
+        for revision in repo.revisions
+    ]
+    if revisions:
+        cache_info.delete_revisions(*revisions).execute()
+
 
 # ------------------------------------------------------------------------------
 # JSON line output helper
@@ -720,6 +907,7 @@ def main() -> None:
     parser.add_argument("--provider-version", default=None, type=str, help="Replicate model version hash")
     parser.add_argument("--download-model", metavar="MODEL_ID", help="Download a demucs model by ID and exit")
     parser.add_argument("--check-model", metavar="MODEL_ID", help="Check if a model is available locally and exit")
+    parser.add_argument("--delete-model", metavar="MODEL_ID", help="Delete a model's local weights and exit")
     parser.add_argument("--list-models", action="store_true", help="List all known models with availability status and exit")
 
     args = parser.parse_args()
@@ -727,14 +915,16 @@ def main() -> None:
     # Handle --download-model (standalone download mode)
     if args.download_model:
         try:
-            import demucs.pretrained
             pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.download_model, args.download_model)
-            print(f"Downloading model: {args.download_model} (as {pretrained_name})", flush=True)
+            emit({"status": "progress", "stage": "downloading", "progress": 0.0, "message": f"Downloading {args.download_model}..."})
+            _download_model_weights(pretrained_name)
+            # Load from cache to verify the snapshot is complete and usable.
+            import demucs.pretrained
             demucs.pretrained.get_model(pretrained_name)
-            print(f"Download complete: {args.download_model}", flush=True)
+            emit({"status": "complete", "model_id": args.download_model, "message": f"{args.download_model} downloaded"})
             sys.exit(0)
         except Exception as e:
-            print(f"Download failed: {e}", file=sys.stderr, flush=True)
+            emit({"status": "error", "model_id": args.download_model, "error": str(e)})
             sys.exit(1)
 
     # Handle --check-model (standalone check mode)
@@ -748,23 +938,10 @@ def main() -> None:
             }), flush=True)
             sys.exit(0)
 
+        pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.check_model, args.check_model)
         try:
             import demucs.pretrained
-            pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.check_model, args.check_model)
-            try:
-                # Try to load model from cache only (no network download)
-                # By setting _IS_TEST, demucs will skip network fetch and raise if not cached
-                original_is_test = getattr(demucs.pretrained, "_IS_TEST", False)
-                demucs.pretrained._IS_TEST = True
-                try:
-                    demucs.pretrained.get_model(pretrained_name)
-                    available = True
-                except Exception:
-                    available = False
-                finally:
-                    demucs.pretrained._IS_TEST = original_is_test
-            except Exception:
-                available = False
+            available = _model_weights_available(pretrained_name)
             print(json.dumps({
                 "available": available,
                 "pretrained_name": pretrained_name,
@@ -774,31 +951,30 @@ def main() -> None:
         except Exception as e:
             print(json.dumps({
                 "available": False,
-                "pretrained_name": DEMUCS_PRETRAINED_NAME.get(args.check_model, args.check_model),
+                "pretrained_name": pretrained_name,
                 "model_id": args.check_model,
                 "error": str(e),
             }), flush=True)
             sys.exit(0)
 
+    # Handle --delete-model (standalone delete mode)
+    if args.delete_model:
+        try:
+            pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.delete_model, args.delete_model)
+            _delete_model_weights(pretrained_name)
+            emit({"status": "complete", "model_id": args.delete_model, "message": f"{args.delete_model} deleted"})
+            sys.exit(0)
+        except Exception as e:
+            emit({"status": "error", "model_id": args.delete_model, "error": str(e)})
+            sys.exit(1)
+
     # Handle --list-models (standalone list mode)
     if args.list_models:
         try:
-            import demucs.pretrained
             results = []
             for model_id in DEMUCS_PRETRAINED_NAME:
                 pretrained_name = DEMUCS_PRETRAINED_NAME[model_id]
-                try:
-                    original_is_test = getattr(demucs.pretrained, "_IS_TEST", False)
-                    demucs.pretrained._IS_TEST = True
-                    try:
-                        demucs.pretrained.get_model(pretrained_name)
-                        available = True
-                    except Exception:
-                        available = False
-                    finally:
-                        demucs.pretrained._IS_TEST = original_is_test
-                except Exception:
-                    available = False
+                available = _model_weights_available(pretrained_name)
                 results.append({"id": model_id, "available": available})
             print(json.dumps(results), flush=True)
             sys.exit(0)

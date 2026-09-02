@@ -297,9 +297,9 @@ export function SettingsPanel() {
           />
           <StatusBadge
             label="Models"
-            value={`${sidecarHealth?.modelCount || 0} downloaded`}
-            healthy={!!sidecarHealth?.modelCount && (sidecarHealth?.modelCount ?? 0) > 0}
-            icon={<CheckCircle className={cn("h-4 w-4", (sidecarHealth?.modelCount ?? 0) > 0 ? "text-green-500" : "text-muted-foreground")} />}
+            value={`${appSettings.downloadedModels.length} downloaded`}
+            healthy={appSettings.downloadedModels.length > 0}
+            icon={<CheckCircle className={cn("h-4 w-4", appSettings.downloadedModels.length > 0 ? "text-green-500" : "text-muted-foreground")} />}
           />
         </div>
           );

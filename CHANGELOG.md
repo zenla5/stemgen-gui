@@ -9,6 +9,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **[MODEL-DOWNLOAD-PROGRESS]** Downloading a demucs-family model (demucs/htdemucs/htdemucs_ft) now shows real, streaming progress in the AI Models panel instead of a flash of 0→100. The Python sidecar emits per-file JSON progress lines (`{"status":"progress","stage":"downloading","progress":<0..1>,"message":...}`) that the Rust backend streams to the frontend as `model-download-progress` events, and the model card shows a live percentage and message. On success/failure a toast confirms the result.
+- **[MODEL-DOWNLOAD-ERROR]** `DownloadProgressPayload` gained `message` and `error` fields (camelCase, omitted when absent); sidecar download failures now surface the real reason instead of silently resetting the bar, since the frontend previously never received an `error` payload.
+
+### Changed
+
+- **[MODEL-AVAILABILITY-CACHEONLY]** The sidecar's `--check-model`/`--list-models` were silently downloading the model on first check: the old code set `demucs.pretrained._IS_TEST = True`, which is a no-op in demucs 4.1.0, so a "check" would contact the network and fetch weights. Both modes are now true cache-only lookups via `huggingface_hub.hf_hub_download(..., local_files_only=True)` on the exact files demucs loads (the bag yaml plus each model's safetensors) — they never trigger a download themselves.
+- **[FOOTER-MODELS]** The footer "Models" indicator and the Settings summary card now reflect whether at least one AI model is actually downloaded (resolved via the backend's `list_downloaded_models`, which checks the HuggingFace cache for demucs-family models and the app models dir for direct `.onnx`) instead of the legacy `dependencies.models` count of the app models dir — that dir is empty for demucs-family models, so the footer stayed red even after a successful download.
+- **[MODEL-DELETE]** Deleting a demucs-family model now removes its weights from the HuggingFace cache (via a new sidecar `--delete-model` mode using `huggingface_hub.scan_cache_dir().delete_revisions(...)`), instead of only touching the (empty) app models dir, so the UI consistently flips back to "Download". Direct `.onnx` downloads are unaffected.
+- **[PROBE-TIMEOUT]** The sidecar model checks (`check_model_downloaded`, `list_downloaded_models`) had their subprocess timeout raised from 10 s to 30 s to accommodate larger/slower model-cache scans.
+
+### Fixed
+
+- **[PYTHON-FLAKY-PROBE]** PyTorch sometimes reported as "missing" on cold app launches even though it was installed and the second launch detected it fine. The environment probes (`probe_python_package_version`, `probe_torch_cuda`, `probe_torch_device`, `probe_torchaudio` in `src-tauri/src/commands/probe.rs`) ran `import torch` with a hard **10 s** timeout, but at startup several commands fire torch-importing probes at once (`get_sidecar_status`, `validate_environment`, `check_dependencies`); six concurrently running `import torch` processes take ~13 s, pushing each individual probe past the cap, and a timeout was treated as "package not installed" with no retry. The probe timeout is now **30 s**, torch-emitting probes are serialized through a `TORCH_PROBE_LOCK`, and `validate_environment` retries each Python package probe once on a `None`/timeout result before declaring it missing — so a slow, contended cold start is no longer misread as an uninstalled dependency.
+
 ## [1.5.5] — Sep 2 2026 — Version Bump
 
 ### Fixed

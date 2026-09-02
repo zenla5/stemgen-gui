@@ -11,6 +11,7 @@ function resetStore() {
     environmentValidation: null,
     environmentValidated: false,
     dependencies: { ffmpeg: false, sox: false, python: false, cuda: false, mps: false, models: false },
+    downloadedModels: [],
     audioFiles: [],
     jobs: [],
   });
@@ -46,6 +47,7 @@ describe('StatusBar', () => {
       environmentValidated: true,
       environmentValidation: allAvailableValidation,
       dependencies: { ffmpeg: true, sox: true, python: true, cuda: false, mps: false, models: true },
+      downloadedModels: ['demucs'],
     });
     render(<StatusBar />);
     expect(screen.getByText('Ready')).toBeInTheDocument();
@@ -60,9 +62,34 @@ describe('StatusBar', () => {
         python: { missing: 'Python not found' },
       },
       dependencies: { ffmpeg: true, sox: false, python: false, cuda: false, mps: false, models: false },
+      downloadedModels: [],
     });
     render(<StatusBar />);
     expect(screen.getByText(/some dependencies missing/i)).toBeInTheDocument();
+  });
+
+  it('renders Models indicator green when a model is downloaded', () => {
+    useAppStore.setState({
+      environmentValidated: true,
+      environmentValidation: allAvailableValidation,
+      downloadedModels: ['htdemucs'],
+    });
+    render(<StatusBar />);
+    const models = screen.getByText('Models');
+    expect(models).toBeInTheDocument();
+    expect(models.closest('div')).toHaveClass('bg-green-100');
+  });
+
+  it('renders Models indicator red when no model is downloaded', () => {
+    useAppStore.setState({
+      environmentValidated: true,
+      environmentValidation: allAvailableValidation,
+      downloadedModels: [],
+    });
+    render(<StatusBar />);
+    const models = screen.getByText('Models');
+    expect(models).toBeInTheDocument();
+    expect(models.closest('div')).toHaveClass('bg-red-100');
   });
 
   it('renders CPU device label', () => {
@@ -83,6 +110,7 @@ describe('StatusBar', () => {
       environmentValidated: true,
       environmentValidation: allAvailableValidation,
       dependencies: { ffmpeg: true, sox: true, python: true, cuda: true, mps: false, models: true },
+      downloadedModels: ['demucs'],
     });
     render(<StatusBar />);
     expect(screen.getByText('CUDA')).toBeInTheDocument();

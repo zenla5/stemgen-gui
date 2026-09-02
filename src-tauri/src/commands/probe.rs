@@ -6,9 +6,25 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
 
 /// Maximum time to wait for a probe process before treating it as "not installed".
-const PROBE_TIMEOUT_SECS: u64 = 10;
+///
+/// This is deliberately generous: a warm `import torch` takes ~4-5 s on this
+/// machine, and at app startup multiple commands fire torch-importing probes at
+/// once (`get_sidecar_status`, `validate_environment`, `check_dependencies`).
+/// Serializing those probes (see `TORCH_PROBE_LOCK`) keeps each one well under
+/// this cap, but a slow or cold interpreter can still exceed 10 s — a timeout
+/// must never be misread as "package not installed".
+const PROBE_TIMEOUT_SECS: u64 = 30;
+
+/// Serializes torch-importing probes so startup contention cannot push an
+/// individual probe past `PROBE_TIMEOUT_SECS`. Six concurrent `import torch`
+/// processes take ~13 s on this machine (each ~4.5 s warm), which blew the old
+/// 10 s cap and made PyTorch intermittently report as "missing" on cold
+/// launches. Holding this lock makes the probes run back-to-back instead of
+/// stacking CPU/IO, so each finishes well within the timeout.
+static TORCH_PROBE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Platform-aware helper — suppresses the console window that Win32 creates
 /// when spawning child processes from a GUI application (WS_VISIBLE is set by
@@ -320,31 +336,36 @@ pub fn probe_python_import(python: &Path, import_statement: &str) -> bool {
 /// Runs `import <module>; print(<module>.__version__)`.
 pub fn probe_python_package_version(python: &Path, module: &str) -> Option<String> {
     let code = format!("import {module}; print({module}.__version__)");
-    run_command_with_timeout(
-        Command::new(python)
-            .args(["-c", &code])
-            .python_env()
-            .no_window(),
-        PROBE_TIMEOUT_SECS,
-    )
-    .filter(|(_, _, success)| *success)
-    .map(|(stdout, _, _)| stdout.trim().to_string())
-}
-
-/// Check if CUDA is available via nvidia-smi.
-pub fn probe_cuda() -> bool {
-    run_command_with_timeout(
-        Command::new("nvidia-smi")
-            .args(["--query-gpu=name", "--format=csv,noheader"])
-            .no_window(),
-        PROBE_TIMEOUT_SECS,
-    )
-    .map(|(_, _, success)| success)
-    .unwrap_or(false)
+    if module == "torch" || module == "torchaudio" {
+        // Serialize torch-family imports: concurrent `import torch` processes
+        // contend heavily and can each exceed the probe timeout (see
+        // `TORCH_PROBE_LOCK`).
+        let _guard = TORCH_PROBE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        run_command_with_timeout(
+            Command::new(python)
+                .args(["-c", &code])
+                .python_env()
+                .no_window(),
+            PROBE_TIMEOUT_SECS,
+        )
+        .filter(|(_, _, success)| *success)
+        .map(|(stdout, _, _)| stdout.trim().to_string())
+    } else {
+        run_command_with_timeout(
+            Command::new(python)
+                .args(["-c", &code])
+                .python_env()
+                .no_window(),
+            PROBE_TIMEOUT_SECS,
+        )
+        .filter(|(_, _, success)| *success)
+        .map(|(stdout, _, _)| stdout.trim().to_string())
+    }
 }
 
 /// Check if CUDA is available through PyTorch.
 pub fn probe_torch_cuda(python: &Path) -> bool {
+    let _guard = TORCH_PROBE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     run_command_with_timeout(
         Command::new(python)
             .args([
@@ -357,6 +378,18 @@ pub fn probe_torch_cuda(python: &Path) -> bool {
     )
     .filter(|(_, _, success)| *success)
     .map(|(stdout, _, _)| stdout.trim() == "yes")
+    .unwrap_or(false)
+}
+
+/// Check if CUDA is available via nvidia-smi.
+pub fn probe_cuda() -> bool {
+    run_command_with_timeout(
+        Command::new("nvidia-smi")
+            .args(["--query-gpu=name", "--format=csv,noheader"])
+            .no_window(),
+        PROBE_TIMEOUT_SECS,
+    )
+    .map(|(_, _, success)| success)
     .unwrap_or(false)
 }
 
@@ -379,6 +412,7 @@ pub fn probe_mps() -> bool {
 
 /// Get the PyTorch device string: "cuda", "mps", or "cpu".
 pub fn probe_torch_device(python: &Path) -> Option<String> {
+    let _guard = TORCH_PROBE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     run_command_with_timeout(
         Command::new(python)
             .args(["-c", "import torch; print('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')"])
@@ -392,6 +426,7 @@ pub fn probe_torch_device(python: &Path) -> Option<String> {
 
 /// Check if the torch + torchaudio import works.
 pub fn probe_torchaudio(python: &Path) -> bool {
+    let _guard = TORCH_PROBE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     probe_python_import(python, "import torch; import torchaudio")
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { UnifiedModelSection } from '../UnifiedModelSection';
 
 // ─── Mock Tauri APIs ───────────────────────────────────────────────────────────
@@ -9,6 +9,9 @@ const mockListen = vi.hoisted(() => vi.fn());
 const mockSetDownloadedModels = vi.hoisted(() => vi.fn());
 const mockAddDownloadedModel = vi.hoisted(() => vi.fn());
 const mockRemoveDownloadedModel = vi.hoisted(() => vi.fn());
+const mockRefreshDownloadedModels = vi.hoisted(() => vi.fn());
+const mockToastSuccess = vi.hoisted(() => vi.fn());
+const mockToastError = vi.hoisted(() => vi.fn());
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: mockInvoke,
@@ -18,6 +21,13 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: mockListen,
 }));
 
+vi.mock('sonner', () => ({
+  toast: {
+    success: mockToastSuccess,
+    error: mockToastError,
+  },
+}));
+
 // ─── Mock Zustand store ────────────────────────────────────────────────────────
 
 vi.mock('@/stores/appStore', () => {
@@ -25,6 +35,7 @@ vi.mock('@/stores/appStore', () => {
     setDownloadedModels: mockSetDownloadedModels,
     addDownloadedModel: mockAddDownloadedModel,
     removeDownloadedModel: mockRemoveDownloadedModel,
+    refreshDownloadedModels: mockRefreshDownloadedModels,
     environmentValidation: {
       sidecarScript: 'available',
     },
@@ -311,5 +322,146 @@ describe('UnifiedModelSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('error-bs_roformer')).toBeInTheDocument();
     });
+  });
+
+  // ── Test 9: Download progress event updates the UI ──
+
+  it('handles download progress events with message', async () => {
+    let progressHandler: ((event: { payload: Record<string, unknown> }) => void) | null = null;
+    mockListen.mockImplementation(async (_event: string, handler: (event: { payload: Record<string, unknown> }) => void) => {
+      progressHandler = handler;
+      return vi.fn();
+    });
+
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_models') {
+        return [
+          { id: 'demucs', name: 'Demucs', description: 'CPU', quality: 'medium', speed: 'fast', gpuRequired: false },
+        ];
+      }
+      if (cmd === 'check_model_downloaded') {
+        return false;
+      }
+      return null;
+    });
+
+    render(<UnifiedModelSection />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-card-demucs')).toBeInTheDocument();
+    });
+
+    // Simulate a progress event
+    act(() => {
+      progressHandler?.({ payload: { model_id: 'demucs', status: 'downloading', progress: 42, downloaded_mb: 10, total_mb: 830, message: 'Downloading htdemucs...' } });
+    });
+
+    expect(mockAddDownloadedModel).not.toHaveBeenCalled();
+  });
+
+  // ── Test 10: Download complete event marks model available and shows toast ──
+
+  it('handles download complete event and shows success toast', async () => {
+    let progressHandler: ((event: { payload: Record<string, unknown> }) => void) | null = null;
+    mockListen.mockImplementation(async (_event: string, handler: (event: { payload: Record<string, unknown> }) => void) => {
+      progressHandler = handler;
+      return vi.fn();
+    });
+
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_models') {
+        return [
+          { id: 'demucs', name: 'Demucs', description: 'CPU', quality: 'medium', speed: 'fast', gpuRequired: false },
+        ];
+      }
+      if (cmd === 'check_model_downloaded') {
+        return false;
+      }
+      return null;
+    });
+
+    render(<UnifiedModelSection />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-card-demucs')).toBeInTheDocument();
+    });
+
+    act(() => {
+      progressHandler?.({ payload: { model_id: 'demucs', status: 'complete', progress: 100, downloaded_mb: 830, total_mb: 830, message: 'demucs downloaded' } });
+    });
+
+    expect(mockAddDownloadedModel).toHaveBeenCalledWith('demucs');
+    expect(mockRefreshDownloadedModels).toHaveBeenCalled();
+    expect(mockToastSuccess).toHaveBeenCalledWith('demucs downloaded');
+  });
+
+  // ── Test 11: Download error event surfaces the error and toast ──
+
+  it('handles download error event and shows error toast', async () => {
+    let progressHandler: ((event: { payload: Record<string, unknown> }) => void) | null = null;
+    mockListen.mockImplementation(async (_event: string, handler: (event: { payload: Record<string, unknown> }) => void) => {
+      progressHandler = handler;
+      return vi.fn();
+    });
+
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_models') {
+        return [
+          { id: 'demucs', name: 'Demucs', description: 'CPU', quality: 'medium', speed: 'fast', gpuRequired: false },
+        ];
+      }
+      if (cmd === 'check_model_downloaded') {
+        return false;
+      }
+      return null;
+    });
+
+    render(<UnifiedModelSection />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-card-demucs')).toBeInTheDocument();
+    });
+
+    act(() => {
+      progressHandler?.({ payload: { model_id: 'demucs', status: 'error', progress: 0, downloaded_mb: 0, total_mb: 830, error: 'Download failed: network error' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-demucs')).toBeInTheDocument();
+    });
+    expect(mockToastError).toHaveBeenCalledWith('Download failed: network error');
+  });
+
+  // ── Test 12: Delete model refreshes downloaded models ──
+
+  it('delete model refreshes downloaded models', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_models') {
+        return [
+          { id: 'demucs', name: 'Demucs', description: 'CPU', quality: 'medium', speed: 'fast', gpuRequired: false },
+        ];
+      }
+      if (cmd === 'check_model_downloaded') {
+        return true;
+      }
+      if (cmd === 'delete_model') {
+        return null;
+      }
+      return null;
+    });
+
+    render(<UnifiedModelSection />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-card-demucs')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('delete-btn-demucs'));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('delete_model', { modelId: 'demucs' });
+    });
+    expect(mockRemoveDownloadedModel).toHaveBeenCalledWith('demucs');
+    expect(mockRefreshDownloadedModels).toHaveBeenCalled();
   });
 });

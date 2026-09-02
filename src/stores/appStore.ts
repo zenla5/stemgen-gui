@@ -154,6 +154,7 @@ interface AppState {
   setDownloadedModels: (models: string[]) => void;
   addDownloadedModel: (modelId: string) => void;
   removeDownloadedModel: (modelId: string) => void;
+  refreshDownloadedModels: () => Promise<void>;
   
   // UI actions
   toggleSidebar: () => void;
@@ -785,6 +786,20 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           downloadedModels: state.downloadedModels.filter((id) => id !== modelId),
         }));
+      },
+
+      // Refresh the set of locally downloaded AI models from the backend.
+      // The backend resolves availability via the Python sidecar against the
+      // HuggingFace cache (demucs-family models) and the app models dir
+      // (direct .onnx downloads), so this is the canonical source for the
+      // footer "Models" indicator and the Settings summary card.
+      refreshDownloadedModels: async () => {
+        try {
+          const models = await invoke<string[]>('list_downloaded_models');
+          set({ downloadedModels: models });
+        } catch (error) {
+          console.error('Failed to refresh downloaded models:', error);
+        }
       },
       
       // UI actions

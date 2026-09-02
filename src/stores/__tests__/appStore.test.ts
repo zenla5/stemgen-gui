@@ -597,4 +597,26 @@ describe('useAppStore — downloaded models', () => {
     const state = useAppStore.getState();
     expect(state.downloadedModels).toEqual(['demucs', 'htdemucs']);
   });
+
+  it('refreshDownloadedModels invokes list_downloaded_models and updates state', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(['demucs', 'htdemucs_ft']);
+
+    const store = useAppStore.getState();
+    await store.refreshDownloadedModels();
+
+    expect(invoke).toHaveBeenCalledWith('list_downloaded_models');
+    expect(useAppStore.getState().downloadedModels).toEqual(['demucs', 'htdemucs_ft']);
+  });
+
+  it('refreshDownloadedModels keeps prior list on failure', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('sidecar missing'));
+
+    useAppStore.setState({ downloadedModels: ['htdemucs'] });
+    const store = useAppStore.getState();
+    await store.refreshDownloadedModels();
+
+    expect(useAppStore.getState().downloadedModels).toEqual(['htdemucs']);
+  });
 });

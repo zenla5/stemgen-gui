@@ -362,15 +362,24 @@ class TestRunDemucsModel:
 class TestCheckModel:
     """Tests for --check-model and --list-models CLI modes."""
 
-    def test_check_model_available(self, monkeypatch, capsys):
+    def test_check_model_available(self, monkeypatch, capsys, tmp_path):
         """--check-model with a cached model must return available=true."""
         pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
-        mock_get_model = MagicMock()
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
-        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        yaml_path = tmp_path / "htdemucs.yaml"
+        yaml_path.write_text("models:\n  - 955717e8\nweights: [1.0]\nsegment: 10\n")
+
+        # hf_hub_download returns a readable yaml path listing one model sig.
+        def fake_hf_download(repo_id, filename, **kwargs):
+            assert kwargs.get("local_files_only") is True, "check must be cache-only"
+            if filename == "htdemucs.yaml":
+                return str(yaml_path)
+            return "/fake/cache/955717e8.safetensors"
+
+        mock_hf = MagicMock(side_effect=fake_hf_download)
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", mock_hf)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--check-model", "htdemucs"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -382,6 +391,9 @@ class TestCheckModel:
         assert parsed["available"] is True
         assert parsed["model_id"] == "htdemucs"
         assert parsed["pretrained_name"] == "htdemucs"
+        # Every lookup must be cache-only — never a network download.
+        for call in mock_hf.call_args_list:
+            assert call.kwargs.get("local_files_only") is True
 
     def test_check_model_not_available(self, monkeypatch, capsys):
         """--check-model with an uncached model must return available=false."""
@@ -392,9 +404,8 @@ class TestCheckModel:
         def raise_error(*args, **kwargs):
             raise FileNotFoundError("Model not found in cache")
 
-        mock_get_model = MagicMock(side_effect=raise_error)
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
-        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        mock_hf = MagicMock(side_effect=raise_error)
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", mock_hf)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--check-model", "htdemucs_ft"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -406,15 +417,23 @@ class TestCheckModel:
         assert parsed["available"] is False
         assert parsed["model_id"] == "htdemucs_ft"
 
-    def test_list_models_json_array(self, monkeypatch, capsys):
+    def test_list_models_json_array(self, monkeypatch, capsys, tmp_path):
         """--list-models must output a JSON array with all known model IDs."""
         pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
-        mock_get_model = MagicMock()
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
-        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        yaml_path = tmp_path / "htdemucs.yaml"
+        yaml_path.write_text("models:\n  - 955717e8\nweights: [1.0]\nsegment: 10\n")
+
+        def fake_hf_download(repo_id, filename, **kwargs):
+            assert kwargs.get("local_files_only") is True
+            if filename.endswith(".yaml"):
+                return str(yaml_path)
+            return "/fake/cache/sig.safetensors"
+
+        mock_hf = MagicMock(side_effect=fake_hf_download)
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", mock_hf)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--list-models"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -438,13 +457,12 @@ class TestCheckModel:
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
-        # Mock get_model to always raise FileNotFoundError (no models cached)
+        # Mock hf_hub_download to always raise (no models cached)
         def raise_not_found(*args, **kwargs):
             raise FileNotFoundError("Model not found in cache")
 
-        mock_get_model = MagicMock(side_effect=raise_not_found)
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
-        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        mock_hf = MagicMock(side_effect=raise_not_found)
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", mock_hf)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--list-models"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -467,9 +485,8 @@ class TestCheckModel:
         def raise_not_found(*args, **kwargs):
             raise FileNotFoundError("Unknown model")
 
-        mock_get_model = MagicMock(side_effect=raise_not_found)
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
-        monkeypatch.setattr("demucs.pretrained._IS_TEST", False, raising=False)
+        mock_hf = MagicMock(side_effect=raise_not_found)
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", mock_hf)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--check-model", "unknown_model_xyz"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -482,7 +499,7 @@ class TestCheckModel:
         assert parsed["model_id"] == "unknown_model_xyz"
 
     def test_download_model_invalid_id_exits_nonzero(self, monkeypatch, capsys):
-        """--download-model with invalid model ID exits non-zero with error message to stderr."""
+        """--download-model with invalid model ID exits non-zero with a JSON error."""
         pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
@@ -490,8 +507,8 @@ class TestCheckModel:
         def raise_not_found(*args, **kwargs):
             raise FileNotFoundError("Model not found")
 
-        mock_get_model = MagicMock(side_effect=raise_not_found)
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        mock_snapshot = MagicMock(side_effect=raise_not_found)
+        monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "invalid_model_xyz"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -499,8 +516,11 @@ class TestCheckModel:
 
         assert exc_info.value.code != 0
         captured = capsys.readouterr()
-        # Error is printed to stderr, not JSON
-        assert "Download failed" in captured.err or "not found" in captured.err.lower()
+        # Error is emitted as a JSON error line (parsed by the Rust backend).
+        lines = [json.loads(line) for line in captured.out.strip().splitlines()]
+        last = lines[-1]
+        assert last["status"] == "error"
+        assert "Model not found" in last["error"]
 
 
 # ----------------------------------------------------------------------------------------------
@@ -517,7 +537,9 @@ class TestDownloadModel:
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
+        mock_snapshot = MagicMock()
         mock_get_model = MagicMock()
+        monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
         monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "demucs"])
 
@@ -526,6 +548,8 @@ class TestDownloadModel:
 
         assert exc_info.value.code == 0
         mock_get_model.assert_called_once_with("htdemucs")
+        # The snapshot must target the htdemucs repo (demucs -> htdemucs).
+        mock_snapshot.assert_called_once_with("adefossez/HTDemucs", tqdm_class=stemgen_sidecar._ProgressTqdm)
 
     def test_download_htdemucs_ft_resolves_correctly(self, monkeypatch, capsys):
         """--download-model htdemucs_ft must resolve to htdemucs_ft."""
@@ -533,7 +557,9 @@ class TestDownloadModel:
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
+        mock_snapshot = MagicMock()
         mock_get_model = MagicMock()
+        monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
         monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "htdemucs_ft"])
 
@@ -542,6 +568,7 @@ class TestDownloadModel:
 
         assert exc_info.value.code == 0
         mock_get_model.assert_called_once_with("htdemucs_ft")
+        mock_snapshot.assert_called_once_with("adefossez/HTDemucs-ft", tqdm_class=stemgen_sidecar._ProgressTqdm)
 
     def test_download_unknown_id_passes_through(self, monkeypatch, capsys):
         """--download-model with an unknown ID must pass through unchanged."""
@@ -549,7 +576,9 @@ class TestDownloadModel:
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
+        mock_snapshot = MagicMock()
         mock_get_model = MagicMock()
+        monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
         monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "my_custom_model"])
 
@@ -558,6 +587,122 @@ class TestDownloadModel:
 
         assert exc_info.value.code == 0
         mock_get_model.assert_called_once_with("my_custom_model")
+
+    def test_download_emits_progress_and_complete(self, monkeypatch, capsys):
+        """--download-model emits JSON progress lines then a complete line."""
+        pytest.importorskip("demucs", reason="demucs not installed")
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        # Simulate snapshot_download invoking the tqdm callback a few times.
+        def fake_snapshot(repo_id, **kwargs):
+            tqdm_class = kwargs.get("tqdm_class")
+            bar = tqdm_class(total=100, desc="htdemucs")
+            bar.update(40)
+            bar.update(60)
+            bar.close()
+
+        mock_snapshot = MagicMock(side_effect=fake_snapshot)
+        mock_get_model = MagicMock()
+        monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
+        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "htdemucs"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        lines = [json.loads(line) for line in captured.out.strip().splitlines()]
+        statuses = [line["status"] for line in lines]
+        # Progress lines (with "progress" status) followed by a "complete" line.
+        assert "complete" in statuses
+        progress_lines = [line for line in lines if line["status"] == "progress"]
+        assert len(progress_lines) >= 1
+        assert progress_lines[-1]["progress"] == 1.0
+
+
+# ----------------------------------------------------------------------------------------------
+# Tests for --delete-model (HF cache removal)
+# ----------------------------------------------------------------------------------------------
+
+
+class TestDeleteModel:
+    """Tests for --delete-model CLI mode."""
+
+    def test_delete_model_removes_hf_cache(self, monkeypatch, capsys):
+        """--delete-model must remove the matching repo's revisions from the HF cache."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        class FakeRevision:
+            commit_hash = "abc123"
+
+        class FakeRepo:
+            repo_id = "adefossez/HTDemucs"
+            revisions = frozenset([FakeRevision()])
+
+        fake_cache_info = MagicMock()
+        fake_cache_info.repos = frozenset([FakeRepo()])
+        fake_strategy = MagicMock()
+        fake_cache_info.delete_revisions.return_value = fake_strategy
+
+        mock_scan = MagicMock(return_value=fake_cache_info)
+        monkeypatch.setattr("huggingface_hub.scan_cache_dir", mock_scan)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--delete-model", "demucs"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        fake_cache_info.delete_revisions.assert_called_once_with("abc123")
+        fake_strategy.execute.assert_called_once()
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert parsed["status"] == "complete"
+        assert parsed["model_id"] == "demucs"
+
+    def test_delete_model_no_cache_is_idempotent(self, monkeypatch, capsys):
+        """--delete-model with nothing cached must succeed without deleting anything."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        fake_cache_info = MagicMock()
+        fake_cache_info.repos = frozenset()
+
+        mock_scan = MagicMock(return_value=fake_cache_info)
+        monkeypatch.setattr("huggingface_hub.scan_cache_dir", mock_scan)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--delete-model", "htdemucs_ft"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        fake_cache_info.delete_revisions.assert_not_called()
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert parsed["status"] == "complete"
+
+    def test_delete_model_error_emits_json_error(self, monkeypatch, capsys):
+        """--delete-model failure must emit a JSON error line and exit non-zero."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        def raise_error(*args, **kwargs):
+            raise RuntimeError("cache locked")
+
+        mock_scan = MagicMock(side_effect=raise_error)
+        monkeypatch.setattr("huggingface_hub.scan_cache_dir", mock_scan)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--delete-model", "htdemucs"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code != 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert parsed["status"] == "error"
+        assert "cache locked" in parsed["error"]
 
 
 # ----------------------------------------------------------------------------------------------
@@ -789,7 +934,9 @@ class TestDownloadModelMapping:
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
+        mock_snapshot = MagicMock()
         mock_get_model = MagicMock()
+        monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
         monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "demucs"])
 
