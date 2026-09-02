@@ -73,17 +73,21 @@ pub trait PythonEnv {
     fn python_env(&mut self) -> &mut Self;
 }
 
-/// Whether `path` is the AppImage payload's shared-library directory
-/// (`<cache>/appimage-run/<sha>/usr/lib`), which ships an old OpenSSL that
-/// shadows the real Python interpreter's `_ssl`.
+/// Whether `path` lives inside the AppImage payload
+/// (`<cache>/appimage-run/<sha>/...`). The runtime prepends that payload to
+/// `LD_LIBRARY_PATH` (as `usr/lib/`, `usr/lib/x86_64-linux-gnu/`,
+/// `usr/lib32/`, `usr/lib64/`, …), and it ships an old OpenSSL
+/// (`libssl.so.3`/`libcrypto.so.3` built against OpenSSL 3.0) that shadows the
+/// real Python interpreter's `_ssl`. Every entry derived from the payload is
+/// unsafe for a Python child, so any path inside `appimage-run` is dropped —
+/// matching regardless of trailing `/` or subdirectory.
 fn is_appimage_payload_lib_dir(path: &Path) -> bool {
-    let text = path.to_string_lossy();
-    text.contains("appimage-run") && text.ends_with("usr/lib")
+    path.to_string_lossy().contains("appimage-run")
 }
 
-/// Return the parent's `LD_LIBRARY_PATH` with any AppImage payload `usr/lib`
-/// entry removed, so Python children load their own OpenSSL instead of the
-/// bundled one. Returns `None` if nothing meaningful survives.
+/// Return the parent's `LD_LIBRARY_PATH` with any AppImage payload entry
+/// removed, so Python children load their own OpenSSL instead of the bundled
+/// one. Returns `None` if nothing meaningful survives.
 fn sanitize_ld_library_path() -> Option<String> {
     let raw = std::env::var_os("LD_LIBRARY_PATH")?;
     let cleaned: Vec<String> = std::env::split_paths(&raw)
@@ -679,18 +683,28 @@ mod tests {
         );
     }
 
-    /// Check that `python_env()` strips the AppImage payload `usr/lib` from
+    /// Check that `python_env()` strips the AppImage payload entries from
     /// `LD_LIBRARY_PATH` while preserving other (host) entries. Guards the
     /// `unknown url type: https` model-download regression #218: the runtime
-    /// prepends its bundled OpenSSL `usr/lib` to the child's loader path, which
-    /// breaks the interpreter's `_ssl` and kills `urllib` HTTPS.
+    /// prepends its bundled OpenSSL payload dirs (with a trailing slash and via
+    /// subdirectories) to the child's loader path, which breaks the
+    /// interpreter's `_ssl` and kills `urllib` HTTPS.
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_python_env_strips_appimage_payload_from_ld_library_path() {
-        let payload_lib = "/tmp/fake-appimage/cache/appimage-run/abc123/usr/lib";
+        let payload_root = "/tmp/fake-appimage/cache/appimage-run/abc123";
+        // Exercise the real-world shapes appimage-run injects: a trailing-slash
+        // `usr/lib/` plus its multiarch subdirectories.
+        let payload_lib = format!("{payload_root}/usr/lib/");
+        let payload_sub = format!("{payload_root}/usr/lib/x86_64-linux-gnu/");
+        let payload_lib32 = format!("{payload_root}/usr/lib32/");
+        let payload_lib64 = format!("{payload_root}/usr/lib64/");
         let host_lib = "/nix/store/some-pkg/lib";
         let original = std::env::var_os("LD_LIBRARY_PATH");
-        std::env::set_var("LD_LIBRARY_PATH", format!("{payload_lib}:{host_lib}"));
+        std::env::set_var(
+            "LD_LIBRARY_PATH",
+            format!("{payload_lib}:{payload_sub}:{payload_lib32}:{payload_lib64}:{host_lib}"),
+        );
 
         let output = Command::new("sh")
             .python_env()
@@ -709,8 +723,81 @@ mod tests {
         let child_ld_library_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
         assert_eq!(
             child_ld_library_path, host_lib,
-            "python_env() must remove the AppImage payload usr/lib from \
-             LD_LIBRARY_PATH but keep host entries; got: {child_ld_library_path:?}"
+            "python_env() must remove every AppImage payload entry from \
+             LD_LIBRARY_PATH (including trailing-slash and subdir variants) but \
+             keep host entries; got: {child_ld_library_path:?}"
+        );
+    }
+
+    /// Locate a real AppImage payload `usr/lib` dir on disk (the setup from
+    /// issue #218), by scanning the standard AppImage cache directory laid down
+    /// by `appimage-run`. Returns `None` if none is present (e.g. on CI where
+    /// the app has never been run), which makes this test a no-op there.
+    fn find_appimage_payload_lib_dir() -> Option<PathBuf> {
+        let cache = std::env::var_os("HOME")?.to_string_lossy().into_owned();
+        let cache = PathBuf::from(cache).join(".cache/appimage-run");
+        let entries = std::fs::read_dir(&cache).ok()?;
+        for entry in entries.flatten() {
+            let payload_usr_lib = entry.path().join("usr/lib");
+            if payload_usr_lib.is_dir() {
+                return Some(payload_usr_lib);
+            }
+        }
+        None
+    }
+
+    /// End-to-end guard for the `unknown url type: https` regression #218.
+    /// When a real AppImage payload `usr/lib` (bundling an old OpenSSL) and a
+    /// real Python are both available, verify that a child interpreter spawned
+    /// through `python_env()` can still import `_ssl` (i.e. it uses the venv's
+    /// own OpenSSL, not the shadowing payload one). Skips silently when the
+    /// payload dir or a Python is absent (fresh checkout / CI runner).
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn test_python_env_allows_ssl_import_despite_appimage_payload() {
+        let Some(payload_lib) = find_appimage_payload_lib_dir() else {
+            eprintln!("skipping: no AppImage payload usr/lib found on disk");
+            return;
+        };
+        let Some(python) = find_python() else {
+            eprintln!("skipping: no Python found on PATH");
+            return;
+        };
+
+        let original_ld = std::env::var_os("LD_LIBRARY_PATH");
+        // Recreate the exact failure trigger: prepend the payload lib dir whose
+        // bundled OpenSSL 3.0 shadows the interpreter's `_ssl` (>= 3.3).
+        std::env::set_var(
+            "LD_LIBRARY_PATH",
+            format!(
+                "{}:{}",
+                payload_lib.to_string_lossy(),
+                original_ld
+                    .clone()
+                    .map(|v| v.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+                    .trim_end_matches(':')
+            ),
+        );
+
+        let output = Command::new(&python)
+            .python_env()
+            .args(["-c", "import _ssl; print(_ssl.OPENSSL_VERSION)"])
+            .output();
+
+        // Restore the parent env before unwrapping so a spawn failure cannot
+        // leak the injected value to other tests.
+        match original_ld {
+            Some(v) => std::env::set_var("LD_LIBRARY_PATH", v),
+            None => std::env::remove_var("LD_LIBRARY_PATH"),
+        }
+
+        let output = output.expect("python _ssl probe failed to spawn");
+        assert!(
+            output.status.success(),
+            "python_env() must let the child import _ssl despite the AppImage \
+             payload dir in LD_LIBRARY_PATH; stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 
