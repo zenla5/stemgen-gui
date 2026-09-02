@@ -2,3 +2,5 @@
 # Install with: pip install -r requirements-dev.txt
 pytest>=7.4.0
 pytest-cov>=4.1.0
+# Runtime dependency of the sidecar's model check/download/delete modes.
+huggingface_hub>=0.20.0
