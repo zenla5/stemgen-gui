@@ -72,9 +72,7 @@ const CHANGELOG_HEADING = (version, date) => `## [${version}] — ${date} — Ve
 
 ### Changed
 
-- **Version consistency** — All version strings bumped to ${version}: \`package.json\`, \`Cargo.toml\` (workspace), \`src-tauri/Cargo.toml\`, \`src/lib/constants.ts\` (\`APP_VERSION\`), and \`src-tauri/tauri.conf.json\`.
-
-## [Unreleased]`;
+- **Version consistency** — All version strings bumped to ${version}: \`package.json\`, \`Cargo.toml\` (workspace), \`src-tauri/Cargo.toml\`, \`src/lib/constants.ts\` (\`APP_VERSION\`), and \`src-tauri/tauri.conf.json\`.`;
 
 let VERSION;
 
@@ -176,16 +174,19 @@ function updateChangelog() {
     day: 'numeric',
   }).replace(/,/g, '');
 
-  // Promote the existing `## [Unreleased]` heading to a versioned release
-  // heading and prepend a fresh `## [Unreleased]` so it stays the first
-  // section (CI enforces this via check-changelog.mjs). The accumulated
-  // `### <Category>` subsections under [Unreleased] become the release body.
+  // Promote the existing `## [Unreleased]` heading to a versioned release.
+  // `## [Unreleased]` must stay the FIRST section (CI enforces this via
+  // check-changelog.mjs), so we keep it and insert the new release heading +
+  // version-consistency block immediately after it. The accumulated
+  // `### <Category>` subsections that were under [Unreleased] then fall under
+  // the new release heading (they become the release body) instead of being
+  // stranded under a fresh, empty [Unreleased].
   const entry = CHANGELOG_HEADING(VERSION, formattedDate);
   if (!/^## \[Unreleased\]$/m.test(content)) {
     console.error('  ❌ CHANGELOG.md: could not find `## [Unreleased]` heading');
     process.exit(1);
   }
-  const newContent = content.replace(/^## \[Unreleased\]$/m, entry);
+  const newContent = content.replace(/^## \[Unreleased\]$/m, `## [Unreleased]\n\n${entry}`);
 
   write('CHANGELOG.md', newContent);
   console.log(`  ✅ CHANGELOG.md`);

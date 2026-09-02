@@ -110,11 +110,17 @@ stemgen-gui/
 ## CI/CD
 
 ### CI Pipeline (`.github/workflows/ci.yml`)
-Core jobs on every push/PR, gated by the **Check** aggregator. The canonical set
-of core job ids is the `check` job's `needs` list in `.github/workflows/ci.yml`
-— this is the single source of truth. Do not edit this list manually in more
-than one place; `.github/scripts/verify-core-job-list.sh` fails CI if the
-`check` job's `needs` list, this list, and `docs/CI_GATE.md` drift apart.
+The expensive test/build core jobs run on **pull requests** and **pushes to
+`main`** only (post-merge safety + badge). Feature-branch pushes run the
+**non-gating** `fast-feedback` job (`npm run check` + `lint` + unit tests +
+`cargo fmt --check`, ~3–4 min) instead — so the same code is not re-tested by
+the full ~22–38 min suite on every push. The two lightweight validation jobs
+(`changelog`, `validate-core-job-list`) run on every push/PR to catch drift
+immediately. The canonical set of core job ids is the `check` job's `needs`
+list in `.github/workflows/ci.yml` — this is the single source of truth.
+Do not edit this list manually in more than one place;
+`.github/scripts/verify-core-job-list.sh` fails CI if the `check` job's `needs`
+list, this list, and `docs/CI_GATE.md` drift apart.
 
 core job ids: frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv, validate-core-job-list
 
@@ -123,12 +129,13 @@ core job ids: frontend, integration, backend, e2e, e2e-binary, security, python,
 3. **E2E** (Ubuntu) — Playwright/Chromium smoke tests
 4. **Backend** (×3: Ubuntu, Windows, macOS) — Rust clippy, fmt, build, `cargo test --lib` / `--tests`
 5. **MSRV** (Ubuntu) — `cargo check --workspace` on the declared Rust 1.89.0
-6. **E2E Binary** (×2: Ubuntu, Windows) — drives the compiled Tauri binary (WebdriverIO / CDP)
+6. **E2E Binary** (×2: Ubuntu, Windows) — drives the compiled Tauri binary (WebdriverIO / CDP); runs in parallel with `backend` (builds its own binary)
 7. **Python** (Ubuntu) — sidecar unit tests with coverage
 8. **Security** (Ubuntu) — `npm audit`, `cargo audit`
 9. **Changelog** (Ubuntu) — validates `CHANGELOG.md` structure via `check-changelog.mjs`
 10. **Validate Core Job List** (Ubuntu) — runs `verify-core-job-list.sh` (plus its `--self-test`)
 11. **Check** (gating job) — verifies all core jobs passed ("All Checks Passed")
+12. **Fast Feedback** (Ubuntu, non-gating) — `npm run check` + `lint` + unit tests + `cargo fmt --check` on feature-branch pushes only; never blocks a merge
 
 ### Release Pipeline (`.github/workflows/release.yml`)
 4 platform builds on `v*` tags or manual trigger:
@@ -138,6 +145,18 @@ core job ids: frontend, integration, backend, e2e, e2e-binary, security, python,
 - Linux: DEB + AppImage + RPM
 
 Artifacts: installers + SHA256 checksums → GitHub draft Release
+
+### Release process (single PR)
+
+To avoid a second full gate run on a pure version bump, fold the version bump
+into the fix PR:
+
+1. On the fix branch, after the code change: `node scripts/release-prep.js <version>`
+   (bumps all version strings, updates `CHANGELOG.md`, commits, tags locally).
+2. Push the branch and open the PR — this runs the gate **once**.
+3. Merge the PR.
+4. Re-point the tag at the merged commit and push it to trigger the release build:
+   `git fetch origin main && git tag -f v<version> origin/main && git push origin v<version>`
 
 ## Changelog
 

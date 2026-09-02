@@ -27,6 +27,9 @@ jobs:
     name: Frontend (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+    # Full gate runs only on pull requests and main-branch pushes. Feature-branch
+    # pushes get fast feedback from the non-gating `fast-feedback` job instead.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
@@ -72,6 +75,7 @@ jobs:
     name: Python Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,6 +111,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -137,6 +142,7 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -173,6 +179,7 @@ jobs:
     name: Backend (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
@@ -225,6 +232,7 @@ jobs:
     name: MSRV (1.89.0)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -243,6 +251,7 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -255,11 +264,14 @@ jobs:
         continue-on-error: true
 
   # Binary E2E tests — drives the compiled Tauri binary via CDP
+  # NOTE: intentionally has NO `needs: [backend]`. It builds its own release
+  # binary in its own steps, so it runs in parallel with `backend` instead of
+  # waiting for it; the `check` aggregator still gates on both.
   e2e-binary:
     name: Binary E2E Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    needs: [backend]
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
@@ -423,6 +435,49 @@ jobs:
       - name: Run extractor regression self-tests
         run: .github/scripts/verify-core-job-list.sh --self-test
 
+  # Fast feedback on feature-branch pushes (non-gating). Runs the cheap
+  # frontend checks plus rustfmt so push-time feedback lands in ~3-4 min
+  # instead of waiting for the full PR gate. Deliberately NOT in the `check`
+  # job's needs list (see verify-core-job-list.sh) — it never blocks a merge.
+  # `cargo clippy` is intentionally omitted: it needs the full Tauri system-deps
+  # setup (~8 min), which would defeat the purpose of a fast job; clippy still
+  # runs as part of the `backend` job on the PR gate.
+  fast-feedback:
+    name: Fast Feedback
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Setup Rust (for rustfmt)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: cd src-tauri && cargo fmt --check
+
   # Final check
   # NOTE: the 'needs' list below is the SINGLE source of truth for the core CI
   # jobs that form the merge gate. `notify-failure` depends only on this job,
@@ -436,7 +491,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv, validate-core-job-list]
-    if: always()
+    # `always()` so the aggregator still reports failures when a gated job
+    # fails; combined with the event guard so it only runs where the gate runs.
+    if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
 
     steps:
       - name: Verify core jobs passed
@@ -533,7 +590,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [check]
-    if: failure()
+    if: failure() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
     steps:
       - name: Send Telegram notification
         run: |

@@ -14,6 +14,30 @@ also checks the references in `AGENT_GUIDE.md`.
 
 core job ids: frontend, integration, backend, e2e, e2e-binary, security, python, changelog, msrv, validate-core-job-list
 
+## When the gate runs
+
+To avoid burning ~22–38 minutes of CI on the same code multiple times, the
+**expensive test/build core jobs** (frontend, integration, backend, e2e,
+e2e-binary, security, python, msrv) plus the `check` aggregator run **only on**:
+
+- **pull requests** (any base branch), and
+- **pushes to `main`** (post-merge safety + status badge).
+
+Feature-branch pushes do **not** run those jobs. Instead they run the
+**non-gating** `fast-feedback` job (`npm run check` + `lint` + unit tests +
+`cargo fmt --check`, ~3–4 min) so push-time feedback is still quick. The
+`fast-feedback` job is deliberately **not** in the `check` job's `needs` list
+and never blocks a merge.
+
+The two lightweight validation jobs — `changelog` (structure check, ~5 s) and
+`validate-core-job-list` (CI-config drift guard, ~2 min) — run on **every**
+push/PR so a workflow or changelog edit is validated immediately on the branch,
+not only at PR time.
+
+`e2e-binary` builds its own release binary and runs in **parallel** with
+`backend` (no `needs: [backend]`), keeping the gate's critical path short. The
+`check` aggregator still gates on both.
+
 ## Policy on `main`
 
 - **Require status checks to pass** before merging — at minimum the
