@@ -19,6 +19,7 @@ interface ModelCardProps {
   status: ModelCheckStatus;
   isDownloading: boolean;
   downloadProgress: number;
+  downloadMessage: string | null;
   downloadError: string | null;
   onDownload: (modelId: string) => void;
   onDelete: (modelId: string) => void;
@@ -30,6 +31,7 @@ export function ModelCard({
   status,
   isDownloading,
   downloadProgress,
+  downloadMessage,
   downloadError,
   onDownload,
   onDelete,
@@ -164,7 +166,7 @@ export function ModelCard({
         {isDownloading && (
           <div className="mt-3" data-testid={`progress-bar-${model.id}`}>
             <div className="flex items-center justify-between text-xs">
-              <span>Downloading...</span>
+              <span>{downloadMessage || 'Downloading...'}</span>
               <span>{Math.round(downloadProgress)}%</span>
             </div>
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">

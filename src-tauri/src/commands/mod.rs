@@ -418,8 +418,20 @@ pub async fn validate_environment(app: tauri::AppHandle) -> Result<EnvironmentVa
 
         // 4-7. Python package checks (only if Python is available)
         if let Some(ref py_path) = found_python {
+            // A probe returning `None` can mean "package not installed" OR a
+            // transient timeout/slow first import. Retry once before declaring
+            // a package missing so a contended cold start is not misread as an
+            // uninstalled dependency (the torch probes are also serialized via
+            // `TORCH_PROBE_LOCK` in probe.rs).
+            let probe_with_retry = |module: &str| {
+                match probe_python_package_version(py_path, module) {
+                    Some(v) => Some(v),
+                    None => probe_python_package_version(py_path, module),
+                }
+            };
+
             // PyTorch
-            match probe_python_package_version(py_path, "torch") {
+            match probe_with_retry("torch") {
                 Some(version) => {
                     validation.pytorch = Some(PackageStatus::Available);
                     validation.pytorch_version = Some(version);
@@ -441,7 +453,7 @@ pub async fn validate_environment(app: tauri::AppHandle) -> Result<EnvironmentVa
             }
 
             // torchaudio
-            match probe_python_package_version(py_path, "torchaudio") {
+            match probe_with_retry("torchaudio") {
                 Some(version) => {
                     validation.torchaudio = Some(PackageStatus::Available);
                     validation.torchaudio_version = Some(version);
@@ -454,7 +466,7 @@ pub async fn validate_environment(app: tauri::AppHandle) -> Result<EnvironmentVa
             }
 
             // demucs
-            match probe_python_package_version(py_path, "demucs") {
+            match probe_with_retry("demucs") {
                 Some(version) => {
                     validation.demucs = Some(PackageStatus::Available);
                     validation.demucs_version = Some(version);

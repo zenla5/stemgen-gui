@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { toast } from 'sonner';
 import { HardDrive, RefreshCw } from 'lucide-react';
 import { ModelCard, type ModelCardData } from './ModelCard';
 import { useAppStore, computeEnvironmentReadiness } from '@/stores/appStore';
@@ -12,6 +13,7 @@ interface DownloadProgress {
   progress: number;
   downloaded_mb: number;
   total_mb: number;
+  message?: string;
   error?: string;
 }
 
@@ -20,6 +22,7 @@ export function UnifiedModelSection() {
   const [modelStatuses, setModelStatuses] = useState<Record<string, ModelCheckStatus>>({});
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
+  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
   const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +30,7 @@ export function UnifiedModelSection() {
   // Use appStore for persisted downloaded models
   const addDownloadedModel = useAppStore(state => state.addDownloadedModel);
   const removeDownloadedModel = useAppStore(state => state.removeDownloadedModel);
+  const refreshDownloadedModels = useAppStore(state => state.refreshDownloadedModels);
 
   /** Run per-model availability checks in parallel. */
   const checkModelsInParallel = useCallback(async (modelList: ModelCardData[]) => {
@@ -99,30 +103,35 @@ export function UnifiedModelSection() {
 
     // Listen for download progress events
     const unlisten = listen<DownloadProgress>('model-download-progress', (event) => {
-      const { model_id, status, progress: prog, error } = event.payload;
+      const { model_id, status, progress: prog, message, error } = event.payload;
 
       if (status === 'complete') {
         setDownloading(null);
         setDownloadProgress(0);
+        setDownloadMessage(null);
         addDownloadedModel(model_id);
         setModelStatuses(prev => ({ ...prev, [model_id]: 'available' }));
         setDownloadErrors(prev => { const next = { ...prev }; delete next[model_id]; return next; });
+        refreshDownloadedModels();
+        toast.success(`${model_id} downloaded`);
       } else if (status === 'downloading') {
         setDownloading(model_id);
         setDownloadProgress(prog);
+        setDownloadMessage(message || null);
       } else if (status === 'error') {
         setDownloading(null);
         setDownloadProgress(0);
-        if (error) {
-          setDownloadErrors(prev => ({ ...prev, [model_id]: error }));
-        }
+        setDownloadMessage(null);
+        const errMsg = error || 'Model download failed';
+        setDownloadErrors(prev => ({ ...prev, [model_id]: errMsg }));
+        toast.error(errMsg);
       }
     });
 
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [loadModels, addDownloadedModel]);
+  }, [loadModels, addDownloadedModel, refreshDownloadedModels]);
 
   const downloadModel = async (modelId: string) => {
     // Guard: ensure sidecar is available before attempting download
@@ -138,6 +147,7 @@ export function UnifiedModelSection() {
 
     setDownloading(modelId);
     setDownloadProgress(0);
+    setDownloadMessage(null);
     setDownloadErrors(prev => { const next = { ...prev }; delete next[modelId]; return next; });
 
     try {
@@ -147,6 +157,8 @@ export function UnifiedModelSection() {
       console.error('Failed to download model:', msg);
       setDownloadErrors(prev => ({ ...prev, [modelId]: msg }));
       setDownloading(null);
+      setDownloadMessage(null);
+      toast.error(msg);
     }
   };
 
@@ -155,8 +167,12 @@ export function UnifiedModelSection() {
       await invoke('delete_model', { modelId });
       removeDownloadedModel(modelId);
       setModelStatuses(prev => ({ ...prev, [modelId]: 'unavailable' }));
+      refreshDownloadedModels();
+      toast.success(`${modelId} deleted`);
     } catch (err) {
-      console.error('Failed to delete model:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Failed to delete model:', msg);
+      toast.error(msg);
     }
   };
 
@@ -214,6 +230,7 @@ export function UnifiedModelSection() {
             status={modelStatuses[model.id] ?? 'checking'}
             isDownloading={downloading === model.id}
             downloadProgress={downloading === model.id ? downloadProgress : 0}
+            downloadMessage={downloading === model.id ? downloadMessage : null}
             downloadError={downloadErrors[model.id] || null}
             onDownload={downloadModel}
             onDelete={deleteModel}

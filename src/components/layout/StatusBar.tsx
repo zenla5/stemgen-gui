@@ -5,12 +5,20 @@ import { cn } from '@/lib/utils';
 import { CheckCircle, XCircle, AlertCircle, Cpu, Cloud, WifiOff } from 'lucide-react';
 
 export function StatusBar() {
-  const { environmentValidation, environmentValidated, dependencies, audioFiles, jobs } = useAppStore();
+  const { environmentValidation, environmentValidated, audioFiles, jobs } = useAppStore();
   const { activeProvider } = useSettingsStore();
   const isOnline = useNetworkStatus();
   const envReady = computeEnvironmentReadiness(environmentValidation);
+  const downloadedModels = useAppStore((state) => state.downloadedModels);
 
-  const allDepsOk = environmentValidated && envReady.isReady && dependencies.models;
+  // "Models" means at least one AI model is downloaded and available locally.
+  // Availability is resolved by the Python sidecar against the HuggingFace
+  // cache (demucs-family) and the app models dir (direct .onnx), NOT the
+  // legacy `dependencies.models` count of the app models dir — that dir is
+  // empty for demucs-family models, whose weights live in the HF cache.
+  const hasDownloadedModel = downloadedModels.length > 0;
+
+  const allDepsOk = environmentValidated && envReady.isReady && hasDownloadedModel;
 
   const deviceLabel =
     envReady.gpuStatus === 'cuda' ? 'CUDA' :
@@ -43,7 +51,7 @@ export function StatusBar() {
         <div className="flex flex-wrap items-center gap-2">
           <DependencyIndicator label="FFmpeg" ok={envReady.ffmpegOk} />
           <DependencyIndicator label="Python" ok={envReady.pythonOk && envReady.demucsOk} />
-          <DependencyIndicator label="Models" ok={dependencies.models} />
+          <DependencyIndicator label="Models" ok={hasDownloadedModel} />
         </div>
       </div>
 

@@ -5,6 +5,7 @@
 use reqwest;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tracing::{info, warn};
 
 /// Application-wide atomic flag for download cancellation
@@ -58,6 +59,12 @@ pub struct DownloadProgressPayload {
     pub progress: f64,
     pub downloaded_mb: f64,
     pub total_mb: f64,
+    /// Human-readable progress message (e.g. current file being downloaded).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// Error detail when `status == "error"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +198,8 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
             progress: 0.0,
             downloaded_mb: 0.0,
             total_mb,
+            message: Some("Starting download...".to_string()),
+            error: None,
         },
     );
 
@@ -244,6 +253,8 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
                     progress: 0.0,
                     downloaded_mb: 0.0,
                     total_mb: total_mb_actual,
+                    message: None,
+                    error: None,
                 },
             );
             return Ok(());
@@ -265,6 +276,12 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
                     progress: pct,
                     downloaded_mb: downloaded as f64 / 1_000_000.0,
                     total_mb: total_mb_actual,
+                    message: Some(format!(
+                        "Downloading... {} MB / {} MB",
+                        downloaded as f64 / 1_000_000.0,
+                        total_mb_actual
+                    )),
+                    error: None,
                 },
             );
         }
@@ -292,13 +309,21 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
             progress: 100.0,
             downloaded_mb,
             total_mb: total_mb_actual,
+            message: Some(format!("{} downloaded", model_id)),
+            error: None,
         },
     );
 
     Ok(())
 }
 
-/// Download a model via the Python sidecar (for multi-file model bags)
+/// Download a model via the Python sidecar (for multi-file model bags).
+///
+/// The sidecar emits JSON progress lines on stdout (`{"status":"progress",
+/// "stage":"downloading","progress":<0..1>,"message":...}`) which we stream
+/// to the frontend as `model-download-progress` events, so the UI shows real
+/// progress instead of a 0→100 jump. On failure an `error` event is emitted
+/// with the sidecar's stderr and the command returns `Err`.
 async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<(), String> {
     use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
 
@@ -323,27 +348,118 @@ async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<
             progress: 0.0,
             downloaded_mb: 0.0,
             total_mb,
+            message: Some("Preparing download...".to_string()),
+            error: None,
         },
     );
 
-    let output = tokio::process::Command::new(&python)
+    let mut child = tokio::process::Command::new(&python)
         .args([sidecar.to_str().unwrap(), "--download-model", &model_id])
         .python_env()
         .no_window()
-        .output()
-        .await
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to launch sidecar for download: {e}"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = child.stdout.take().expect("piped stdout");
+    let stderr = child.stderr.take().expect("piped stderr");
+
+    // Stream the sidecar's stdout line-by-line, forwarding JSON progress.
+    let mut stdout_lines = tokio::io::BufReader::new(stdout).lines();
+    let mut last_message: Option<String> = None;
+    let mut last_progress: f64 = 0.0;
+    loop {
+        let line = match tokio::time::timeout(
+            std::time::Duration::from_secs(30 * 60),
+            stdout_lines.next_line(),
+        )
+        .await
+        {
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) => break,
+            Ok(Err(e)) => {
+                return Err(format!("Failed to read sidecar download output: {e}"));
+            }
+            Err(_) => {
+                return Err("Model download timed out after 30 minutes".to_string());
+            }
+        };
+
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
+            let status = parsed.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            if status == "progress" {
+                let progress = parsed
+                    .get("progress")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let message = parsed
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Downloading...");
+                last_progress = progress * 100.0;
+                last_message = Some(message.to_string());
+                let _ = app.emit(
+                    "model-download-progress",
+                    DownloadProgressPayload {
+                        model_id: model_id.clone(),
+                        status: "downloading".to_string(),
+                        progress: last_progress,
+                        downloaded_mb: 0.0,
+                        total_mb,
+                        message: Some(message.to_string()),
+                        error: None,
+                    },
+                );
+            } else if status == "complete" {
+                last_message = parsed
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                last_progress = 100.0;
+            } else if status == "error" {
+                let error = parsed
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown sidecar error");
+                let _ = app.emit(
+                    "model-download-progress",
+                    DownloadProgressPayload {
+                        model_id: model_id.clone(),
+                        status: "error".to_string(),
+                        progress: last_progress,
+                        downloaded_mb: 0.0,
+                        total_mb,
+                        message: None,
+                        error: Some(error.to_string()),
+                    },
+                );
+                return Err(error.to_string());
+            }
+        }
+    }
+
+    // Collect stderr for diagnostics.
+    let mut stderr_buf = Vec::new();
+    let mut stderr_reader = tokio::io::BufReader::new(stderr);
+    stderr_reader.read_to_end(&mut stderr_buf).await.ok();
+
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("Failed to wait for sidecar download: {e}"))?;
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr_buf).to_string();
         let _ = app.emit(
             "model-download-progress",
             DownloadProgressPayload {
                 model_id: model_id.clone(),
                 status: "error".to_string(),
-                progress: 0.0,
+                progress: last_progress,
                 downloaded_mb: 0.0,
                 total_mb,
+                message: None,
+                error: Some(stderr.clone()),
             },
         );
         return Err(format!("Model download failed:\n{stderr}"));
@@ -357,6 +473,8 @@ async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<
             progress: 100.0,
             downloaded_mb: total_mb,
             total_mb,
+            message: last_message.or(Some(format!("{} downloaded", model_id))),
+            error: None,
         },
     );
 
@@ -366,8 +484,15 @@ async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<
 
 /// Delete a downloaded AI model from the models directory
 #[tauri::command]
-pub fn delete_model(model_id: String) -> Result<(), String> {
+pub async fn delete_model(app: tauri::AppHandle, model_id: String) -> Result<(), String> {
     info!("Deleting model: {}", model_id);
+
+    // Demucs-family models store their weights in the HuggingFace cache, not
+    // the app models dir — route them through the sidecar so the cache entries
+    // are actually removed. Direct .onnx downloads live in the app models dir.
+    if requires_sidecar_download(&model_id) {
+        return delete_model_via_sidecar(model_id, app).await;
+    }
 
     let models_dir = crate::commands::probe::get_models_dir();
     let model_path = models_dir.join(&model_id);
@@ -389,6 +514,41 @@ pub fn delete_model(model_id: String) -> Result<(), String> {
     }
 
     info!("Model deleted: {}", model_id);
+    Ok(())
+}
+
+/// Delete a demucs-family model's weights from the HuggingFace cache via the
+/// Python sidecar (`--delete-model`).
+async fn delete_model_via_sidecar(model_id: String, _app: tauri::AppHandle) -> Result<(), String> {
+    use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
+
+    let python = find_python().ok_or("Python not found — cannot delete model via sidecar")?;
+    let sidecar = get_data_dir().join("stemgen_sidecar.py");
+    if !sidecar.exists() {
+        return Err(format!(
+            "Sidecar script not found at '{}'. Open Settings → System Status → Repair Installation.",
+            sidecar.display()
+        ));
+    }
+
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        tokio::process::Command::new(&python)
+            .args([sidecar.to_str().unwrap(), "--delete-model", &model_id])
+            .python_env()
+            .no_window()
+            .output(),
+    )
+    .await
+    .map_err(|_| "delete-model timed out after 60 s".to_string())?
+    .map_err(|e| format!("Failed to run sidecar delete-model: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(format!("Model delete failed:\n{stderr}"));
+    }
+
+    info!("Model deleted via sidecar: {}", model_id);
     Ok(())
 }
 
@@ -418,7 +578,7 @@ pub async fn check_model_downloaded(model_id: String, _app: AppHandle) -> Result
     }
 
     let output = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
+        std::time::Duration::from_secs(30),
         tokio::process::Command::new(&python)
             .args([sidecar.to_str().unwrap(), "--check-model", &model_id])
             .python_env()
@@ -426,7 +586,7 @@ pub async fn check_model_downloaded(model_id: String, _app: AppHandle) -> Result
             .output(),
     )
     .await
-    .map_err(|_| "check-model timed out after 10 s".to_string())?
+    .map_err(|_| "check-model timed out after 30 s".to_string())?
     .map_err(|e| format!("Failed to run sidecar check-model: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -457,7 +617,7 @@ pub async fn list_downloaded_models(_app: AppHandle) -> Result<Vec<String>, Stri
     }
 
     let output = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
+        std::time::Duration::from_secs(30),
         tokio::process::Command::new(&python)
             .args([sidecar.to_str().unwrap(), "--list-models"])
             .python_env()
@@ -465,7 +625,7 @@ pub async fn list_downloaded_models(_app: AppHandle) -> Result<Vec<String>, Stri
             .output(),
     )
     .await
-    .map_err(|_| "list-models timed out after 10s".to_string())?
+    .map_err(|_| "list-models timed out after 30s".to_string())?
     .map_err(|e| format!("Failed to run sidecar list-models: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -577,6 +737,8 @@ mod tests {
             progress: 50.0,
             downloaded_mb: 50.0,
             total_mb: 100.0,
+            message: Some("Downloading...".to_string()),
+            error: None,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -584,6 +746,44 @@ mod tests {
         assert!(json.contains("modelId"));
         assert!(json.contains("\"progress\":50"));
         assert!(!json.contains("model_id")); // snake_case not in output
+                                             // message serializes; error is skipped when None
+        assert!(json.contains("\"message\":\"Downloading...\""));
+        assert!(!json.contains("error"));
+    }
+
+    #[test]
+    fn test_download_progress_payload_error_serializes() {
+        let payload = DownloadProgressPayload {
+            model_id: "test-model".to_string(),
+            status: "error".to_string(),
+            progress: 0.0,
+            downloaded_mb: 0.0,
+            total_mb: 100.0,
+            message: None,
+            error: Some("Download failed".to_string()),
+        };
+
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"status\":\"error\""));
+        assert!(json.contains("\"error\":\"Download failed\""));
+        assert!(!json.contains("message"));
+    }
+
+    #[test]
+    fn test_download_progress_payload_omits_none_fields() {
+        let payload = DownloadProgressPayload {
+            model_id: "test-model".to_string(),
+            status: "complete".to_string(),
+            progress: 100.0,
+            downloaded_mb: 100.0,
+            total_mb: 100.0,
+            message: None,
+            error: None,
+        };
+
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(!json.contains("message"));
+        assert!(!json.contains("error"));
     }
 
     #[test]
