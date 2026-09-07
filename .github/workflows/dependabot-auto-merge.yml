@@ -55,24 +55,26 @@ jobs:
           echo "  head: ${HEAD_SHA}"
 
           counter=0
-          while :; do
-            result="$(gh api \
-              "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
-              --jq '.check_runs | map(select(.name == "All Checks Passed")) | .[-1].conclusion // ""')"
-            echo "  All Checks Passed conclusion: '${result}'"
+          # The PR head may carry multiple "All Checks Passed" runs (e.g. the
+          # non-gating `push`-event run is always "skipped" on this repo). Match
+          # on the CONCLUSION, not array order, so the noise run is ignored and
+          # only the gating PR run decides.
+          success_jq='[.check_runs[] | select(.name == "All Checks Passed" and .conclusion == "success")] | length'
+          failed_jq='[.check_runs[] | select(.name == "All Checks Passed" and .status == "completed" and (.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required"))] | length'
 
-            case "$result" in
-              success)
-                break
-                ;;
-              failure|cancelled|timed_out|action_required)
-                echo "All Checks Passed ended as '${result}' — not merging PR #${PR_NUMBER}."
-                exit 1
-                ;;
-              *)
-                # Check run not yet completed (or not scheduled at all yet). Keep polling.
-                ;;
-            esac
+          while :; do
+            success="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" --jq "$success_jq")"
+            echo "  All Checks Passed success runs: ${success}"
+            if (( success > 0 )); then
+              break
+            fi
+
+            failed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" --jq "$failed_jq")"
+            echo "  All Checks Passed failed runs: ${failed}"
+            if (( failed > 0 )); then
+              echo "All Checks Passed finished with a failure — not merging PR #${PR_NUMBER}."
+              exit 1
+            fi
 
             counter=$((counter + 1))
             if (( counter >= 240 )); then
