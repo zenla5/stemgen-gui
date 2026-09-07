@@ -1,27 +1,29 @@
 name: Dependabot Auto-Merge
 
-# Enables GitHub's NATIVE auto-merge on every Dependabot PR. GitHub then
-# merges the PR the instant the branch-protection required check
-# ("All Checks Passed" from ci.yml) turns green — no polling, no race,
-# no secondary bot pushing to main.
+# Polls the branch-protection required check ("All Checks Passed" from ci.yml)
+# on every Dependabot PR and merges it the instant it turns green.
+#
+# We intentionally do NOT use GitHub's native auto-merge (`gh pr merge --auto`):
+# it requires the repo-level "Allow auto merge" setting to be enabled, and this
+# repo keeps it disabled. Instead we poll the check run and merge directly.
+# GitHub then merges the PR as soon as its required check is green.
 #
 # We trigger on `pull_request_target` (not `pull_request`) because a
-# Dependabot PR's `pull_request` run gets a read-only GITHUB_TOKEN with
-# no ability to enable auto-merge. Under `pull_request_target` the
-# token has write access to the base repo.
+# Dependabot PR's `pull_request` run gets a read-only GITHUB_TOKEN. Under
+# `pull_request_target` the token has write access to the base repo.
 #
-# SECURITY: pull_request_target executes in the context of the BASE
-# branch. This workflow NEVER checks out or executes anything from the
-# PR's head — it only reads PR metadata (dependabot/fetch-metadata,
-# which inspects the diff) and calls `gh pr merge --auto`. That is the
-# safe, well-understood pattern for acting on outsider PRs.
+# SECURITY: pull_request_target executes in the context of the BASE branch.
+# This workflow NEVER checks out or executes anything from the PR's head — it
+# only reads PR metadata via the GitHub API (dependabot/fetch-metadata, which
+# inspects the diff) and calls `gh pr merge`. That is the safe, well-understood
+# pattern for acting on outsider PRs.
 
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
 
 # SHA-pinned actions should be updated periodically (e.g., quarterly or via
-# Dependabot, which already tracks the github-actions ecosystem weekly here).
+# Dependabot, which already tracks the github/actions ecosystem weekly).
 # Current pin date: 2026-09-01
 
 permissions:
@@ -30,9 +32,10 @@ permissions:
 
 jobs:
   auto-merge:
-    name: Enable auto-merge on Dependabot PR
+    name: Auto-merge Dependabot PR when green
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The full CI gate takes ~1h, so allow a generous window for the poll loop.
+    timeout-minutes: 120
 
     if: github.actor == 'dependabot[bot]'
 
@@ -43,16 +46,52 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Enable auto-merge (merge commit)
+      - name: Wait for "All Checks Passed" and merge
         run: |
-          echo "Enabling auto-merge on dependabot PR #${PR_NUMBER}"
+          set -u
+          echo "Auto-merging dependabot PR #${PR_NUMBER}"
           echo "  dependency: ${{ steps.metadata.outputs.dependency-names }}"
           echo "  update-type: ${{ steps.metadata.outputs.update-type }}"
-          gh pr merge \
-            --repo "$GITHUB_REPOSITORY" \
-            "$PR_NUMBER" \
-            --auto \
-            --merge
+          echo "  head: ${HEAD_SHA}"
+
+          counter=0
+          while :; do
+            result="$(gh api \
+              "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
+              --jq '.check_runs | map(select(.name == "All Checks Passed")) | .[-1].conclusion // ""')"
+            echo "  All Checks Passed conclusion: '${result}'"
+
+            case "$result" in
+              success)
+                break
+                ;;
+              failure|cancelled|timed_out|action_required)
+                echo "All Checks Passed ended as '${result}' — not merging PR #${PR_NUMBER}."
+                exit 1
+                ;;
+              *)
+                # Check run not yet completed (or not scheduled at all yet). Keep polling.
+                ;;
+            esac
+
+            counter=$((counter + 1))
+            if (( counter >= 240 )); then
+              echo "Timed out waiting for All Checks Passed on PR #${PR_NUMBER}"
+              exit 1
+            fi
+            sleep 15
+          done
+
+          # Re-check the PR is still open (a rebase or external merge may have
+          # happened while we polled).
+          state="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq '.state')"
+          if [[ "$state" == "MERGED" ]]; then
+            echo "PR #${PR_NUMBER} already merged — nothing to do."
+            exit 0
+          fi
+
+          gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

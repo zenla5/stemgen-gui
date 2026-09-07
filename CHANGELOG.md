@@ -25,6 +25,10 @@ All notable changes to this project will be documented in this file.
 
 - **[PYTHON-FLAKY-PROBE]** PyTorch sometimes reported as "missing" on cold app launches even though it was installed and the second launch detected it fine. The environment probes (`probe_python_package_version`, `probe_torch_cuda`, `probe_torch_device`, `probe_torchaudio` in `src-tauri/src/commands/probe.rs`) ran `import torch` with a hard **10 s** timeout, but at startup several commands fire torch-importing probes at once (`get_sidecar_status`, `validate_environment`, `check_dependencies`); six concurrently running `import torch` processes take ~13 s, pushing each individual probe past the cap, and a timeout was treated as "package not installed" with no retry. The probe timeout is now **30 s**, torch-emitting probes are serialized through a `TORCH_PROBE_LOCK`, and `validate_environment` retries each Python package probe once on a `None`/timeout result before declaring it missing — so a slow, contended cold start is no longer misread as an uninstalled dependency.
 
+### Internal
+
+- **[DEPENDABOT-AUTOMERGE]** The `dependabot-auto-merge.yml` workflow no longer relies on GitHub's native auto-merge (`gh pr merge --auto`), which requires the repo-level "Allow auto merge" setting that this repo keeps disabled — it was failing on every Dependabot PR. The workflow now polls the required "All Checks Passed" check run on the PR head and merges directly once it is green.
+
 ## [1.5.5] — Sep 2 2026 — Version Bump
 
 ### Fixed
