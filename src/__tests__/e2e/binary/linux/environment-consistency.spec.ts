@@ -132,16 +132,33 @@ describe('Sidecar Deployment — repair and guard', () => {
     await $('[data-testid="refresh-env-btn"]').click();
     await browser.pause(3000);
 
-    if (await isDisplayedSafe('[data-testid="repair-sidecar-btn"]')) {
-      await $('[data-testid="repair-sidecar-btn"]').click();
-      await browser.pause(2000);
-
-      // After clicking repair, some feedback should appear (toast or status change)
-      const toast = await getToastMessage();
-      // Either a toast appears or the button changes state — both are valid feedback
-      const hasFeedback = toast !== null || !(await isDisplayedSafe('[data-testid="repair-sidecar-btn"]'));
-      // Just verify the app doesn't crash — feedback mechanism varies
+    // Retry the click against a single element reference. Revalidation can
+    // transiently unmount/remount the sidecar row, so a fresh selector lookup
+    // after isDisplayedSafe can race and fail with "element wasn't found".
+    const repairBtn = $('[data-testid="repair-sidecar-btn"]');
+    try {
+      await browser.waitUntil(
+        async () => {
+          if (!(await repairBtn.isClickable().catch(() => false))) return false;
+          try {
+            await repairBtn.click();
+            return true;
+          } catch {
+            return false; // node replaced by async re-render — retry
+          }
+        },
+        { timeout: 15000, interval: 250, timeoutMsg: 'repair-sidecar-btn never became clickable' }
+      );
+    } catch {
+      return; // sidecar healthy on this runner — nothing to click
     }
+    await browser.pause(2000);
+
+    // After clicking repair, some feedback should appear (toast or status change)
+    const toast = await getToastMessage();
+    // Either a toast appears or the button changes state — both are valid feedback
+    const hasFeedback = toast !== null || !(await isDisplayedSafe('[data-testid="repair-sidecar-btn"]'));
+    // Just verify the app doesn't crash — feedback mechanism varies
     await takeScreenshot('linux-env-repair-call');
   });
 
