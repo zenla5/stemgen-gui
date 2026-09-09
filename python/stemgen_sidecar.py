@@ -282,7 +282,7 @@ def _run_demucs_model(
     from demucs.pretrained import get_model
     from demucs.apply import apply_model
     from demucs.audio import AudioFile
-    import torchaudio
+    import soundfile
 
     emit({
         "status": "progress",
@@ -315,7 +315,7 @@ def _run_demucs_model(
 
     # Load audio resampled to model's sample rate and channel count
     wav = AudioFile(input_path).read(
-        stems=0,
+        streams=0,
         samplerate=model.samplerate,
         channels=model.audio_channels,
     )
@@ -362,7 +362,15 @@ def _run_demucs_model(
         elif stem_tensor.dim() == 2 and stem_tensor.shape[0] > 2:
             stem_tensor = stem_tensor.mean(0, keepdim=True).repeat(2, 1)
 
-        torchaudio.save(str(stem_path), stem_tensor, model.samplerate)
+        # soundfile writes (frames, channels) float32 in [-1, 1]; our tensor is
+        # (channels, samples). Using soundfile directly avoids the optional
+        # torchcodec dependency that newer torchaudio's default save backend
+        # requires.
+        soundfile.write(
+            str(stem_path),
+            stem_tensor.t().cpu().numpy(),
+            model.samplerate,
+        )
         stems[stem_name] = stem_path
 
         emit({
