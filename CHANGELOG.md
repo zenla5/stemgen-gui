@@ -9,6 +9,31 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.7] — Sep 9 2026 — Version Bump
+
+### Changed
+
+- **Version consistency** — All version strings bumped to 1.5.7: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+
+### Added
+
+- **[SEPARATION-PROGRESS]** Separation jobs no longer sit on a frozen ~10% bar while the sidecar works. `start_separation` now accepts the frontend `job.id`, the Rust sidecar streams per-line progress to the UI as new `separation-progress` events (`SeparationProgressEvent` carrying `job_id`, `stage`, `message`, and `progress`), and each queue row subscribes to its own job so parallel batch jobs update only their own progress instead of all rows (Refs #244).
+- **[FIRST-RUN-MODEL-PROGRESS]** The reported "starts but nothing happens" stall was a silent, unbounded first-run model-weight download: demucs 4.1's `get_model()` fetches missing weights via `hf_hub_download()` with no progress callback, freezing at ~10% with no stdout. `_run_demucs_model` now pre-downloads uncached weights with the same `snapshot_download` + `_ProgressTqdm` plumbing as `--download-model`, so the first run streams visible, cancellable progress instead of silently blocking (Refs #241).
+
+### Fixed
+
+- **[SIDECAR-STALL-WATCHDOG]** A separation that stalled (e.g. on a hung sidecar) previously stayed in `processing` forever because `sidecar.rs` awaited `child.wait()` with no timeout. The child wait is now bounded by a 120-minute watchdog (`tokio::time::timeout`); on timeout the child is killed and the job fails with `Separation timed out after N minutes` (Refs #241).
+- **[DEMUCS-AUDIOSTREAMS]** Local demucs separation failed on every run: `AudioFile.read()` takes `streams`, not `stems`, so the `stems` kwarg raised a `TypeError`; and stem saving used `torchaudio.save`, which crashes on torchaudio 2.9+ (its bundled soundfile backend was dropped in favor of the optional torchcodec). Separation now passes `streams=0` and saves via `soundfile.write` (already a core demucs dependency). A regression test asserts `read()` gets `streams`/`samplerate`/`channels` and the samplerate test verifies `soundfile.write`.
+- **[PYTHON-3.14]+]** The Python version gate wrongly rejected Python 3.14+ (only 3.12/3.13 were accepted), even though the sidecar runs fine on 3.14. The gate now accepts 3.14+, and the environment label deduplicates the version so it no longer renders twice.
+
+### Security
+
+- **[DEP-JS-YAML]** Pinned `js-yaml` to 4.3.2 via an npm override to fix high-severity advisory GHSA-2883-xcg3-v3hh (maxTotalMergeKeys CPU DoS). js-yaml is pulled in transitively by mocha; the override satisfies mocha's `^4.1.0` range and lets the Security Audit job (npm audit) pass.
+
+### Internal
+
+- **[GEN-SCHEMAS]** Stopped tracking Tauri-generated schema files (`src-tauri/gen/` ACL manifests, capabilities, and desktop/windows schemas) — they drift badly out of sync with locked plugin versions and are regenerated per-platform at build time. The broken `.gitignore` entry (which contained literal quote characters and a trailing space, so the pattern never matched) now correctly ignores `src-tauri/gen/`; authoritative runtime capabilities remain tracked in `src-tauri/capabilities/`.
+
 ## [1.5.6] — Sep 8 2026 — Version Bump
 
 ### Changed
