@@ -20,6 +20,7 @@ import type {
   InstallProgressEvent,
   InstallResult,
   PackageStatus,
+  SeparationProgressEvent,
 } from '@/lib/types';
 import { hasPackageStatusKey } from '@/lib/types';
 
@@ -184,6 +185,23 @@ async function processJob(
 ): Promise<boolean> {
   updateJob(job.id, { status: 'processing' });
 
+  // Subscribe to live separation progress so the queue bar moves during a run.
+  // Events carry the frontend job.id (passed through to the backend), so with
+  // parallel batch jobs each listener updates only its own job.
+  let unlisten: (() => void) | null = null;
+  try {
+    unlisten = await listen<SeparationProgressEvent>('separation-progress', (event) => {
+      const { job_id, progress } = event.payload;
+      if (job_id === job.id && typeof progress === 'number') {
+        updateJob(job.id, { progress });
+      }
+    });
+  } catch (err) {
+    // In test environments or when the event system is unavailable, skip the
+    // listener rather than failing the whole job.
+    console.warn('Failed to set up separation-progress listener:', err);
+  }
+
   try {
     // Cloud duration warning check
     const settingsStore = useSettingsStore.getState();
@@ -214,6 +232,7 @@ async function processJob(
     const stems = await invoke<StemInfo[]>('start_separation', {
       sourcePath: file.path,
       outputPath: job.output_path,
+      jobId: job.id,
       settings: {
         model: settings.model,
         device: settings.device,
@@ -311,6 +330,8 @@ async function processJob(
       });
     }
     return false;
+  } finally {
+    unlisten?.();
   }
 }
 

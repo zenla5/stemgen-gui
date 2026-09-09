@@ -145,6 +145,7 @@ pub async fn start_separation(
     source_path: String,
     _output_path: String,
     settings: SeparationSettings,
+    job_id: String,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<StemInfo>, String> {
     info!(
@@ -199,14 +200,6 @@ pub async fn start_separation(
 
     let sidecar = sidecar_guard.as_mut().ok_or("Sidecar not initialized")?;
     let source = Path::new(&source_path);
-
-    let job_id = format!(
-        "job_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis()
-    );
 
     let result = sidecar
         .run_separation(

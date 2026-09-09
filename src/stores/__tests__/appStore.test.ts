@@ -7,6 +7,10 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const fakeFile = (overrides: Partial<AudioFileMetadata> = {}): AudioFileMetadata => ({
@@ -541,6 +545,67 @@ describe('useAppStore — separation failure error display', () => {
     const state = useAppStore.getState();
     const failedJob = state.jobs.find((j) => j.input_path === '/audio/hint-test.mp3');
     expect(failedJob?.error).toContain('Setup Wizard');
+  });
+});
+
+// ─── TASK-244: Live separation-progress events ──────────────────────────────
+
+describe('useAppStore — separation-progress events', () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+  });
+
+  it('updates job.progress from separation-progress events for the matching job', async () => {
+    const { listen } = await import('@tauri-apps/api/event');
+    const { invoke } = await import('@tauri-apps/api/core');
+
+    let handler: ((e: { payload: Record<string, unknown> }) => void) | null = null;
+    vi.mocked(listen).mockImplementation((event, cb) => {
+      if (event === 'separation-progress') {
+        handler = cb as (e: { payload: Record<string, unknown> }) => void;
+      }
+      return Promise.resolve(() => {});
+    });
+
+    let resolveSeparation!: (v: unknown) => void;
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'start_separation') {
+        return new Promise((res) => { resolveSeparation = res; });
+      }
+      // pack_stems and add_to_history succeed immediately
+      return Promise.resolve({ success: true });
+    });
+
+    const store = useAppStore.getState();
+    const file = fakeFile({ path: '/audio/progress-test.mp3' });
+    store.addFiles([file]);
+    await store.startProcessing([file]);
+
+    const job = useAppStore.getState().jobs.find((j) => j.input_path === '/audio/progress-test.mp3');
+    expect(job).toBeDefined();
+    expect(job!.status).toBe('processing');
+
+    // The backend receives the frontend's job id, and a matching event moves the bar
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+      'start_separation',
+      expect.objectContaining({ jobId: job!.id })
+    );
+
+    handler!({ payload: { job_id: job!.id, status: 'progress', stage: 'separating', progress: 0.45 } });
+    let current = useAppStore.getState().jobs.find((j) => j.id === job!.id);
+    expect(current!.progress).toBe(0.45);
+
+    // A non-matching job_id (another parallel job) must not touch this job
+    handler!({ payload: { job_id: 'other-job', status: 'progress', progress: 0.99 } });
+    current = useAppStore.getState().jobs.find((j) => j.id === job!.id);
+    expect(current!.progress).toBe(0.45);
+
+    // Let the separation resolve and confirm the job still completes
+    resolveSeparation!([]);
+    await new Promise((r) => setTimeout(r, 50));
+    current = useAppStore.getState().jobs.find((j) => j.id === job!.id);
+    expect(current!.status).toBe('completed');
   });
 });
 
