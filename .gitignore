@@ -54,7 +54,7 @@ coverage.lcov
 *.env
 .env.local
 .env.*.local
-"src-tauri/gen/"  
+src-tauri/gen/
 *.tsbuildinfo  
 
 # Python scripts (may contain secrets - do not commit)
