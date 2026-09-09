@@ -262,10 +262,19 @@ impl SidecarManager {
             });
         }
 
-        // Wait for the process to complete
-        let status = {
-            let mut process = process_arc.write().await;
-            process.child.wait().await?
+        // Wait for the process to complete — bounded by a watchdog so a stalled
+        // sidecar (e.g. a silent first-run model-weight download, or a CPU run
+        // that hangs) cannot leave the job stuck in "processing" forever.
+        let status = match wait_for_sidecar(&process_arc, SEPARATION_TIMEOUT).await {
+            Ok(status) => status,
+            Err(e) => {
+                // Kill the child and clear the running process so the job is
+                // eligible to run again / can be retried.
+                let mut process = process_arc.write().await;
+                let _ = process.child.kill().await;
+                self.current_process = None;
+                return Err(e);
+            }
         };
 
         // Clear current process
@@ -387,6 +396,41 @@ impl SidecarManager {
     }
 }
 
+/// Maximum wall-clock time a separation sidecar may run before the watchdog
+/// kills it and fails the job.
+///
+/// Generous on purpose: htdemucs on CPU for a 10-minute track can legitimately
+/// take 30-60 minutes, plus a first-run ~450 MB weight download. The watchdog
+/// exists to catch genuinely stuck processes (e.g. a silent download that never
+/// completes) and turn them into a visible failure instead of an infinite
+/// "processing" state.
+const SEPARATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120 * 60);
+
+/// Wait for the sidecar child to exit, bounded by `timeout`.
+///
+/// Returns the child's exit status on success. On timeout the caller kills the
+/// child; the corresponding error is surfaced to the frontend so the job ends
+/// in a FAILED state instead of hanging forever.
+async fn wait_for_sidecar(
+    process_arc: &Arc<RwLock<SeparationProcess>>,
+    timeout: std::time::Duration,
+) -> Result<std::process::ExitStatus> {
+    let mut process = process_arc.write().await;
+    match tokio::time::timeout(timeout, process.child.wait()).await {
+        Ok(result) => result.context("Failed waiting for Python sidecar"),
+        Err(_) => {
+            warn!(
+                "Separation sidecar timed out after {} minutes",
+                timeout.as_secs() / 60
+            );
+            anyhow::bail!(
+                "Separation timed out after {} minutes — model download or processing too slow?",
+                timeout.as_secs() / 60
+            )
+        }
+    }
+}
+
 /// Progress update from the Python sidecar
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgressUpdate {
@@ -496,6 +540,70 @@ mod tests {
             .output()
             .expect("command should spawn");
         assert!(output.status.success());
+    }
+
+    /// Verify the watchdog: a fake long-running sidecar that never exits is
+    /// bounded — wait_for_sidecar returns a timeout error instead of hanging.
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn test_wait_for_sidecar_times_out_long_running_child() {
+        use tokio::process::Command;
+
+        // `sleep 300` outlives the 300 ms timeout. Null stdio so the pipes
+        // cannot fill and stall the test for unrelated reasons.
+        let child = Command::new("sleep")
+            .arg("300")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn sleep");
+
+        let process = SeparationProcess {
+            child,
+            job_id: "test-timeout".to_string(),
+            model: "htdemucs".to_string(),
+        };
+        let process_arc = Arc::new(RwLock::new(process));
+
+        let result = wait_for_sidecar(&process_arc, std::time::Duration::from_millis(300)).await;
+        assert!(result.is_err(), "expected the watchdog to time out");
+        assert!(
+            result.unwrap_err().to_string().contains("timed out"),
+            "error should mention the timeout"
+        );
+
+        // The child should still be alive (we time out waiting, not after a
+        // forced kill) — but clean up so the test exits.
+        let mut guard = process_arc.write().await;
+        let _ = guard.child.kill().await;
+    }
+
+    /// Verify the watchdog success path: a child that exits quickly is awaited
+    /// normally and returns its exit status within the timeout.
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn test_wait_for_sidecar_returns_status_for_quick_exit() {
+        use tokio::process::Command as TokioCommand;
+
+        let child = TokioCommand::new("sh")
+            .arg("-c")
+            .arg("exit 3")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to spawn sh");
+
+        let process = SeparationProcess {
+            child,
+            job_id: "test-quick".to_string(),
+            model: "htdemucs".to_string(),
+        };
+        let process_arc = Arc::new(RwLock::new(process));
+
+        let status = wait_for_sidecar(&process_arc, std::time::Duration::from_secs(10))
+            .await
+            .expect("quick child should finish within the timeout");
+        assert_eq!(status.code(), Some(3));
     }
 
     /// Verify that a Command built with `.env("PYTHONUTF8", "1")` propagates

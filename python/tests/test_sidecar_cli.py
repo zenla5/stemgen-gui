@@ -192,6 +192,17 @@ class TestRunDemucsModel:
     before calling the function.
     """
 
+    @pytest.fixture(autouse=True)
+    def _pretend_weights_cached(self, monkeypatch):
+        """Skip the inline model-weight download so these unit tests never hit
+        the network. `_run_demucs_model` now downloads missing weights up-front
+        (via `_model_weights_available` / `_download_model_weights`); the fake
+        demucs modules patched below cannot express a real HuggingFace cache."""
+        import stemgen_sidecar
+
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", lambda name: True)
+        monkeypatch.setattr(stemgen_sidecar, "_download_model_weights", lambda name: None)
+
     @staticmethod
     def _make_mocks(torch):
         """Build fake demucs modules and a fake model for patching."""
@@ -292,6 +303,77 @@ class TestRunDemucsModel:
             )
             assert isinstance(stems, dict)
             assert len(stems) == len(fake_model.sources)
+
+    def test_uncached_weights_are_downloaded_inline_with_progress(self, tmp_path, monkeypatch, capsys):
+        """When model weights are not cached, _run_demucs_model must download
+        them up-front (with visible progress) before calling get_model().
+
+        This is the root-cause guard for #241: demucs 4.1's get_model() download
+        has no progress callback, leaving the job frozen at ~10 % — so the
+        sidecar pre-downloads missing weights through the same progress plumbing
+        used by --download-model.
+        """
+        import stemgen_sidecar
+        from unittest.mock import patch, MagicMock
+
+        torch = pytest.importorskip("torch")
+
+        weights_not_cached = MagicMock(return_value=False)
+        download = MagicMock()
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", weights_not_cached)
+        monkeypatch.setattr(stemgen_sidecar, "_download_model_weights", download)
+
+        modules_patch, fake_model, _, _ = self._make_mocks(torch)
+
+        with patch.dict(sys.modules, modules_patch):
+            input_path = tmp_path / "test.wav"
+            input_path.write_bytes(b"fake")
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
+
+            stemgen_sidecar._run_demucs_model(
+                input_path, output_dir, device="cpu", model_name="htdemucs"
+            )
+
+        weights_not_cached.assert_called_once_with("htdemucs")
+        download.assert_called_once_with("htdemucs")
+
+        # A "downloading" progress line must have been emitted so the UI is not
+        # stuck at the loading stage with no signal.
+        captured = capsys.readouterr()
+        lines = [json.loads(line) for line in captured.out.strip().splitlines()]
+        assert any(
+            line["status"] == "progress" and line["stage"] == "downloading"
+            for line in lines
+        ), "expected a downloading progress event when weights are uncached"
+
+    def test_cached_weights_skip_network_on_separation(self, tmp_path, monkeypatch):
+        """When weights are already cached, the separation path must not perform
+        an explicit download — get_model() is called straight away."""
+        import stemgen_sidecar
+        from unittest.mock import patch, MagicMock
+
+        torch = pytest.importorskip("torch")
+
+        weights_cached = []
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", lambda name: weights_cached.append(name) or True)
+        download = MagicMock()
+        monkeypatch.setattr(stemgen_sidecar, "_download_model_weights", download)
+
+        modules_patch, _, _, _ = self._make_mocks(torch)
+
+        with patch.dict(sys.modules, modules_patch):
+            input_path = tmp_path / "test.wav"
+            input_path.write_bytes(b"fake")
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
+
+            stemgen_sidecar._run_demucs_model(
+                input_path, output_dir, device="cpu", model_name="htdemucs"
+            )
+
+        assert weights_cached == ["htdemucs"]
+        download.assert_not_called()
 
     def test_mix_shape_is_batch_channels_samples(self, tmp_path):
         """The tensor passed to apply_model must have ndim==3 and shape[1]==channels (guards Bugs B, C, E)."""
@@ -737,6 +819,14 @@ class TestDeleteModel:
 class TestDemucsModelLoad:
     """Tests for the get_model() call in _run_demucs_model."""
 
+    @pytest.fixture(autouse=True)
+    def _pretend_weights_cached(self, monkeypatch):
+        """Skip the inline model-weight download (see TestRunDemucsModel)."""
+        import stemgen_sidecar
+
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", lambda name: True)
+        monkeypatch.setattr(stemgen_sidecar, "_download_model_weights", lambda name: None)
+
     def test_get_model_called_without_device_kwarg(self, tmp_path):
         """get_model must be called with only one positional argument (model_name), no device kwarg."""
         torch = pytest.importorskip("torch")
@@ -1027,6 +1117,14 @@ class TestNonAsciiPaths:
 
 class TestBugFixPaths:
     """Tests for all bug-fix paths in stemgen_sidecar.py (TASK-012)."""
+
+    @pytest.fixture(autouse=True)
+    def _pretend_weights_cached(self, monkeypatch):
+        """Skip the inline model-weight download (see TestRunDemucsModel)."""
+        import stemgen_sidecar
+
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", lambda name: True)
+        monkeypatch.setattr(stemgen_sidecar, "_download_model_weights", lambda name: None)
 
     def test_run_bs_roformer_import_error_emits_structured_json(self, capsys, tmp_path):
         """(a) run_bs_roformer emits structured JSON error when bs_roformer package is absent."""

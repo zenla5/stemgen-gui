@@ -302,6 +302,22 @@ def _run_demucs_model(
         run_device = torch.device("cpu")
         emit({"status": "progress", "stage": "device", "progress": 0.1, "message": "Using CPU"})
 
+    # Ensure the model weights are cached locally before calling get_model().
+    # demucs 4.1's get_model() downloads missing weights via
+    # huggingface_hub.hf_hub_download() internally with NO progress reporting,
+    # so a first-run separation would silently block on a multi-hundred-MB
+    # download while the UI appears frozen at ~10 %. Download up-front with
+    # the same progress plumbing used by --download-model so the backend can
+    # stream visible progress and cancel the job if the user aborts.
+    if not _model_weights_available(model_name):
+        emit({
+            "status": "progress",
+            "stage": "downloading",
+            "progress": 0.1,
+            "message": f"Model weights not cached — downloading {model_name}...",
+        })
+        _download_model_weights(model_name)
+
     model = get_model(model_name)
     model = model.to(run_device)
     model.eval()
