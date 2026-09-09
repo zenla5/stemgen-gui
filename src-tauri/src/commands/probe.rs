@@ -317,6 +317,16 @@ pub fn probe_python_version(python: &Path) -> Option<String> {
             }
         }
     })
+    .map(|raw| {
+        // `python --version` prints "Python 3.14.6" — strip the leading
+        // "Python " label so every consumer (cards, detailed row, warnings
+        // panel) renders a bare "3.14.6" instead of "Python Python 3.14.6".
+        raw.strip_prefix("Python ")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&raw)
+            .to_string()
+    })
 }
 
 /// Check if a Python module can be imported.

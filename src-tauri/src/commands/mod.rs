@@ -383,12 +383,7 @@ pub async fn validate_environment(app: tauri::AppHandle) -> Result<EnvironmentVa
                 validation.python_path = Some(path.to_string_lossy().to_string());
 
                 if let Some(version) = probe_python_version(path) {
-                    if version.contains("3.9")
-                        || version.contains("3.10")
-                        || version.contains("3.11")
-                        || version.contains("3.12")
-                        || version.contains("3.13")
-                    {
+                    if is_python_supported(&version) {
                         validation.python = Some(PackageStatus::Available);
                     } else {
                         validation.python = Some(PackageStatus::Warning(format!(
@@ -659,6 +654,29 @@ mod package_status_tests {
     }
 
     #[test]
+    fn test_parse_python_version() {
+        assert_eq!(parse_python_version("3.9.2"), Some((3, 9)));
+        assert_eq!(parse_python_version("3.12.0"), Some((3, 12)));
+        assert_eq!(parse_python_version("3.14.6"), Some((3, 14)));
+        assert_eq!(parse_python_version("2.7.18"), Some((2, 7)));
+        assert_eq!(parse_python_version("3"), None);
+        assert_eq!(parse_python_version(""), None);
+        assert_eq!(parse_python_version("Python 3.11.0"), None);
+        assert_eq!(parse_python_version("not-a-version"), None);
+    }
+
+    #[test]
+    fn test_is_python_supported() {
+        assert!(is_python_supported("3.9.0"));
+        assert!(is_python_supported("3.14.6"), "3.14 must pass");
+        assert!(is_python_supported("3.99.0"));
+        assert!(is_python_supported("4.0.0"));
+        assert!(!is_python_supported("3.8.19"), "below the 3.9+ floor");
+        assert!(!is_python_supported("2.7.18"));
+        assert!(!is_python_supported("garbage"), "unparseable must stay conservative");
+    }
+
+    #[test]
     fn test_gpu_status_no_gpu_serializes_nulls() {
         let status = GpuStatus {
             gpu_present: false,
@@ -761,6 +779,22 @@ fn calculate_dir_size(path: &std::path::Path) -> std::io::Result<u64> {
         }
     }
     Ok(size)
+}
+
+/// Parse a bare Python version string ("3.14.6") into its (major, minor)
+/// components. Returns `None` for anything we can't reliably interpret.
+fn parse_python_version(version: &str) -> Option<(u32, u32)> {
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    let minor = parts.next()?.parse::<u32>().ok()?;
+    Some((major, minor))
+}
+
+/// Whether a Python version is supported. Anything >= 3.9 passes; genuinely
+/// older or unparseable versions are conservatively rejected.
+fn is_python_supported(version: &str) -> bool {
+    parse_python_version(version)
+        .is_some_and(|(maj, min)| maj > 3 || (maj == 3 && min >= 9))
 }
 
 // ============================================================================
