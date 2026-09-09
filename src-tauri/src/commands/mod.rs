@@ -673,7 +673,10 @@ mod package_status_tests {
         assert!(is_python_supported("4.0.0"));
         assert!(!is_python_supported("3.8.19"), "below the 3.9+ floor");
         assert!(!is_python_supported("2.7.18"));
-        assert!(!is_python_supported("garbage"), "unparseable must stay conservative");
+        assert!(
+            !is_python_supported("garbage"),
+            "unparseable must stay conservative"
+        );
     }
 
     #[test]
@@ -793,8 +796,7 @@ fn parse_python_version(version: &str) -> Option<(u32, u32)> {
 /// Whether a Python version is supported. Anything >= 3.9 passes; genuinely
 /// older or unparseable versions are conservatively rejected.
 fn is_python_supported(version: &str) -> bool {
-    parse_python_version(version)
-        .is_some_and(|(maj, min)| maj > 3 || (maj == 3 && min >= 9))
+    parse_python_version(version).is_some_and(|(maj, min)| maj > 3 || (maj == 3 && min >= 9))
 }
 
 // ============================================================================
