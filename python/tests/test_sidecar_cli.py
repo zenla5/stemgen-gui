@@ -247,7 +247,31 @@ class TestRunDemucsModel:
             "torchaudio": fake_torchaudio,
         }
 
-        return modules_patch, fake_model, mock_apply
+        return modules_patch, fake_model, mock_apply, mock_audio_instance
+
+    def test_audio_file_read_uses_streams_kwarg(self, tmp_path):
+        """demucs's AudioFile.read() accepts `streams`, not `stems` (regression guard)."""
+        torch = pytest.importorskip("torch")
+        from unittest.mock import patch
+        import stemgen_sidecar
+
+        modules_patch, fake_model, mock_apply, mock_audio_instance = self._make_mocks(torch)
+
+        with patch.dict(sys.modules, modules_patch):
+            input_path = tmp_path / "test.wav"
+            input_path.write_bytes(b"fake")
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
+
+            stemgen_sidecar._run_demucs_model(
+                input_path, output_dir, device="cpu", model_name="htdemucs"
+            )
+
+            _, kwargs = mock_audio_instance.read.call_args
+            assert "stems" not in kwargs, "AudioFile.read() should not use a 'stems' kwarg"
+            assert kwargs.get("streams") == 0
+            assert kwargs.get("samplerate") == fake_model.samplerate
+            assert kwargs.get("channels") == fake_model.audio_channels
 
     def test_audio_file_read_returns_tensor(self, tmp_path):
         """After the loading block, wav must still be a torch.Tensor (guards Bug D)."""
@@ -255,7 +279,7 @@ class TestRunDemucsModel:
         from unittest.mock import patch
         import stemgen_sidecar
 
-        modules_patch, fake_model, mock_apply = self._make_mocks(torch)
+        modules_patch, fake_model, mock_apply, mock_audio_instance = self._make_mocks(torch)
 
         with patch.dict(sys.modules, modules_patch):
             input_path = tmp_path / "test.wav"
@@ -275,7 +299,7 @@ class TestRunDemucsModel:
         from unittest.mock import patch
         import stemgen_sidecar
 
-        modules_patch, fake_model, mock_apply = self._make_mocks(torch)
+        modules_patch, fake_model, mock_apply, mock_audio_instance = self._make_mocks(torch)
 
         with patch.dict(sys.modules, modules_patch):
             input_path = tmp_path / "test.wav"
@@ -300,7 +324,7 @@ class TestRunDemucsModel:
         import stemgen_sidecar
 
         custom_sources = ["vocals", "drums", "bass"]
-        modules_patch, _, _ = self._make_mocks(torch)
+        modules_patch, _, _, _ = self._make_mocks(torch)
 
         # Override model sources
         fake_model = MagicMock()
@@ -1066,7 +1090,7 @@ class TestBugFixPaths:
         assert result is True
 
     def test_run_demucs_model_uses_model_samplerate(self, tmp_path):
-        """(e) _run_demucs_model calls torchaudio.save with model.samplerate, not hardcoded 44100."""
+        """(e) _run_demucs_model calls soundfile.write with model.samplerate, not hardcoded 44100."""
         torch = pytest.importorskip("torch")
         import stemgen_sidecar
         from unittest.mock import MagicMock
@@ -1088,7 +1112,7 @@ class TestBugFixPaths:
 
         mock_apply = MagicMock(return_value=[torch.zeros(num_sources, 2, 48000)])
         mock_get_model = MagicMock(return_value=fake_model)
-        mock_ta_save = MagicMock()
+        mock_sf_write = MagicMock()
 
         demucs_audio_mod = types.ModuleType("demucs.audio")
         demucs_audio_mod.AudioFile = mock_audio_file_cls
@@ -1101,15 +1125,15 @@ class TestBugFixPaths:
         demucs_mod.apply = demucs_apply_mod
         demucs_mod.pretrained = demucs_pretrained_mod
 
-        fake_torchaudio = MagicMock()
-        fake_torchaudio.save = mock_ta_save
+        fake_soundfile = types.ModuleType("soundfile")
+        fake_soundfile.write = mock_sf_write
 
         modules_patch = {
             "demucs": demucs_mod,
             "demucs.audio": demucs_audio_mod,
             "demucs.apply": demucs_apply_mod,
             "demucs.pretrained": demucs_pretrained_mod,
-            "torchaudio": fake_torchaudio,
+            "soundfile": fake_soundfile,
         }
 
         with patch.dict(sys.modules, modules_patch):
@@ -1122,13 +1146,13 @@ class TestBugFixPaths:
                 input_path, output_dir, device="cpu", model_name="htdemucs"
             )
 
-            # Verify torchaudio.save was called with model.samplerate (48000), not hardcoded 44100
-            assert mock_ta_save.called
-            for call in mock_ta_save.call_args_list:
-                # torchaudio.save(path, tensor, sample_rate)
-                sample_rate_arg = call[0][2] if len(call[0]) > 2 else call[1].get("sample_rate")
+            # Verify soundfile.write was called with model.samplerate (48000), not hardcoded 44100
+            assert mock_sf_write.called
+            for call in mock_sf_write.call_args_list:
+                # soundfile.write(path, data, samplerate, ...)
+                sample_rate_arg = call[0][2] if len(call[0]) > 2 else call[1].get("samplerate")
                 assert sample_rate_arg == 48000, (
-                    f"Expected torchaudio.save to be called with sample_rate=48000, got {sample_rate_arg}"
+                    f"Expected soundfile.write to be called with samplerate=48000, got {sample_rate_arg}"
                 )
 
     def test_check_model_bs_roformer_returns_not_implemented(self, monkeypatch, capsys):
