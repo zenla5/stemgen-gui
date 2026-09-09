@@ -456,6 +456,15 @@ export interface InstallProgressEvent {
   status: 'running' | 'completed' | 'failed' | 'cancelled';
 }
 
+export interface SeparationProgressEvent {
+  job_id: string;
+  status: string;
+  stage?: string;
+  message?: string;
+  progress?: number;
+  error?: string;
+}
+
 export interface InstallResult {
   success: boolean;
   depName: string;
