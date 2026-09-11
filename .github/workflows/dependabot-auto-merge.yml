@@ -22,6 +22,16 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
 
+# Only one poller runs per PR at a time. Without this, every pull_request_target
+# event (opened/synchronize/reopened/labeled/...) spawns a parallel wait loop, and
+# together they exhaust the GitHub app installation's 5000 calls/hour API rate
+# limit (HTTP 403) long before the ~1h CI gate finishes, so dependabot PRs never
+# get merged. Cancelling stale runs keeps the API call count per PR to just one
+# poller's worth.
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 # SHA-pinned actions should be updated periodically (e.g., quarterly or via
 # Dependabot, which already tracks the github/actions ecosystem weekly).
 # Current pin date: 2026-09-01
@@ -54,35 +64,38 @@ jobs:
           echo "  update-type: ${{ steps.metadata.outputs.update-type }}"
           echo "  head: ${HEAD_SHA}"
 
-          counter=0
-          # The PR head may carry multiple "All Checks Passed" runs (e.g. the
-          # non-gating `push`-event run is always "skipped" on this repo). Match
-          # on the CONCLUSION, not array order, so the noise run is ignored and
-          # only the gating PR run decides.
-          success_jq='[.check_runs[] | select(.name == "All Checks Passed" and .conclusion == "success")] | length'
-          failed_jq='[.check_runs[] | select(.name == "All Checks Passed" and .status == "completed" and (.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required"))] | length'
+            counter=0
+            # The PR head may carry multiple "All Checks Passed" runs (e.g. the
+            # non-gating `push`-event run is always "skipped" on this repo). Match
+            # on the CONCLUSION, not array order, so the noise run is ignored and
+            # only the gating PR run decides.
+            success_jq='[.check_runs[] | select(.name == "All Checks Passed" and .conclusion == "success")] | length'
+            failed_jq='[.check_runs[] | select(.name == "All Checks Passed" and .status == "completed" and (.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required"))] | length'
 
-          while :; do
-            success="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" --jq "$success_jq")"
-            echo "  All Checks Passed success runs: ${success}"
-            if (( success > 0 )); then
-              break
-            fi
+            # Poll less eagerly to stay well under the API rate limit: ~1 call
+            # every 60s for up to 90 minutes still covers the ~1h CI gate while
+            # costing only ~90 requests per PR (vs ~480 before).
+            while :; do
+              success="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" --jq "$success_jq")"
+              echo "  All Checks Passed success runs: ${success}"
+              if (( success > 0 )); then
+                break
+              fi
 
-            failed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" --jq "$failed_jq")"
-            echo "  All Checks Passed failed runs: ${failed}"
-            if (( failed > 0 )); then
-              echo "All Checks Passed finished with a failure — not merging PR #${PR_NUMBER}."
-              exit 1
-            fi
+              failed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" --jq "$failed_jq")"
+              echo "  All Checks Passed failed runs: ${failed}"
+              if (( failed > 0 )); then
+                echo "All Checks Passed finished with a failure — not merging PR #${PR_NUMBER}."
+                exit 1
+              fi
 
-            counter=$((counter + 1))
-            if (( counter >= 240 )); then
-              echo "Timed out waiting for All Checks Passed on PR #${PR_NUMBER}"
-              exit 1
-            fi
-            sleep 15
-          done
+              counter=$((counter + 1))
+              if (( counter >= 90 )); then
+                echo "Timed out waiting for All Checks Passed on PR #${PR_NUMBER}"
+                exit 1
+              fi
+              sleep 60
+            done
 
           # Re-check the PR is still open (a rebase or external merge may have
           # happened while we polled).
