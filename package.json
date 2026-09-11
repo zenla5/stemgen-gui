@@ -88,7 +88,7 @@
     "@wdio/mocha-framework": "^9.31.2",
     "@wdio/spec-reporter": "^9.31.2",
     "@tailwindcss/postcss": "^4.3.3",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.5",
     "globals": "^17.11.0",
