@@ -457,6 +457,78 @@ class TestRunDemucsModel:
         assert len(wav_files) == 4, f"Expected 4 WAV files, found {len(wav_files)}: {wav_files}"
 
 
+class TestInferenceProgressHeartbeat:
+    """Tests for the synthetic CPU-inference progress heartbeat (issue #259)."""
+
+    def test_heartbeat_emits_monotonic_capped_progress(self, monkeypatch):
+        """While active, the heartbeat emits increasing progress never reaching the 0.85 cap."""
+        import time
+        import stemgen_sidecar
+
+        emitted = []
+        monkeypatch.setattr(stemgen_sidecar, "emit", lambda payload: emitted.append(payload))
+
+        with stemgen_sidecar._InferenceProgressHeartbeat(interval=0.02):
+            time.sleep(0.15)
+
+        assert len(emitted) >= 1, "heartbeat should emit at least one progress line"
+        progresses = [e["progress"] for e in emitted]
+        assert all(e["status"] == "progress" for e in emitted)
+        assert all(e["stage"] == "separating" for e in emitted)
+        assert all(0.3 <= p < 0.85 for p in progresses), f"progress out of range: {progresses}"
+        assert progresses == sorted(progresses), f"progress not monotonic: {progresses}"
+
+    def test_heartbeat_stops_after_context_exit(self, monkeypatch):
+        """After the block exits, no further progress is emitted."""
+        import time
+        import stemgen_sidecar
+
+        emitted = []
+        monkeypatch.setattr(stemgen_sidecar, "emit", lambda payload: emitted.append(payload))
+
+        with stemgen_sidecar._InferenceProgressHeartbeat(interval=0.02):
+            time.sleep(0.05)
+        count_inside = len(emitted)
+
+        time.sleep(0.1)
+        assert len(emitted) == count_inside, "heartbeat must stop after the with block"
+
+    def test_cpu_separation_wraps_apply_model_in_heartbeat(self, tmp_path, monkeypatch):
+        """CPU runs must wrap apply_model in the heartbeat so the UI stays alive."""
+        torch = pytest.importorskip("torch")
+        import stemgen_sidecar
+
+        entered = []
+
+        class FakeHeartbeat:
+            def __init__(self, **_kwargs):
+                pass
+
+            def __enter__(self):
+                entered.append(True)
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        monkeypatch.setattr(stemgen_sidecar, "_InferenceProgressHeartbeat", FakeHeartbeat)
+
+        # Reuse the demucs mock helper from TestRunDemucsModel
+        modules_patch, _, _, _ = TestRunDemucsModel._make_mocks(torch)
+
+        with patch.dict(sys.modules, modules_patch):
+            input_path = tmp_path / "test.wav"
+            input_path.write_bytes(b"fake")
+            output_dir = tmp_path / "out"
+            output_dir.mkdir()
+
+            stemgen_sidecar._run_demucs_model(
+                input_path, output_dir, device="cpu", model_name="htdemucs"
+            )
+
+        assert entered, "CPU separation should wrap apply_model in a progress heartbeat"
+
+
 
 
 
