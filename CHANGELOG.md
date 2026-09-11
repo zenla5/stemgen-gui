@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.8] — Sep 11 2026 — Version Bump
+
+### Changed
+
+- **Version consistency** — All version strings bumped to 1.5.8: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+
 ### Fixed
 
 - **[PACKER-ASYNC-HANG]** Packing a `.stem.mp4` after a successful separation hung forever: the packer ran blocking `std::process::Command::output()` (and blocking `hash_file` / `AudioDecoder` / `std::fs` work) on the Tokio runtime, stalling the worker that also delivers IPC/events — no ffmpeg was spawned and the job froze with the spinner stuck. All ffmpeg invocations in the packer and `export_stem` now use `tokio::process::Command` + `.output().await` (matching the sidecar), the MP4-metadata embed runs in `tokio::task::spawn_blocking`, static-analysis I/O in `pack_stems_with_provenance` is offloaded, and the frontend guards the `pack_stems` invoke so a pack failure fails the job and resets the spinner instead of leaving it frozen forever (Fixes #259).
