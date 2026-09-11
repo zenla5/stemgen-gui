@@ -71,7 +71,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.48.2",
+    "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "^2.1.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.0.1",
