@@ -7,7 +7,7 @@ use crate::stems::provenance::StemProvenance;
 use crate::stems::{DJSoftware, OutputFormat, StemPacker, StemType};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use tokio::process::Command;
 use tracing::{error, info, warn};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -397,33 +397,46 @@ pub async fn pack_stems_with_provenance(
     let master_path = PathBuf::from(&request.master_path);
     let output_path = PathBuf::from(&request.output_path);
 
-    // Compute source file hash and audio properties
-    let source_hash = hash_file(&master_path)
-        .map_err(|e| {
-            warn!("Failed to hash source file: {}", e);
-            format!("Failed to hash source file: {}", e)
-        })
-        .unwrap_or_else(|_| {
-            warn!("Using placeholder hash for source file");
-            String::from("unknown")
-        });
+    // Compute source file hash and audio properties. hash_file and the
+    // AudioDecoder are blocking, so run them on a blocking thread rather than
+    // stalling the Tokio worker that also delivers IPC/events (guards #259).
+    let master_for_analysis = master_path.clone();
+    let (source_hash, source_duration_secs, source_sample_rate, source_size_bytes) =
+        tokio::task::spawn_blocking(move || -> (String, f64, u32, Option<u64>) {
+            let source_hash = hash_file(&master_for_analysis).unwrap_or_else(|e| {
+                warn!("Failed to hash source file (using placeholder): {}", e);
+                String::from("unknown")
+            });
 
-    // Get audio properties from decoder
-    let (source_duration_secs, source_sample_rate) = match AudioDecoder::new().decode(&master_path)
-    {
-        Ok(samples) => {
-            let duration = if samples.sample_rate > 0 {
-                samples.samples.len() as f64 / samples.sample_rate as f64
-            } else {
-                0.0
-            };
-            (duration, samples.sample_rate)
-        }
-        Err(e) => {
-            warn!("Failed to read source audio properties: {}", e);
-            (0.0, 44100)
-        }
-    };
+            let (source_duration_secs, source_sample_rate) =
+                match AudioDecoder::new().decode(&master_for_analysis) {
+                    Ok(samples) => {
+                        let duration = if samples.sample_rate > 0 {
+                            samples.samples.len() as f64 / samples.sample_rate as f64
+                        } else {
+                            0.0
+                        };
+                        (duration, samples.sample_rate)
+                    }
+                    Err(e) => {
+                        warn!("Failed to read source audio properties: {}", e);
+                        (0.0, 44100)
+                    }
+                };
+
+            let source_size_bytes = std::fs::metadata(&master_for_analysis)
+                .ok()
+                .map(|m| m.len());
+
+            (
+                source_hash,
+                source_duration_secs,
+                source_sample_rate,
+                source_size_bytes,
+            )
+        })
+        .await
+        .map_err(|e| format!("Source analysis task failed: {}", e))?;
 
     // Generate job ID if not provided
     let job_id = format!(
@@ -478,7 +491,7 @@ pub async fn pack_stems_with_provenance(
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
 
-    prov.source_size_bytes = std::fs::metadata(&master_path).ok().map(|m| m.len());
+    prov.source_size_bytes = source_size_bytes;
 
     // Pack stems and write provenance sidecar
     let prov_path = packer
@@ -544,6 +557,7 @@ pub async fn export_stem(request: ExportStemRequest) -> Result<ExportStemRespons
 
     let output = cmd
         .output()
+        .await
         .map_err(|e| format!("Failed to execute FFmpeg: {}", e))?;
 
     if !output.status.success() {

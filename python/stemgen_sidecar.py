@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Dict, Optional
@@ -83,6 +84,51 @@ def _progress_emit(progress: float, message: str) -> None:
         "progress": round(progress, 4),
         "message": message,
     })
+
+
+class _InferenceProgressHeartbeat:
+    """Emit periodic synthetic progress while a blocking inference runs.
+
+    demucs' ``apply_model`` is a single blocking call with no sub-progress
+    (``progress=False``), so during a long CPU run the UI would otherwise sit
+    frozen at 30% for minutes (issue #259). While the caller is blocked inside
+    apply_model this daemon thread nudges the progress bar forward towards a
+    cap below 85% — the real post-inference "saving" phase starts at 0.85 — so
+    the UI visibly stays alive without overstating actual progress.
+    """
+
+    def __init__(self, start: float = 0.3, end: float = 0.84, interval: float = 2.0):
+        self._start = start
+        self._end = end
+        self._interval = interval
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def __enter__(self) -> "_InferenceProgressHeartbeat":
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            # join(timeout=...) only waits the remaining sleep; the thread
+            # wakes immediately once the stop flag is set.
+            self._thread.join(timeout=self._interval + 1.0)
+            self._thread = None
+
+    def _run(self) -> None:
+        progress = self._start
+        step = (self._end - self._start) * 0.05
+        while not self._stop.wait(self._interval):
+            progress = min(progress + step, self._end)
+            emit({
+                "status": "progress",
+                "stage": "separating",
+                "progress": round(progress, 4),
+                "message": "Running AI separation...",
+            })
 
 
 class _ProgressTqdm:
@@ -351,9 +397,19 @@ def _run_demucs_model(
         ref = wav.mean(0)
         wav = (wav - ref.mean()) / (ref.std() + 1e-8)
         # apply_model expects (batch, channels, samples)
-        sources = apply_model(
-            model, wav[None], device=run_device, shifts=shifts, progress=False
-        )[0]
+        if run_device.type == "cpu":
+            # Long CPU inference has no sub-progress, so emit a periodic
+            # synthetic heartbeat (capped below 0.85, where the real "saving"
+            # phase resumes) to keep the UI from sitting frozen at 30%
+            # (issue #259).
+            with _InferenceProgressHeartbeat(interval=2.0):
+                sources = apply_model(
+                    model, wav[None], device=run_device, shifts=shifts, progress=False
+                )[0]
+        else:
+            sources = apply_model(
+                model, wav[None], device=run_device, shifts=shifts, progress=False
+            )[0]
 
     emit({
         "status": "progress",

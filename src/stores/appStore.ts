@@ -267,15 +267,34 @@ async function processJob(
     if (stemPaths.length > 0) {
       updateJob(job.id, { progress: 0.8 });
 
-      await invoke<PackStemsResponse>('pack_stems', {
-        request: {
-          master_path: masterPath,
-          stem_paths: stemPaths,
-          output_path: job.output_path,
-          dj_software: settings.djPreset,
-          output_format: settings.outputFormat,
-        },
-      });
+      // Pack the separated stems into a .stem.mp4. Guarded with its own
+      // try/catch so a pack failure fails the job with a clear message (and
+      // resets isProcessing via the queue) instead of leaving the spinner
+      // frozen forever (issue #259).
+      try {
+        await invoke<PackStemsResponse>('pack_stems', {
+          request: {
+            master_path: masterPath,
+            stem_paths: stemPaths,
+            output_path: job.output_path,
+            dj_software: settings.djPreset,
+            output_format: settings.outputFormat,
+          },
+        });
+      } catch (packError) {
+        const rawPackMessage =
+          packError instanceof Error ? packError.message : String(packError);
+        const packMessage = formatJobError(rawPackMessage);
+
+        updateJob(job.id, {
+          status: 'failed',
+          error: `Failed to pack .stem.mp4: ${packMessage}`,
+        });
+        toast.error('Failed to pack .stem.mp4', {
+          description: packMessage,
+        });
+        return false;
+      }
     }
 
     // Add to processing history

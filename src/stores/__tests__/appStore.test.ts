@@ -548,6 +548,47 @@ describe('useAppStore — separation failure error display', () => {
   });
 });
 
+// ─── TASK-259: pack_stems failure must fail the job (not freeze the spinner) ─
+
+describe('useAppStore — pack_stems failure', () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+  });
+
+  it('marks job failed and resets isProcessing when pack_stems rejects', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'start_separation') {
+        return Promise.resolve([
+          { stem_type: 'drums', file_path: '/out/drums.wav' },
+          { stem_type: 'bass', file_path: '/out/bass.wav' },
+          { stem_type: 'other', file_path: '/out/other.wav' },
+          { stem_type: 'vocals', file_path: '/out/vocals.wav' },
+        ]);
+      }
+      if (cmd === 'pack_stems') {
+        return Promise.reject(new Error('ffmpeg exec failed'));
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    const store = useAppStore.getState();
+    const file = fakeFile({ path: '/audio/pack-fail.mp3' });
+    store.addFiles([file]);
+    await store.startProcessing([file]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    const state = useAppStore.getState();
+    const failedJob = state.jobs.find((j) => j.input_path === '/audio/pack-fail.mp3');
+    expect(failedJob).toBeDefined();
+    expect(failedJob!.status).toBe('failed');
+    expect(failedJob!.error).toContain('pack');
+    expect(state.isProcessing).toBe(false);
+  });
+});
+
 // ─── TASK-244: Live separation-progress events ──────────────────────────────
 
 describe('useAppStore — separation-progress events', () => {
