@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { StatusBar } from './StatusBar';
@@ -8,11 +8,49 @@ import { StemMixer } from '../mixer/StemMixer';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { LibraryView } from '../library/LibraryView';
 import { useAppStore } from '@/stores/appStore';
+import { isStemPackPath } from '@/lib/constants';
+import { listen } from '@tauri-apps/api/event';
 import { cn } from '@/lib/utils';
+
+interface DragDropPayload {
+  paths: string[];
+}
 
 export function AppShell() {
   const { activeView, sidebarCollapsed, isProcessing, currentJobId } = useAppStore();
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  // App-wide native drag-drop handler: recognizes .stem.mp4 stem packs from
+  // any view and loads them into the Stem Mixer. Regular separable audio
+  // files are handled by FileBrowser on the files view.
+  useEffect(() => {
+    const cleanups: Array<() => void> = [];
+    const register = async (event: string, handler: (...args: any[]) => void) => {
+      try {
+        const unlisten = await listen(event, handler);
+        cleanups.push(unlisten);
+      } catch (e) {
+        console.warn(`Failed to listen for ${event}:`, e);
+      }
+    };
+
+    Promise.all([
+      register('tauri://drag-enter', () => setIsDraggingOver(true)),
+      register('tauri://drag-leave', () => setIsDraggingOver(false)),
+      register('tauri://drag-drop', async (event: { payload?: DragDropPayload }) => {
+        setIsDraggingOver(false);
+        const paths = event.payload?.paths ?? [];
+        const stemPacks = paths.filter(isStemPackPath);
+        for (const path of stemPacks) {
+          await useAppStore.getState().loadStemPack(path);
+        }
+      }),
+    ]);
+
+    return () => {
+      cleanups.forEach((fn) => fn());
+    };
+  }, []);
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -30,12 +68,6 @@ export function AppShell() {
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingOver(false);
-    
-    // Handle dropped files - will be implemented in file browser
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      console.log('Dropped files:', files);
-    }
   };
 
   return (
@@ -91,10 +123,10 @@ export function AppShell() {
               </svg>
               <div>
                 <p className="text-xl font-semibold text-foreground">
-                  Drop audio files here
+                  Drop audio or .stem.mp4 files here
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Supports MP3, FLAC, WAV, OGG, and more
+                  Supports MP3, FLAC, WAV, OGG and more — or load an existing .stem.mp4 stem pack
                 </p>
               </div>
             </div>

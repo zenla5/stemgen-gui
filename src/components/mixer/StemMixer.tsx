@@ -132,12 +132,23 @@ export function StemMixer() {
           className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground"
           role="status"
         >
-          <div className="text-4xl" aria-hidden="true">🎵</div>
-          <p className="text-center" data-testid="no-stems-msg">
-            Select a file and process it to generate stems.
-            <br />
-            Stems will appear here for mixing and preview.
-          </p>
+          {player.state.loadError ? (
+            <>
+              <div className="text-4xl" aria-hidden="true">⚠️</div>
+              <p className="text-center" data-testid="stem-load-error" role="alert">
+                {player.state.loadError}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="text-4xl" aria-hidden="true">🎵</div>
+              <p className="text-center" data-testid="no-stems-msg">
+                Select a file and process it to generate stems.
+                <br />
+                Stems will appear here for mixing and preview.
+              </p>
+            </>
+          )}
         </div>
       )}
 

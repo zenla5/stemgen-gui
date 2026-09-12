@@ -21,6 +21,7 @@ import type {
   InstallResult,
   PackageStatus,
   SeparationProgressEvent,
+  UnpackedStem,
 } from '@/lib/types';
 import { hasPackageStatusKey } from '@/lib/types';
 
@@ -133,6 +134,7 @@ interface AppState {
   setCurrentStems: (stems: Stem[]) => void;
   updateStem: (id: string, updates: Partial<Stem>) => void;
   resetStemMixer: () => void;
+  loadStemPack: (path: string) => Promise<void>;
   
   // Dependency actions
   checkDependencies: () => Promise<void>;
@@ -655,7 +657,44 @@ export const useAppStore = create<AppState>()(
       },
       
       resetStemMixer: () => set({ currentStems: createDefaultStems() }),
-      
+
+      // Load an existing .stem.mp4 into the Stem Mixer without re-running
+      // separation: the backend demuxes streams 1-4 to temp WAVs and returns
+      // their paths plus NI metadata names/colors. Mirrors the post-separation
+      // flow (setCurrentStems + navigate to mixer).
+      loadStemPack: async (path: string) => {
+        try {
+          const stems = await invoke<UnpackedStem[]>('unpack_stems', { path });
+
+          if (!stems || stems.length === 0) {
+            toast.error('Could not load stem pack', {
+              description: 'The backend returned no stems for this file.',
+            });
+            return;
+          }
+
+          const stemMap = new Map(stems.map((s) => [s.stem_type.toLowerCase(), s]));
+          const updatedStems = createDefaultStems().map((stem) => {
+            const info = stemMap.get(stem.type);
+            if (!info?.file_path) return stem;
+            return {
+              ...stem,
+              file_path: info.file_path,
+              name: info.name || stem.name,
+              color: info.color || stem.color,
+            };
+          });
+
+          get().setCurrentStems(updatedStems);
+          get().setActiveView('mixer');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error('Failed to load stem pack:', message);
+          toast.error('Failed to load .stem.mp4', {
+            description: message,
+          });
+        }
+      },      
       // Dependency check
       checkDependencies: async () => {
         try {

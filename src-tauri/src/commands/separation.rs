@@ -3,6 +3,7 @@ use crate::audio::{hash_file, AudioDecoder, AudioResampler, TARGET_SAMPLE_RATE};
 use crate::commands::models::{get_available_models, ModelInfo};
 use crate::commands::sidecar::SidecarManager;
 use crate::inference_provider;
+use crate::stems::metadata::{self, NIStemMetadata};
 use crate::stems::provenance::StemProvenance;
 use crate::stems::{DJSoftware, OutputFormat, StemPacker, StemType};
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,225 @@ pub struct SeparationSettings {
 pub struct StemInfo {
     pub stem_type: String,
     pub file_path: Option<String>,
+}
+
+/// One stem extracted from an existing `.stem.mp4` for mixer preview.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UnpackedStem {
+    /// Canonical stem type (`drums` | `bass` | `other` | `vocals`)
+    pub stem_type: String,
+    /// Path to the extracted WAV file
+    pub file_path: String,
+    /// Display name from NI metadata (when present)
+    pub name: Option<String>,
+    /// Hex color from NI metadata (when present)
+    pub color: Option<String>,
+}
+
+/// A single stem's resolved identity (pure, no I/O) used to drive extraction.
+#[derive(Debug, Clone)]
+struct StemPlan {
+    stem_type: String,
+    name: Option<String>,
+    color: Option<String>,
+}
+
+/// Resolve the 4 stem identities for a `.stem.mp4`.
+///
+/// Stream indices 1-4 map to the NI metadata `stems` array order when present
+/// (regardless of the DJ software's ordering), otherwise to the Traktor
+/// ordering (1=drums, 2=bass, 3=other, 4=vocals). Custom names/colors from the
+/// metadata are preserved; a name that maps to a canonical type is used as the
+/// stem type, with the index-based type as a uniqueness/fallback guarantee.
+fn resolve_stem_plan(ni_metadata: &Option<NIStemMetadata>) -> Vec<StemPlan> {
+    let mut used_types = std::collections::HashSet::new();
+
+    (1..=4)
+        .map(|idx| {
+            let fallback_type = metadata::stem_type_from_index(idx).to_string();
+            let meta_stem = ni_metadata.as_ref().and_then(|m| m.stems.get(idx - 1));
+
+            let name = meta_stem.map(|s| s.name.clone());
+            let color = meta_stem.map(|s| s.color.clone());
+
+            let preferred_type = name
+                .as_deref()
+                .and_then(metadata::stem_type_from_name)
+                .map(|t| t.to_string());
+
+            // Prefer a canonical type derived from the name, but fall back to
+            // the index type (which is always unique) to avoid duplicates.
+            let stem_type = if let Some(t) = &preferred_type {
+                if used_types.insert(t.clone()) {
+                    t.clone()
+                } else {
+                    fallback_type.clone()
+                }
+            } else {
+                fallback_type.clone()
+            };
+
+            StemPlan {
+                stem_type,
+                name,
+                color,
+            }
+        })
+        .collect()
+}
+
+/// Count audio streams in a file using ffprobe (async, non-blocking).
+async fn count_audio_streams(path: &Path) -> Result<u32, String> {
+    let output = Command::new("ffprobe")
+        .args([
+            "-v",
+            "quiet",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "csv=p=0",
+            path.to_str().unwrap_or(""),
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run ffprobe: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffprobe failed: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.lines().filter(|line| line.contains("audio")).count() as u32)
+}
+
+/// Demux a single audio stream (by 1-based index) to a WAV file with ffmpeg.
+async fn extract_stream_to_wav(
+    input: &Path,
+    stream_index: u32,
+    output: &Path,
+) -> Result<(), String> {
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    }
+
+    let output = Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-hide_banner",
+            "-i",
+            input.to_str().unwrap_or(""),
+            "-map",
+            &format!("0:a:{}", stream_index),
+            "-c:a",
+            "pcm_s16le",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
+            output.to_str().unwrap_or(""),
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute FFmpeg: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "FFmpeg failed to extract stream {}: {}",
+            stream_index,
+            stderr.trim()
+        ));
+    }
+
+    Ok(())
+}
+
+/// Read NI metadata from a sidecar JSON file adjacent to the stem pack
+/// (mirrors `commands::metadata::read_ni_sidecar_metadata`).
+fn read_sidecar_metadata(stem_path: &Path) -> Option<NIStemMetadata> {
+    for ext in [".stem.metadata", ".metadata.json"] {
+        let metadata_path = stem_path.with_extension(ext.trim_start_matches('.'));
+        if metadata_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&metadata_path) {
+                if let Ok(metadata) = serde_json::from_str::<NIStemMetadata>(&content) {
+                    return Some(metadata);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract the 4 stem streams (indexes 1-4) from an existing `.stem.mp4` into
+/// temporary WAV files so they can be previewed in the Stem Mixer without
+/// re-running AI separation.
+///
+/// The WAVs are written idempotently under `~/.local/share/stemgen-gui/stems/
+/// unpacked/<stem-pack-basename>/` (re-extraction overwrites them, so repeated
+/// drops do not accumulate files). Names/colors are taken from the embedded NI
+/// metadata when present. All FFmpeg/ffprobe calls are async (guards #259).
+#[tauri::command]
+pub async fn unpack_stems(
+    path: String,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<Vec<UnpackedStem>, String> {
+    let path_obj = Path::new(&path);
+    if !path_obj.exists() {
+        return Err(format!("File not found: {}", path));
+    }
+    if !path.to_lowercase().ends_with(".stem.mp4") {
+        return Err(format!("Not a .stem.mp4 file: {}", path));
+    }
+
+    let track_count = count_audio_streams(path_obj).await?;
+    if track_count < 5 {
+        return Err(format!(
+            "{} is not a valid stem pack (expected a master + 4 stem audio streams, found {})",
+            path, track_count
+        ));
+    }
+
+    // Read NI metadata from the embedded 'nmde' atom (fall back to defaults,
+    // then to a sidecar JSON next to the file if one exists).
+    let ni_metadata = metadata::read_embedded_ni_metadata(path_obj)
+        .unwrap_or(None)
+        .or_else(|| read_sidecar_metadata(path_obj));
+
+    let plan = resolve_stem_plan(&ni_metadata);
+
+    let base_name = path_obj
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("stem-pack");
+    let safe_base = base_name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
+        .collect::<String>();
+    let out_dir = state.output_dir.join("unpacked").join(safe_base);
+
+    let mut stems = Vec::with_capacity(plan.len());
+    for (i, plan_item) in plan.iter().enumerate() {
+        let stream_index = (i + 1) as u32;
+        let out_path = out_dir.join(format!("{}.wav", plan_item.stem_type));
+        extract_stream_to_wav(path_obj, stream_index, &out_path).await?;
+        stems.push(UnpackedStem {
+            stem_type: plan_item.stem_type.clone(),
+            file_path: out_path.to_string_lossy().to_string(),
+            name: plan_item.name.clone(),
+            color: plan_item.color.clone(),
+        });
+    }
+
+    info!(
+        "Unpacked {} stems from {} into {}",
+        stems.len(),
+        path,
+        out_dir.display()
+    );
+
+    Ok(stems)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -808,5 +1028,175 @@ mod tests {
         let json = serde_json::to_string(&stem).unwrap();
         let deserialized: StemInfo = serde_json::from_str(&json).unwrap();
         assert!(deserialized.file_path.is_none());
+    }
+
+    #[test]
+    fn test_unpacked_stem_serialization() {
+        let stem = UnpackedStem {
+            stem_type: "drums".to_string(),
+            file_path: "/out/drums.wav".to_string(),
+            name: Some("Drums".to_string()),
+            color: Some("#FF6B6B".to_string()),
+        };
+        let json = serde_json::to_string(&stem).unwrap();
+        assert!(json.contains("drums"));
+        assert!(json.contains("#FF6B6B"));
+        let deserialized: UnpackedStem = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.stem_type, "drums");
+        assert_eq!(deserialized.name, Some("Drums".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_stem_plan_traktor_order() {
+        use crate::stems::metadata::{MasterData, StemData};
+        let stems = vec![
+            StemData {
+                name: "Drums".into(),
+                color: "#FF6B6B".into(),
+                file_path: "drums.m4a".into(),
+            },
+            StemData {
+                name: "Bass".into(),
+                color: "#4ECDC4".into(),
+                file_path: "bass.m4a".into(),
+            },
+            StemData {
+                name: "Other".into(),
+                color: "#FFE66D".into(),
+                file_path: "other.m4a".into(),
+            },
+            StemData {
+                name: "Vocals".into(),
+                color: "#95E1D3".into(),
+                file_path: "vocals.m4a".into(),
+            },
+        ];
+        let meta = NIStemMetadata::new(
+            stems,
+            MasterData {
+                name: "Master".into(),
+                file_path: "master.m4a".into(),
+            },
+        );
+
+        let plan = resolve_stem_plan(&Some(meta));
+        assert_eq!(plan.len(), 4);
+        assert_eq!(plan[0].stem_type, "drums");
+        assert_eq!(plan[1].stem_type, "bass");
+        assert_eq!(plan[2].stem_type, "other");
+        assert_eq!(plan[3].stem_type, "vocals");
+        assert_eq!(plan[0].name.as_deref(), Some("Drums"));
+        assert_eq!(plan[0].color.as_deref(), Some("#FF6B6B"));
+    }
+
+    #[test]
+    fn test_resolve_stem_plan_serato_order() {
+        use crate::stems::metadata::{MasterData, StemData};
+        let stems = vec![
+            StemData {
+                name: "Vocals".into(),
+                color: "#95E1D3".into(),
+                file_path: "vocals.m4a".into(),
+            },
+            StemData {
+                name: "Drums".into(),
+                color: "#FF6B6B".into(),
+                file_path: "drums.m4a".into(),
+            },
+            StemData {
+                name: "Bass".into(),
+                color: "#4ECDC4".into(),
+                file_path: "bass.m4a".into(),
+            },
+            StemData {
+                name: "Other".into(),
+                color: "#FFE66D".into(),
+                file_path: "other.m4a".into(),
+            },
+        ];
+        let meta = NIStemMetadata::new(
+            stems,
+            MasterData {
+                name: "Master".into(),
+                file_path: "master.m4a".into(),
+            },
+        );
+
+        // Names map to canonical types regardless of order.
+        let plan = resolve_stem_plan(&Some(meta));
+        assert_eq!(plan[0].stem_type, "vocals");
+        assert_eq!(plan[1].stem_type, "drums");
+        assert_eq!(plan[2].stem_type, "bass");
+        assert_eq!(plan[3].stem_type, "other");
+    }
+
+    #[test]
+    fn test_resolve_stem_plan_no_metadata_uses_index_order() {
+        let plan = resolve_stem_plan(&None);
+        assert_eq!(plan.len(), 4);
+        assert_eq!(plan[0].stem_type, "drums");
+        assert_eq!(plan[1].stem_type, "bass");
+        assert_eq!(plan[2].stem_type, "other");
+        assert_eq!(plan[3].stem_type, "vocals");
+        assert!(plan.iter().all(|p| p.name.is_none() && p.color.is_none()));
+    }
+
+    #[test]
+    fn test_resolve_stem_plan_handles_duplicate_names() {
+        use crate::stems::metadata::{MasterData, StemData};
+        let stems = vec![
+            StemData {
+                name: "Drums".into(),
+                color: "#FF6B6B".into(),
+                file_path: "a.m4a".into(),
+            },
+            StemData {
+                name: "Drums".into(),
+                color: "#111111".into(),
+                file_path: "b.m4a".into(),
+            },
+            StemData {
+                name: "Other".into(),
+                color: "#FFE66D".into(),
+                file_path: "c.m4a".into(),
+            },
+            StemData {
+                name: "Vocals".into(),
+                color: "#95E1D3".into(),
+                file_path: "d.m4a".into(),
+            },
+        ];
+        let meta = NIStemMetadata::new(
+            stems,
+            MasterData {
+                name: "Master".into(),
+                file_path: "master.m4a".into(),
+            },
+        );
+
+        // A duplicate 'Drums' name must not yield two stem_types; index fallback
+        // keeps each of the four types unique.
+        let plan = resolve_stem_plan(&Some(meta));
+        let mut types: Vec<&str> = plan.iter().map(|p| p.stem_type.as_str()).collect();
+        types.sort_unstable();
+        assert_eq!(types, vec!["bass", "drums", "other", "vocals"]);
+    }
+
+    #[tokio::test]
+    async fn test_extract_stream_fails_cleanly_on_bad_input() {
+        // A missing input returns a clear error without blocking (async path).
+        let err = extract_stream_to_wav(
+            Path::new("/nonexistent/stem-pack.mp4"),
+            1,
+            Path::new("/tmp/stemgen-out-drums.wav"),
+        )
+        .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_count_audio_streams_fails_on_missing_file() {
+        let result = count_audio_streams(Path::new("/nonexistent/stem-pack.mp4")).await;
+        assert!(result.is_err());
     }
 }

@@ -109,6 +109,15 @@ export const SUPPORTED_AUDIO_FORMATS = [
 // Alias for backward compatibility
 export const SUPPORTED_FORMATS = SUPPORTED_AUDIO_FORMATS;
 
+// A .stem.mp4 is a self-contained NI stem pack: it is NOT a separable source
+// file but can be loaded directly into the Stem Mixer for preview.
+export const STEM_PACK_EXTENSION = '.stem.mp4';
+
+/** Returns true if the given path points to a .stem.mp4 stem pack. */
+export function isStemPackPath(path: string): boolean {
+  return path.toLowerCase().endsWith(STEM_PACK_EXTENSION);
+}
+
 // Quality presets
 export const QUALITY_PRESETS = [
   {
