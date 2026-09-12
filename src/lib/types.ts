@@ -361,6 +361,14 @@ export interface StemInfo {
   file_path?: string;
 }
 
+// One stem demuxed from an existing .stem.mp4 (mirrors Rust UnpackedStem)
+export interface UnpackedStem {
+  stem_type: string;
+  file_path: string;
+  name?: string;
+  color?: string;
+}
+
 export interface PackStemsRequest {
   master_path: string;
   stem_paths: StemPath[];

@@ -370,6 +370,8 @@ pub fn run() {
             commands::pack_stems_with_provenance,
             commands::export_stem,
             commands::batch_export_stems,
+            // Load existing .stem.mp4 into the mixer
+            commands::unpack_stems,
             // Audit trail
             commands::log_separation_job,
             commands::get_separation_log,
