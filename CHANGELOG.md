@@ -21,6 +21,10 @@ All notable changes to this project will be documented in this file.
 
 - **[MODEL-AVAILABILITY]** The AI Models panel sometimes showed a "Download" button on every model while the footer "Models" indicator was green. Per-model availability used the sidecar's `--check-model`, which imported `demucs.pretrained` (→ torch) and crashed with `libstdc++.so.6: cannot open shared object file` on systems without libstdc++ on the dynamic-loader path (plain NixOS user envs, containers), reporting `available: false`; the footer used cache-only `--list-models` and stayed green. `--check-model`, `--list-models`, and `--download-model` now never import torch/demucs (cache-only via `huggingface_hub`), and the panel consumes the same unified status the footer uses, so the two always agree (Fixes #265).
 
+### Internal
+
+- **[MODEL-PROPOSAL-BOT]** Added a weekly scheduled GitHub Action (`.github/workflows/model-proposal-bot.yml`) that scans the Hugging Face Hub (`audio-source-separation`) plus a maintained allowlist of vetted upstream projects (Demucs, BS-RoFormer, MDX-Net, Open-Unmix, UVR) for community-adopted stem-separation models, applies a composite adoption gate (30-day and all-time downloads, likes, license usable for a FOSS DJ tool, maintenance recency), dedupes against the existing model catalog and open proposal issues, and files one well-formed proposal issue per candidate via `gh` for maintainer triage (rate-limited, stale proposals auto-closed). The bot is propose-only — it never adds a model to the app. Logic and tests live in `python/model_proposal_bot.py` / `python/tests/test_model_proposal_bot.py`, with the allowlist in `python/model_allowlist.json` (Refs #266).
+
 ## [1.5.8] — Sep 11 2026 — Version Bump
 
 ### Changed
