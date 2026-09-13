@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **[STEM-UNPACK]** Dropping an existing `.stem.mp4` (NI stem pack) anywhere in the app now loads its 4 stem streams (drums, bass, other, vocals) straight into the Stem Mixer for preview — no AI re-separation needed. A new `unpack_stems` backend command validates the file, demuxes streams 1-4 to temp WAVs under the app data dir using async ffmpeg (guards #259), and reads stem names/colors from the embedded `nmde` NI metadata atom when present. An app-wide `tauri://drag-drop` handler (lifted so it is active on every view) recognizes `.stem.mp4` drops, populates `currentStems`, and auto-navigates to the mixer (Refs #263).
+- **[ASSET-PROTOCOL]** Enabled Tauri's asset protocol (`protocol-asset` + `assetProtocol` scope) so `convertFileSrc`-based stem/audio playback can serve local files from the app data dir and the temp dir (Refs #263).
+- **[MIXER-LOAD-ERROR]** The Stem Mixer now shows the specific load error (e.g. a missing/corrupt stem file) instead of a generic empty state when stem audio fails to load, aiding diagnostics (Refs #263).
+
 ## [1.5.8] — Sep 11 2026 — Version Bump
 
 ### Changed

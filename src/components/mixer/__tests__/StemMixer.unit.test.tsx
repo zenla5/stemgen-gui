@@ -18,6 +18,7 @@ const createMockPlayer = (overrides = {}) => ({
     loadingProgress: 1,
     loadedStems: ['drums', 'bass', 'other', 'vocals'] as StemType[],
     isLoading: false,
+    loadError: null as string | null,
   },
   loadStems: vi.fn(),
   play: vi.fn(),
@@ -215,6 +216,33 @@ describe('StemMixer — interaction tests', () => {
     render(<StemMixer />);
     
     expect(screen.getByRole('status')).toHaveTextContent(/select a file and process it/i);
+  });
+
+  it('shows a load error when stem audio could not be loaded', () => {
+    mockPlayer.stemWaveforms = {
+      drums: null,
+      bass: null,
+      other: null,
+      vocals: null,
+    } as Record<StemType, WaveformData | null>;
+    mockPlayer.state.isLoaded = false;
+    mockPlayer.state.isLoading = false;
+    mockPlayer.state.loadError =
+      'Could not load stem audio for playback: drums (HTTP 404).';
+
+    vi.mocked(appStoreModule.useAppStore).mockReturnValue({
+      currentStems: createMockStems(),
+      updateStem: mockUpdateStem,
+      resetStemMixer: mockResetStemMixer,
+      selectedFile: mockSelectedFile,
+    } as unknown as ReturnType<typeof appStoreModule.useAppStore>);
+
+    render(<StemMixer />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /could not load stem audio for playback: drums \(HTTP 404\)/i
+    );
+    expect(screen.queryByTestId('no-stems-msg')).not.toBeInTheDocument();
   });
 
   it('renders mute button with unmute label when muted', () => {

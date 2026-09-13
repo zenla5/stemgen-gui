@@ -11,6 +11,7 @@ export interface MultiStemPlayerState {
   loadingProgress: number;
   loadedStems: StemType[];
   isLoading: boolean;
+  loadError: string | null;
 }
 
 // Return type for the hook
@@ -108,6 +109,7 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
     loadingProgress: 0,
     loadedStems: [],
     isLoading: false,
+    loadError: null,
   });
 
   const [stemWaveforms, setStemWaveforms] = useState<Record<StemType, WaveformData | null>>({
@@ -194,6 +196,7 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
         loadingProgress: 0,
         isLoaded: false,
         loadedStems: [],
+        loadError: null,
       }));
 
       // Clear previous buffers
@@ -208,6 +211,7 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
 
       const loadedCount = { value: 0 };
       const totalStems = stems.length;
+      const failures: string[] = [];
 
       for (const stem of stems) {
         if (!stem.path) continue;
@@ -218,6 +222,7 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
 
           if (!response.ok) {
             console.warn(`Failed to fetch stem ${stem.type}: ${response.status}`);
+            failures.push(`${stem.type} (HTTP ${response.status})`);
             continue;
           }
 
@@ -237,6 +242,11 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
           }));
         } catch (error) {
           console.warn(`Failed to load stem ${stem.type}:`, error);
+          if (error instanceof Error) {
+            failures.push(`${stem.type} (${error.message})`);
+          } else {
+            failures.push(`${stem.type} (${String(error)})`);
+          }
         }
       }
 
@@ -257,6 +267,10 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
         duration: maxDuration,
         currentTime: 0,
         isPlaying: false,
+        loadError:
+          audioBuffersRef.current.size === 0
+            ? `Could not load stem audio for playback${failures.length > 0 ? `: ${failures.join(', ')}` : ''}.`
+            : null,
       }));
 
       pausedAtRef.current = 0;
@@ -433,6 +447,7 @@ export function useMultiStemPlayer(): UseMultiStemPlayerReturn {
       loadingProgress: 0,
       loadedStems: [],
       isLoading: false,
+      loadError: null,
     });
 
     setStemWaveforms({

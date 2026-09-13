@@ -726,3 +726,90 @@ describe('useAppStore — downloaded models', () => {
     expect(useAppStore.getState().downloadedModels).toEqual(['htdemucs']);
   });
 });
+
+// ─── Load existing .stem.mp4 into the Stem Mixer (#263) ────────────────────
+
+describe('useAppStore — loadStemPack', () => {
+  const cleanStems = () => [
+    { id: 'drums', type: 'drums' as const, name: 'Drums', color: '#FF6B6B', volume: 1, muted: false, solo: false },
+    { id: 'bass', type: 'bass' as const, name: 'Bass', color: '#4ECDC4', volume: 1, muted: false, solo: false },
+    { id: 'other', type: 'other' as const, name: 'Other', color: '#FFE66D', volume: 1, muted: false, solo: false },
+    { id: 'vocals', type: 'vocals' as const, name: 'Vocals', color: '#95E1D3', volume: 1, muted: false, solo: false },
+  ];
+
+  beforeEach(() => {
+    // resetAllMocks clears inherited implementations from earlier describes.
+    vi.resetAllMocks();
+    useAppStore.setState({ currentStems: cleanStems(), activeView: 'files' });
+  });
+
+  it('invokes unpack_stems and populates currentStems with paths, names and colors', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockResolvedValue([
+      { stem_type: 'drums', file_path: '/unpacked/drums.wav', name: 'Kicks', color: '#FF6B6B' },
+      { stem_type: 'bass', file_path: '/unpacked/bass.wav', name: 'Bass', color: '#4ECDC4' },
+      { stem_type: 'other', file_path: '/unpacked/other.wav', name: 'Other', color: '#FFE66D' },
+      { stem_type: 'vocals', file_path: '/unpacked/vocals.wav', name: 'Vocals', color: '#95E1D3' },
+    ]);
+
+    const store = useAppStore.getState();
+    await store.loadStemPack('/music/track.stem.mp4');
+
+    expect(invoke).toHaveBeenCalledWith('unpack_stems', { path: '/music/track.stem.mp4' });
+
+    const state = useAppStore.getState();
+    const drums = state.currentStems.find((s) => s.type === 'drums');
+    expect(drums?.file_path).toBe('/unpacked/drums.wav');
+    expect(drums?.name).toBe('Kicks');
+    expect(drums?.color).toBe('#FF6B6B');
+    // All four stems have paths
+    expect(state.currentStems.filter((s) => s.file_path)).toHaveLength(4);
+    // Navigates to the mixer
+    expect(state.activeView).toBe('mixer');
+  });
+
+  it('falls back to canonical names/colors when unpacked stems omit them', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockResolvedValue([
+      { stem_type: 'drums', file_path: '/unpacked/drums.wav', name: null, color: null },
+      { stem_type: 'bass', file_path: '/unpacked/bass.wav', name: null, color: null },
+      { stem_type: 'other', file_path: '/unpacked/other.wav', name: null, color: null },
+      { stem_type: 'vocals', file_path: '/unpacked/vocals.wav', name: null, color: null },
+    ]);
+
+    const store = useAppStore.getState();
+    await store.loadStemPack('/music/track.stem.mp4');
+
+    const state = useAppStore.getState();
+    const drums = state.currentStems.find((s) => s.type === 'drums')!;
+    expect(drums.name).toBe('Drums');
+    expect(drums.color).toBe('#FF6B6B');
+    expect(state.activeView).toBe('mixer');
+  });
+
+  it('does not navigate or update stems when unpack_stems returns empty', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockResolvedValue([]);
+
+    useAppStore.setState({ activeView: 'files' });
+    const before = useAppStore.getState().currentStems;
+    const store = useAppStore.getState();
+    await store.loadStemPack('/music/track.stem.mp4');
+
+    expect(useAppStore.getState().activeView).toBe('files');
+    expect(useAppStore.getState().currentStems).toEqual(before);
+  });
+
+  it('keeps current view and stems unchanged when unpack_stems rejects', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    vi.mocked(invoke).mockRejectedValue(new Error('ffprobe failed: no such file'));
+
+    useAppStore.setState({ activeView: 'library' });
+    const before = useAppStore.getState().currentStems;
+    const store = useAppStore.getState();
+    await store.loadStemPack('/music/bad.stem.mp4');
+
+    expect(useAppStore.getState().activeView).toBe('library');
+    expect(useAppStore.getState().currentStems).toEqual(before);
+  });
+});

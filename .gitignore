@@ -71,3 +71,5 @@ __pycache__/
 # Claude
 .claude/*
 
+pkgs/stemgen-gui-local/bin-stemgen-gui
+result
