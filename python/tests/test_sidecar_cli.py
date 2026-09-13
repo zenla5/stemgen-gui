@@ -436,7 +436,6 @@ class TestRunDemucsModel:
     def test_sidecar_cli_cpu_exit_zero(self, tmp_path):
         """Full integration: run sidecar CLI with demucs on CPU, expect 4 output WAVs."""
         pytest.importorskip("torch", reason="demucs/torch not installed")
-        pytest.importorskip("demucs", reason="demucs not installed")
         import subprocess
 
         fixture = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "audio" / "test-short.wav"
@@ -542,7 +541,6 @@ class TestCheckModel:
 
     def test_check_model_available(self, monkeypatch, capsys, tmp_path):
         """--check-model with a cached model must return available=true."""
-        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -575,7 +573,6 @@ class TestCheckModel:
 
     def test_check_model_not_available(self, monkeypatch, capsys):
         """--check-model with an uncached model must return available=false."""
-        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -597,7 +594,6 @@ class TestCheckModel:
 
     def test_list_models_json_array(self, monkeypatch, capsys, tmp_path):
         """--list-models must output a JSON array with all known model IDs."""
-        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -631,7 +627,6 @@ class TestCheckModel:
 
     def test_list_models_returns_all_models_with_available_false_when_none_downloaded(self, monkeypatch, capsys):
         """--list-models returns all models with available=false when none are downloaded."""
-        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -656,7 +651,6 @@ class TestCheckModel:
 
     def test_check_model_unknown_model_returns_available_false(self, monkeypatch, capsys):
         """--check-model with unknown model ID returns { available: false } without exception."""
-        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -678,7 +672,6 @@ class TestCheckModel:
 
     def test_download_model_invalid_id_exits_nonzero(self, monkeypatch, capsys):
         """--download-model with invalid model ID exits non-zero with a JSON error."""
-        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -710,65 +703,62 @@ class TestDownloadModel:
     """Tests for --download-model with model name mapping."""
 
     def test_download_demucs_resolves_to_htdemucs(self, monkeypatch, capsys):
-        """--download-model demucs must resolve to htdemucs before calling get_model."""
-        pytest.importorskip("demucs", reason="demucs not installed")
+        """--download-model demucs must resolve to htdemucs for download and verification."""
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
         mock_snapshot = MagicMock()
-        mock_get_model = MagicMock()
+        available = MagicMock(return_value=True)
         monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", available)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "demucs"])
 
         with pytest.raises(SystemExit) as exc_info:
             stemgen_sidecar.main()
 
         assert exc_info.value.code == 0
-        mock_get_model.assert_called_once_with("htdemucs")
         # The snapshot must target the htdemucs repo (demucs -> htdemucs).
         mock_snapshot.assert_called_once_with("adefossez/HTDemucs", tqdm_class=stemgen_sidecar._ProgressTqdm)
+        # Post-download verification is cache-only and must use the htdemucs name.
+        available.assert_called_once_with("htdemucs")
 
     def test_download_htdemucs_ft_resolves_correctly(self, monkeypatch, capsys):
         """--download-model htdemucs_ft must resolve to htdemucs_ft."""
-        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
         mock_snapshot = MagicMock()
-        mock_get_model = MagicMock()
+        available = MagicMock(return_value=True)
         monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", available)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "htdemucs_ft"])
 
         with pytest.raises(SystemExit) as exc_info:
             stemgen_sidecar.main()
 
         assert exc_info.value.code == 0
-        mock_get_model.assert_called_once_with("htdemucs_ft")
+        available.assert_called_once_with("htdemucs_ft")
         mock_snapshot.assert_called_once_with("adefossez/HTDemucs-ft", tqdm_class=stemgen_sidecar._ProgressTqdm)
 
     def test_download_unknown_id_passes_through(self, monkeypatch, capsys):
         """--download-model with an unknown ID must pass through unchanged."""
-        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
         mock_snapshot = MagicMock()
-        mock_get_model = MagicMock()
+        available = MagicMock(return_value=True)
         monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", available)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "my_custom_model"])
 
         with pytest.raises(SystemExit) as exc_info:
             stemgen_sidecar.main()
 
         assert exc_info.value.code == 0
-        mock_get_model.assert_called_once_with("my_custom_model")
+        available.assert_called_once_with("my_custom_model")
 
     def test_download_emits_progress_and_complete(self, monkeypatch, capsys):
         """--download-model emits JSON progress lines then a complete line."""
-        pytest.importorskip("demucs", reason="demucs not installed")
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
@@ -781,9 +771,9 @@ class TestDownloadModel:
             bar.close()
 
         mock_snapshot = MagicMock(side_effect=fake_snapshot)
-        mock_get_model = MagicMock()
+        available = MagicMock(return_value=True)
         monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", available)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "htdemucs"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -1064,7 +1054,6 @@ class TestCheckModelIntegration:
     def test_check_model_htdemucs_outputs_available_key(self, tmp_path):
         """--check-model htdemucs must output JSON with 'available' key."""
         pytest.importorskip("torch", reason="demucs/torch not installed")
-        pytest.importorskip("demucs", reason="demucs not installed")
         import subprocess
 
         result = subprocess.run(
@@ -1080,7 +1069,6 @@ class TestCheckModelIntegration:
     def test_list_models_outputs_all_four_ids(self, tmp_path):
         """--list-models must output a JSON array containing all four model IDs."""
         pytest.importorskip("torch", reason="demucs/torch not installed")
-        pytest.importorskip("demucs", reason="demucs not installed")
         import subprocess
 
         result = subprocess.run(
@@ -1100,7 +1088,6 @@ class TestCheckModelIntegration:
     def test_download_model_demucs_exits_zero(self, tmp_path):
         """--download-model demucs must exit 0 with 'Download complete' message."""
         pytest.importorskip("torch", reason="demucs/torch not installed")
-        pytest.importorskip("demucs", reason="demucs not installed")
         import subprocess
 
         result = subprocess.run(
@@ -1114,32 +1101,31 @@ class TestCheckModelIntegration:
 class TestDownloadModelMapping:
     """Non-integration unit tests for download-model model name mapping."""
 
-    def test_download_model_demucs_does_not_call_get_model_with_demucs(self, monkeypatch, capsys):
-        """--download-model demucs must never call get_model with bare string 'demucs'."""
-        pytest.importorskip("demucs", reason="demucs not installed")
+    def test_download_model_demucs_verifies_htdemucs_not_bare_demucs(self, monkeypatch, capsys):
+        """--download-model demucs must verify the mapped htdemucs name, never bare 'demucs'."""
         import stemgen_sidecar
         from unittest.mock import MagicMock
 
         mock_snapshot = MagicMock()
-        mock_get_model = MagicMock()
+        available = MagicMock(return_value=True)
         monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
-        monkeypatch.setattr("demucs.pretrained.get_model", mock_get_model)
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", available)
         monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "demucs"])
 
         with pytest.raises(SystemExit) as exc_info:
             stemgen_sidecar.main()
 
         assert exc_info.value.code == 0
-        # Verify get_model was called exactly once
-        mock_get_model.assert_called_once()
+        # Verify the cache-only verification was called exactly once
+        available.assert_called_once()
         # Verify it was NOT called with bare "demucs"
-        call_args = mock_get_model.call_args[0]
+        call_args = available.call_args[0]
         assert call_args[0] != "demucs", (
-            f"get_model should not be called with bare 'demucs', got {call_args}"
+            f"verification should not be called with bare 'demucs', got {call_args}"
         )
         # Verify it was called with "htdemucs" (the mapped name)
         assert call_args[0] == "htdemucs", (
-            f"get_model should be called with 'htdemucs', got {call_args[0]}"
+            f"verification should be called with 'htdemucs', got {call_args[0]}"
         )
 
 
@@ -1150,7 +1136,6 @@ class TestNonAsciiPaths:
     def test_sidecar_handles_accented_path(self, tmp_path):
         """Sidecar must handle input files in directories with accented characters."""
         pytest.importorskip("torch", reason="demucs/torch not installed")
-        pytest.importorskip("demucs", reason="demucs not installed")
         import subprocess
         import shutil
 

@@ -998,9 +998,13 @@ def main() -> None:
             pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.download_model, args.download_model)
             emit({"status": "progress", "stage": "downloading", "progress": 0.0, "message": f"Downloading {args.download_model}..."})
             _download_model_weights(pretrained_name)
-            # Load from cache to verify the snapshot is complete and usable.
-            import demucs.pretrained
-            demucs.pretrained.get_model(pretrained_name)
+            # Verify the snapshot is complete and usable from the HF cache only.
+            # Never import torch/demucs here: on systems where libstdc++.so.6 is
+            # not on the dynamic-loader path (plain NixOS user envs, containers)
+            # the import raises ImportError even though the weights are fully
+            # cached, making a successful download report failure (issue #265).
+            if not _model_weights_available(pretrained_name):
+                raise RuntimeError(f"Downloaded snapshot for {pretrained_name} is incomplete")
             emit({"status": "complete", "model_id": args.download_model, "message": f"{args.download_model} downloaded"})
             sys.exit(0)
         except Exception as e:
@@ -1020,7 +1024,6 @@ def main() -> None:
 
         pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.check_model, args.check_model)
         try:
-            import demucs.pretrained
             available = _model_weights_available(pretrained_name)
             print(json.dumps({
                 "available": available,
