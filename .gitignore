@@ -44,6 +44,7 @@ Cargo.lock
 coverage/
 *.lcov
 coverage.lcov
+.coverage
 
 # Playwright
 /playwright-report/

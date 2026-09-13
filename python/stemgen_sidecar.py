@@ -29,7 +29,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 # Cloud provider SDKs — optional; only needed for --device cloud
 try:
@@ -199,13 +199,14 @@ class _ProgressTqdm:
         self.close()
 
 
-def _download_model_weights(pretrained_name: str) -> None:
+def _download_model_weights(pretrained_name: str, force_download: bool = False) -> None:
     """Download a demucs model's weights into the HuggingFace cache.
 
     Uses `huggingface_hub.snapshot_download` with a progress callback so the
     caller can stream real download progress. After the snapshot is complete
     the model is fully cached and `demucs.pretrained.get_model` will load it
-    without hitting the network.
+    without hitting the network. With `force_download=True` already-cached
+    files are re-fetched, which is the "update" action when upstream changed.
     """
     try:
         from huggingface_hub import snapshot_download
@@ -218,6 +219,7 @@ def _download_model_weights(pretrained_name: str) -> None:
     _progress_emit(0.0, f"Starting download of {pretrained_name}...")
     snapshot_download(
         repo_id,
+        force_download=force_download,
         tqdm_class=_ProgressTqdm,
     )
     _progress_emit(1.0, f"{pretrained_name} downloaded")
@@ -287,6 +289,263 @@ def _delete_model_weights(pretrained_name: str) -> None:
     ]
     if revisions:
         cache_info.delete_revisions(*revisions).execute()
+
+
+def _model_detail(pretrained_name: str) -> Optional[Dict[str, str]]:
+    """Return the cached copy's resolved revision and last-modified date.
+
+    Reads the HuggingFace cache via `scan_cache_dir()` — cache-only, no network
+    and no torch/demucs import — and returns `{"revision", "last_modified"}` for
+    the most recently modified cached revision of this model's repo, or `None`
+    when the model is not cached. `revision` is the short git commit hash of the
+    snapshot; `last_modified` is the revision's last-modified date as
+    `YYYY-MM-DD`. Never raises: any cache/scan problem yields `None`.
+    """
+    try:
+        from huggingface_hub import scan_cache_dir
+    except ImportError:
+        return None
+
+    try:
+        from datetime import datetime as _datetime
+
+        repo_id = hf_repo_id(pretrained_name)
+        cache_info = scan_cache_dir()
+
+        best = None
+        for repo in cache_info.repos:
+            if getattr(repo, "repo_id", None) != repo_id:
+                continue
+            for revision in repo.revisions:
+                commit_hash = getattr(revision, "commit_hash", None)
+                if not commit_hash:
+                    continue
+                last_modified = getattr(revision, "last_modified", None)
+                ts = 0.0
+                if isinstance(last_modified, (int, float)):
+                    ts = float(last_modified)
+                elif last_modified is not None:
+                    try:
+                        ts = last_modified.timestamp()
+                    except (TypeError, ValueError, OverflowError):
+                        ts = 0.0
+                if best is None or ts > best[0]:
+                    best = (ts, commit_hash, last_modified)
+
+        if best is None:
+            return None
+
+        _, commit_hash, last_modified = best
+        result: Dict[str, str] = {"revision": commit_hash[:8]}
+        if last_modified is not None:
+            try:
+                if isinstance(last_modified, (int, float)):
+                    date = _datetime.fromtimestamp(last_modified).date()
+                else:
+                    date = last_modified.date()
+                result["last_modified"] = date.isoformat()
+            except (AttributeError, ValueError, OSError, OverflowError):
+                pass
+        return result
+    except Exception:
+        return None
+
+
+def _model_check_result(model_id: str) -> Dict[str, object]:
+    """Build the per-model JSON result used by --check-model and --list-models.
+
+    Availability is resolved from the HuggingFace cache only (no torch/demucs
+    import — see issue #265) and enriched with the resolved revision and
+    last-modified date when the model is installed.
+    """
+    pretrained_name = DEMUCS_PRETRAINED_NAME.get(model_id, model_id)
+    available = _model_weights_available(pretrained_name)
+    result: Dict[str, object] = {
+        "id": model_id,
+        "model_id": model_id,
+        "available": available,
+        "pretrained_name": pretrained_name,
+    }
+    if available:
+        detail = _model_detail(pretrained_name)
+        if detail:
+            result["revision"] = detail.get("revision")
+            result["last_modified"] = detail.get("last_modified")
+    return result
+
+
+# ------------------------------------------------------------------------------
+# Update check (file sha256 vs upstream) helpers
+# ------------------------------------------------------------------------------
+
+def _format_date(value) -> Optional[str]:
+    """Format a datetime / epoch float / ISO string as `YYYY-MM-DD`, or None."""
+    if value is None:
+        return None
+    try:
+        from datetime import datetime as _datetime
+
+        if isinstance(value, (int, float)):
+            return _datetime.fromtimestamp(value).date().isoformat()
+        if isinstance(value, str):
+            return value[:10]
+        return value.date().isoformat()
+    except (AttributeError, ValueError, OSError, OverflowError):
+        return None
+
+
+def _short_sha(value) -> Optional[str]:
+    """First 8 chars of a commit hash, or None."""
+    return value[:8] if value else None
+
+
+def _sha256_file(path: str) -> Optional[str]:
+    """sha256 hex digest of a file's contents, or None on read failure."""
+    import hashlib
+
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def _loaded_file_sha256s(pretrained_name: str) -> Optional[Dict[str, str]]:
+    """Compute the sha256 of the exact files demucs loads for a model.
+
+    That is `<pretrained_name>.yaml` plus one `<sig>.safetensors` per model in
+    the bag, resolved cache-only via `hf_hub_download(local_files_only=True)`.
+    Returns `{filename: sha256}` or None when the model is not fully cached.
+    """
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        return None
+
+    repo_id = hf_repo_id(pretrained_name)
+    try:
+        yaml_path = hf_hub_download(repo_id, f"{pretrained_name}.yaml", local_files_only=True)
+        import yaml as _yaml
+
+        with open(yaml_path) as f:
+            bag = _yaml.safe_load(f)
+        sigs = bag.get("models", [])
+    except Exception:
+        return None
+
+    yaml_hash = _sha256_file(yaml_path)
+    if yaml_hash is None:
+        return None
+    files: Dict[str, str] = {f"{pretrained_name}.yaml": yaml_hash}
+    for sig in sigs:
+        try:
+            sig_path = hf_hub_download(repo_id, f"{sig}.safetensors", local_files_only=True)
+        except Exception:
+            return None
+        sig_hash = _sha256_file(sig_path)
+        if sig_hash is None:
+            return None
+        files[f"{sig}.safetensors"] = sig_hash
+    return files
+
+
+def _upstream_file_sha256s(
+    repo_id: str, filenames: List[str]
+) -> Tuple[Dict[str, str], Optional[str], Optional[str]]:
+    """Resolve upstream sha256 for the given files (network).
+
+    Returns `(filename -> sha256, last_modified, sha)`. LFS files use the
+    LFS oid (the sha256 of the real content) exposed by the hub API; regular
+    files (e.g. the model yaml) expose no hash there, so they are downloaded
+    into a temp dir (outside the hub cache) and hashed locally. Raises on
+    network errors so the caller can report `offline`.
+    """
+    from huggingface_hub import model_info
+
+    info = model_info(repo_id)
+    upstream_last_modified = _format_date(getattr(info, "last_modified", None))
+    upstream_sha = _short_sha(getattr(info, "sha", None))
+
+    siblings_by_name: Dict[str, object] = {}
+    try:
+        from huggingface_hub import list_repo_tree
+
+        for sibling in list_repo_tree(repo_id, recursive=True, expand=True):
+            name = getattr(sibling, "rfilename", None) or getattr(sibling, "path", None)
+            if name:
+                siblings_by_name[name] = sibling
+    except Exception:
+        for sibling in info.siblings:
+            siblings_by_name[getattr(sibling, "rfilename", "")] = sibling
+
+    upstream: Dict[str, str] = {}
+    for name in filenames:
+        sibling = siblings_by_name.get(name)
+        hash_value = None
+        if sibling is not None:
+            lfs = getattr(sibling, "lfs", None)
+            if lfs is not None:
+                hash_value = getattr(lfs, "sha256", None)
+            if not hash_value:
+                hash_value = getattr(sibling, "sha256", None)
+        if not hash_value:
+            from huggingface_hub import hf_hub_download
+
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmp:
+                path = hf_hub_download(repo_id, name, cache_dir=tmp)
+                hash_value = _sha256_file(str(path))
+        if hash_value:
+            upstream[name] = hash_value
+    return upstream, upstream_last_modified, upstream_sha
+
+
+def _check_one_model_update(model_id: str, pretrained_name: str) -> Dict[str, object]:
+    """Compare a model's loaded files' sha256 against upstream `main`.
+
+    `update_available` is True only when a loaded file's sha256 differs from
+    upstream; False when every loaded file matches; None (with an `error`) when
+    the model is not installed, offline, or upstream hashes are unavailable.
+    Repo-level `last_modified` is returned as informational data only and never
+    triggers an update by itself.
+    """
+    base: Dict[str, object] = {"id": model_id, "model_id": model_id}
+    loaded = _loaded_file_sha256s(pretrained_name)
+    if loaded is None:
+        base["update_available"] = None
+        base["reason"] = "not_installed"
+        return base
+    try:
+        upstream, upstream_last_modified, upstream_sha = _upstream_file_sha256s(
+            hf_repo_id(pretrained_name), list(loaded.keys())
+        )
+    except Exception:
+        base["update_available"] = None
+        base["error"] = "offline"
+        return base
+
+    if not upstream or any(filename not in upstream for filename in loaded):
+        base["update_available"] = None
+        base["error"] = "upstream_unavailable"
+        return base
+
+    differs = any(loaded[filename] != upstream[filename] for filename in loaded)
+    base["update_available"] = differs
+    if upstream_last_modified:
+        base["upstream_last_modified"] = upstream_last_modified
+    if upstream_sha:
+        base["upstream_revision"] = upstream_sha
+    return base
+
+
+def _check_model_updates() -> List[Dict[str, object]]:
+    """Run the update check for every demucs-family model."""
+    return [_check_one_model_update(model_id, pretrained_name)
+            for model_id, pretrained_name in DEMUCS_PRETRAINED_NAME.items()]
 
 
 # ------------------------------------------------------------------------------
@@ -986,9 +1245,11 @@ def main() -> None:
     parser.add_argument("--api-key", default=None, type=str, help="API key for cloud provider")
     parser.add_argument("--provider-version", default=None, type=str, help="Replicate model version hash")
     parser.add_argument("--download-model", metavar="MODEL_ID", help="Download a demucs model by ID and exit")
+    parser.add_argument("--force", action="store_true", help="Re-download cached files even when unchanged (with --download-model)")
     parser.add_argument("--check-model", metavar="MODEL_ID", help="Check if a model is available locally and exit")
     parser.add_argument("--delete-model", metavar="MODEL_ID", help="Delete a model's local weights and exit")
     parser.add_argument("--list-models", action="store_true", help="List all known models with availability status and exit")
+    parser.add_argument("--update-check", action="store_true", help="Compare cached model files against upstream and report update availability and exit")
 
     args = parser.parse_args()
 
@@ -997,10 +1258,14 @@ def main() -> None:
         try:
             pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.download_model, args.download_model)
             emit({"status": "progress", "stage": "downloading", "progress": 0.0, "message": f"Downloading {args.download_model}..."})
-            _download_model_weights(pretrained_name)
-            # Load from cache to verify the snapshot is complete and usable.
-            import demucs.pretrained
-            demucs.pretrained.get_model(pretrained_name)
+            _download_model_weights(pretrained_name, force_download=args.force)
+            # Verify the snapshot is complete and usable from the HF cache only.
+            # Never import torch/demucs here: on systems where libstdc++.so.6 is
+            # not on the dynamic-loader path (plain NixOS user envs, containers)
+            # the import raises ImportError even though the weights are fully
+            # cached, making a successful download report failure (issue #265).
+            if not _model_weights_available(pretrained_name):
+                raise RuntimeError(f"Downloaded snapshot for {pretrained_name} is incomplete")
             emit({"status": "complete", "model_id": args.download_model, "message": f"{args.download_model} downloaded"})
             sys.exit(0)
         except Exception as e:
@@ -1020,13 +1285,8 @@ def main() -> None:
 
         pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.check_model, args.check_model)
         try:
-            import demucs.pretrained
-            available = _model_weights_available(pretrained_name)
-            print(json.dumps({
-                "available": available,
-                "pretrained_name": pretrained_name,
-                "model_id": args.check_model,
-            }), flush=True)
+            result = _model_check_result(args.check_model)
+            print(json.dumps(result), flush=True)
             sys.exit(0)
         except Exception as e:
             print(json.dumps({
@@ -1051,12 +1311,17 @@ def main() -> None:
     # Handle --list-models (standalone list mode)
     if args.list_models:
         try:
-            results = []
-            for model_id in DEMUCS_PRETRAINED_NAME:
-                pretrained_name = DEMUCS_PRETRAINED_NAME[model_id]
-                available = _model_weights_available(pretrained_name)
-                results.append({"id": model_id, "available": available})
+            results = [_model_check_result(model_id) for model_id in DEMUCS_PRETRAINED_NAME]
             print(json.dumps(results), flush=True)
+            sys.exit(0)
+        except Exception as e:
+            print(json.dumps({"error": str(e)}), flush=True)
+            sys.exit(1)
+
+    # Handle --update-check (network update comparison)
+    if args.update_check:
+        try:
+            print(json.dumps(_check_model_updates()), flush=True)
             sys.exit(0)
         except Exception as e:
             print(json.dumps({"error": str(e)}), flush=True)

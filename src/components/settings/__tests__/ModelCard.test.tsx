@@ -291,4 +291,129 @@ describe('ModelCard', () => {
     expect(screen.getByText('Highest quality')).toBeInTheDocument();
     expect(screen.getByText('Very Slow')).toBeInTheDocument();
   });
+
+  it('renders the installed version line when downloaded', () => {
+    render(
+      <ModelCard
+        model={MODEL}
+        status="available"
+        isDownloading={false}
+        downloadProgress={0}
+        downloadMessage={null}
+        downloadError={null}
+        version="rev cbc8a9b1 · 2026-09-02"
+        onDownload={vi.fn()}
+        onDelete={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('model-version-demucs')).toHaveTextContent('rev cbc8a9b1 · 2026-09-02');
+  });
+
+  it('omits the version line when not downloaded', () => {
+    render(
+      <ModelCard
+        model={MODEL}
+        status="unavailable"
+        isDownloading={false}
+        downloadProgress={0}
+        downloadMessage={null}
+        downloadError={null}
+        version="rev cbc8a9b1 · 2026-09-02"
+        onDownload={vi.fn()}
+        onDelete={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId('model-version-demucs')).not.toBeInTheDocument();
+  });
+
+  it('shows an Update available badge and Update button when an update exists', () => {
+    const onUpdate = vi.fn();
+    render(
+      <ModelCard
+        model={MODEL}
+        status="available"
+        isDownloading={false}
+        downloadProgress={0}
+        downloadMessage={null}
+        downloadError={null}
+        updateState="available"
+        onUpdate={onUpdate}
+        onDownload={vi.fn()}
+        onDelete={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('update-available-demucs')).toHaveTextContent('Update available');
+    fireEvent.click(screen.getByTestId('update-btn-demucs'));
+    expect(onUpdate).toHaveBeenCalledWith('demucs');
+    expect(screen.queryByTestId('up-to-date-demucs')).not.toBeInTheDocument();
+  });
+
+  it('shows Up to date when verified identical to upstream', () => {
+    render(
+      <ModelCard
+        model={MODEL}
+        status="available"
+        isDownloading={false}
+        downloadProgress={0}
+        downloadMessage={null}
+        downloadError={null}
+        updateState="up-to-date"
+        onDownload={vi.fn()}
+        onDelete={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('up-to-date-demucs')).toHaveTextContent('Up to date');
+    expect(screen.queryByTestId('update-btn-demucs')).not.toBeInTheDocument();
+  });
+
+  it('does not render an update indicator when the state is unknown', () => {
+    render(
+      <ModelCard
+        model={MODEL}
+        status="available"
+        isDownloading={false}
+        downloadProgress={0}
+        downloadMessage={null}
+        downloadError={null}
+        updateState="unknown"
+        onDownload={vi.fn()}
+        onDelete={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId('update-available-demucs')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('up-to-date-demucs')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('update-btn-demucs')).not.toBeInTheDocument();
+  });
+
+  it('shows Updating... and hides actions while an update is in progress', () => {
+    render(
+      <ModelCard
+        model={MODEL}
+        status="available"
+        isDownloading
+        isUpdating
+        downloadProgress={30}
+        downloadMessage="Updating..."
+        downloadError={null}
+        updateState="available"
+        onDownload={vi.fn()}
+        onDelete={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('updating-demucs')).toHaveTextContent('Updating...');
+    expect(screen.queryByTestId('update-btn-demucs')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('delete-model-demucs')).not.toBeInTheDocument();
+  });
 });

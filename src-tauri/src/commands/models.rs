@@ -67,6 +67,43 @@ pub struct DownloadProgressPayload {
     pub error: Option<String>,
 }
 
+/// Per-model availability + installed-version status for the AI Models panel.
+///
+/// `revision` / `last_modified` describe the locally installed copy (short HF
+/// commit hash + `YYYY-MM-DD`). `update_available` / `upstream_last_modified`
+/// are filled by the on-demand update check (None when unknown or offline).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelStatus {
+    pub id: String,
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_available: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_last_modified: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Per-model upstream update status returned by `check_model_updates`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelUpdate {
+    pub id: String,
+    /// true when a loaded file's sha256 differs upstream; false when verified
+    /// identical; None when unknown (offline / not installed / no upstream).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_available: Option<bool>,
+    /// Upstream repo last-modified date (informational only — never triggers
+    /// an update by itself).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_last_modified: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -102,6 +139,167 @@ fn model_size_mb(model_id: &str) -> u64 {
         "demucs" => 830,
         _ => 1000,
     }
+}
+
+/// Path of the checksum sidecar written next to a direct `.onnx` download.
+fn direct_model_sidecar_path(models_dir: &std::path::Path, model_id: &str) -> std::path::PathBuf {
+    models_dir.join(format!("{model_id}.onnx.sha256"))
+}
+
+/// Read a direct `.onnx` download's version info from its checksum sidecar.
+///
+/// Direct HTTP downloads live in the app models dir, not the HuggingFace
+/// cache, so their "version" is the sha256 of the downloaded file plus the
+/// download date (issue #265). Returns `None` when no sidecar exists (e.g. a
+/// legacy download) — the caller still reports the model as available.
+fn read_direct_model_status(models_dir: &std::path::Path, model_id: &str) -> Option<ModelStatus> {
+    let raw = std::fs::read_to_string(direct_model_sidecar_path(models_dir, model_id)).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let sha256 = parsed.get("sha256").and_then(|v| v.as_str()).unwrap_or("");
+    let mut status = ModelStatus {
+        id: model_id.to_string(),
+        available: false,
+        revision: None,
+        last_modified: None,
+        update_available: None,
+        upstream_last_modified: None,
+        error: None,
+    };
+    if sha256.len() >= 8 {
+        status.revision = Some(sha256[..8].to_string());
+    }
+    if let Some(downloaded_at) = parsed.get("downloaded_at").and_then(|v| v.as_str()) {
+        status.last_modified = downloaded_at.get(..10).map(|s| s.to_string());
+    }
+    Some(status)
+}
+
+/// Merge direct `.onnx` downloads in the app models dir into the sidecar's
+/// HF-cache status so availability always agrees between the panel and the
+/// footer indicator (issue #265).
+fn merge_direct_download_status(statuses: Vec<ModelStatus>) -> Vec<ModelStatus> {
+    merge_direct_download_status_in(&crate::commands::probe::get_models_dir(), statuses)
+}
+
+/// `merge_direct_download_status` against an explicit models dir (testable).
+fn merge_direct_download_status_in(
+    models_dir: &std::path::Path,
+    statuses: Vec<ModelStatus>,
+) -> Vec<ModelStatus> {
+    let mut statuses = statuses;
+    for model in get_available_models() {
+        if model_download_url(&model.id).is_none() {
+            continue;
+        }
+        let model_file = models_dir.join(format!("{}.onnx", model.id));
+        if !model_file.exists() {
+            continue;
+        }
+        let direct = read_direct_model_status(models_dir, &model.id);
+        if let Some(s) = statuses.iter_mut().find(|s| s.id == model.id) {
+            // Already available via the HF cache — keep the cache detail but
+            // never report a direct install as missing.
+            if !s.available {
+                s.available = true;
+                s.revision = direct
+                    .as_ref()
+                    .and_then(|d| d.revision.clone())
+                    .or_else(|| s.revision.clone());
+                s.last_modified = direct
+                    .as_ref()
+                    .and_then(|d| d.last_modified.clone())
+                    .or_else(|| s.last_modified.clone());
+            }
+        } else {
+            statuses.push(direct.unwrap_or(ModelStatus {
+                id: model.id,
+                available: true,
+                revision: None,
+                last_modified: None,
+                update_available: None,
+                upstream_last_modified: None,
+                error: None,
+            }));
+        }
+    }
+    statuses
+}
+
+/// Ensure every known model id appears in the status list (the sidecar only
+/// reports demucs-family models), preserving `get_available_models()` order.
+fn ensure_known_models(statuses: Vec<ModelStatus>) -> Vec<ModelStatus> {
+    let mut by_id: std::collections::HashMap<String, ModelStatus> =
+        statuses.into_iter().map(|s| (s.id.clone(), s)).collect();
+    get_available_models()
+        .into_iter()
+        .map(|m| {
+            by_id.remove(&m.id).unwrap_or(ModelStatus {
+                id: m.id,
+                available: false,
+                revision: None,
+                last_modified: None,
+                update_available: None,
+                upstream_last_modified: None,
+                error: None,
+            })
+        })
+        .collect()
+}
+
+/// Run the sidecar's `--list-models` mode and parse per-model status.
+async fn sidecar_list_models() -> Result<Vec<ModelStatus>, String> {
+    use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
+
+    let python = find_python().ok_or("Python not found — cannot list downloaded models")?;
+    let sidecar = get_data_dir().join("stemgen_sidecar.py");
+    if !sidecar.exists() {
+        return Err(format!(
+            "Sidecar script not found at '{}'. Open Settings → System Status → Repair Installation.",
+            sidecar.display()
+        ));
+    }
+
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        tokio::process::Command::new(&python)
+            .args([sidecar.to_str().unwrap(), "--list-models"])
+            .python_env()
+            .no_window()
+            .output(),
+    )
+    .await
+    .map_err(|_| "list-models timed out after 30s".to_string())?
+    .map_err(|e| format!("Failed to run sidecar list-models: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse sidecar list-models output: {e}"))?;
+
+    Ok(parsed
+        .into_iter()
+        .map(|item| ModelStatus {
+            id: item
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            available: item
+                .get("available")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            revision: item
+                .get("revision")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            last_modified: item
+                .get("last_modified")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            update_available: None,
+            upstream_last_modified: None,
+            error: None,
+        })
+        .collect())
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +371,7 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
     info!("Starting model download: {}", model_id);
 
     if requires_sidecar_download(&model_id) {
-        return download_model_via_sidecar(model_id, app).await;
+        return download_model_via_sidecar(model_id, app, false).await;
     }
 
     let url =
@@ -295,6 +493,21 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
     std::fs::write(&model_file, &all_bytes)
         .map_err(|e| format!("Failed to write model file: {}", e))?;
 
+    // Write a checksum sidecar alongside the direct download so the panel can
+    // report a version (sha256 prefix + date) and detect the file even though
+    // it lives outside the HuggingFace cache (issue #265).
+    use sha2::{Digest, Sha256};
+    let checksum = hex::encode(Sha256::digest(&all_bytes));
+    let sidecar_meta = serde_json::json!({
+        "sha256": checksum,
+        "size": all_bytes.len(),
+        "downloaded_at": chrono::Utc::now().to_rfc3339(),
+    });
+    let _ = std::fs::write(
+        direct_model_sidecar_path(&models_dir, &model_id),
+        serde_json::to_string(&sidecar_meta).unwrap_or_default(),
+    );
+
     info!(
         "Model downloaded successfully: {} ({} bytes)",
         model_id,
@@ -323,8 +536,14 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
 /// "stage":"downloading","progress":<0..1>,"message":...}`) which we stream
 /// to the frontend as `model-download-progress` events, so the UI shows real
 /// progress instead of a 0→100 jump. On failure an `error` event is emitted
-/// with the sidecar's stderr and the command returns `Err`.
-async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<(), String> {
+/// with the sidecar's stderr and the command returns `Err`. When `force` is
+/// set the sidecar re-fetches even already-cached files (`--force`), which is
+/// the "update" path for demucs-family models.
+async fn download_model_via_sidecar(
+    model_id: String,
+    app: AppHandle,
+    force: bool,
+) -> Result<(), String> {
     use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
 
     let python = find_python().ok_or("Python not found — cannot download model via sidecar")?;
@@ -353,8 +572,12 @@ async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<
         },
     );
 
-    let mut child = tokio::process::Command::new(&python)
-        .args([sidecar.to_str().unwrap(), "--download-model", &model_id])
+    let mut cmd = tokio::process::Command::new(&python);
+    cmd.args([sidecar.to_str().unwrap(), "--download-model", &model_id]);
+    if force {
+        cmd.arg("--force");
+    }
+    let mut child = cmd
         .python_env()
         .no_window()
         .stdout(std::process::Stdio::piped())
@@ -599,15 +822,63 @@ pub async fn check_model_downloaded(model_id: String, _app: AppHandle) -> Result
         .unwrap_or(false))
 }
 
+/// Return per-model availability + installed version for the AI Models panel.
+///
+/// Availability is resolved cache-only via the sidecar's `--list-models` (HF
+/// cache) merged with direct `.onnx` downloads in the app models dir, so the
+/// panel always shows the same installed set as the footer indicator.
+#[tauri::command]
+pub async fn get_model_statuses(_app: AppHandle) -> Result<Vec<ModelStatus>, String> {
+    let statuses = merge_direct_download_status(sidecar_list_models().await?);
+    Ok(ensure_known_models(statuses))
+}
+
 /// List all downloaded models that are available locally.
 ///
-/// Invokes the Python sidecar with `--list-models` and returns the IDs where
-/// `"available": true`.
+/// Invokes the Python sidecar with `--list-models` (HF cache) merged with
+/// direct `.onnx` downloads, and returns the IDs where `"available": true`.
 #[tauri::command]
 pub async fn list_downloaded_models(_app: AppHandle) -> Result<Vec<String>, String> {
+    let statuses = merge_direct_download_status(sidecar_list_models().await?);
+    Ok(statuses
+        .into_iter()
+        .filter(|s| s.available)
+        .map(|s| s.id)
+        .collect())
+}
+
+/// Parse the sidecar's `--update-check` JSON array into `Vec<ModelUpdate>`.
+fn parse_model_updates(stdout: &str) -> Result<Vec<ModelUpdate>, String> {
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(stdout)
+        .map_err(|e| format!("Failed to parse sidecar update-check output: {e}"))?;
+    Ok(parsed
+        .into_iter()
+        .map(|item| ModelUpdate {
+            id: item
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            update_available: item.get("update_available").and_then(|v| v.as_bool()),
+            upstream_last_modified: item
+                .get("upstream_last_modified")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+        })
+        .collect())
+}
+
+/// Check each demucs-family model for an upstream update.
+///
+/// Compares the sha256 of the exact files demucs loads against upstream `main`
+/// via the sidecar's `--update-check`. The sidecar fails gracefully per model
+/// when offline; a hard sidecar failure (e.g. Python missing) surfaces as an
+/// `Err`, which the panel treats as "no update info".
+#[tauri::command]
+pub async fn check_model_updates(_app: AppHandle) -> Result<Vec<ModelUpdate>, String> {
     use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
 
-    let python = find_python().ok_or("Python not found — cannot list downloaded models")?;
+    let python = find_python().ok_or("Python not found — cannot check model updates")?;
     let sidecar = get_data_dir().join("stemgen_sidecar.py");
     if !sidecar.exists() {
         return Err(format!(
@@ -617,36 +888,33 @@ pub async fn list_downloaded_models(_app: AppHandle) -> Result<Vec<String>, Stri
     }
 
     let output = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
+        std::time::Duration::from_secs(60),
         tokio::process::Command::new(&python)
-            .args([sidecar.to_str().unwrap(), "--list-models"])
+            .args([sidecar.to_str().unwrap(), "--update-check"])
             .python_env()
             .no_window()
             .output(),
     )
     .await
-    .map_err(|_| "list-models timed out after 30s".to_string())?
-    .map_err(|e| format!("Failed to run sidecar list-models: {e}"))?;
+    .map_err(|_| "update-check timed out after 60s".to_string())?
+    .map_err(|e| format!("Failed to run sidecar update-check: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse sidecar list-models output: {e}"))?;
+    parse_model_updates(&stdout)
+}
 
-    let available_ids: Vec<String> = parsed
-        .into_iter()
-        .filter(|item| {
-            item.get("available")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        })
-        .filter_map(|item| {
-            item.get("id")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        })
-        .collect();
-
-    Ok(available_ids)
+/// Re-download an installed model's changed files from upstream.
+///
+/// Demucs-family models are updated via the sidecar (`--download-model --force`
+/// → `snapshot_download(force_download=True)`), which re-fetches the model
+/// files. Direct `.onnx` downloads are re-fetched through the same HTTP path
+/// as `download_model` and emit `model-download-progress` events.
+#[tauri::command]
+pub async fn update_model(model_id: String, app: AppHandle) -> Result<(), String> {
+    if requires_sidecar_download(&model_id) {
+        return download_model_via_sidecar(model_id, app, true).await;
+    }
+    download_model(model_id, app).await
 }
 
 // ============================================================
@@ -990,5 +1258,219 @@ mod tests {
             deserialized.changelog_url,
             Some("https://example.com/changelog".to_string())
         );
+    }
+
+    #[test]
+    fn test_model_status_serializes_camel_case() {
+        let status = ModelStatus {
+            id: "htdemucs".to_string(),
+            available: true,
+            revision: Some("cbc8a9b1".to_string()),
+            last_modified: Some("2026-09-02".to_string()),
+            update_available: Some(false),
+            upstream_last_modified: Some("2026-09-10".to_string()),
+            error: None,
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("\"lastModified\":\"2026-09-02\""));
+        assert!(json.contains("\"updateAvailable\":false"));
+        assert!(json.contains("\"upstreamLastModified\":\"2026-09-10\""));
+        assert!(!json.contains("last_modified"));
+        assert!(!json.contains("update_available"));
+    }
+
+    #[test]
+    fn test_model_status_serialization_omits_none_fields() {
+        let status = ModelStatus {
+            id: "bs_roformer".to_string(),
+            available: false,
+            revision: None,
+            last_modified: None,
+            update_available: None,
+            upstream_last_modified: None,
+            error: None,
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(!json.contains("revision"));
+        assert!(!json.contains("lastModified"));
+        assert!(!json.contains("updateAvailable"));
+        assert!(!json.contains("upstreamLastModified"));
+        assert!(!json.contains("error"));
+    }
+
+    #[test]
+    fn test_read_direct_model_status_parses_sidecar() {
+        let dir = std::env::temp_dir().join(format!("stemgen-test-sidecar-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sidecar = direct_model_sidecar_path(&dir, "htdemucs");
+        std::fs::write(
+            &sidecar,
+            r#"{"sha256":"0123456789abcdef","size":100,"downloaded_at":"2026-09-02T10:00:00Z"}"#,
+        )
+        .unwrap();
+
+        let status = read_direct_model_status(&dir, "htdemucs").unwrap();
+        assert_eq!(status.id, "htdemucs");
+        assert_eq!(status.revision.as_deref(), Some("01234567"));
+        assert_eq!(status.last_modified.as_deref(), Some("2026-09-02"));
+
+        let _ = std::fs::remove_file(&sidecar);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_read_direct_model_status_returns_none_when_missing() {
+        let dir = std::env::temp_dir().join(format!(
+            "stemgen-test-sidecar-missing-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(read_direct_model_status(&dir, "htdemucs").is_none());
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_merge_direct_download_status_marks_onnx_available() {
+        let dir = std::env::temp_dir().join(format!("stemgen-test-merge-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // The sidecar reports htdemucs as NOT in the HF cache.
+        let statuses = vec![ModelStatus {
+            id: "htdemucs".to_string(),
+            available: false,
+            revision: None,
+            last_modified: None,
+            update_available: None,
+            upstream_last_modified: None,
+            error: None,
+        }];
+        // A direct .onnx download exists in the models dir.
+        std::fs::write(dir.join("htdemucs.onnx"), b"bytes").unwrap();
+        std::fs::write(
+            direct_model_sidecar_path(&dir, "htdemucs"),
+            r#"{"sha256":"deadbeef12345678","size":5,"downloaded_at":"2026-09-02T10:00:00Z"}"#,
+        )
+        .unwrap();
+
+        let merged = merge_direct_download_status_in(&dir, statuses);
+        let htdemucs = merged.iter().find(|s| s.id == "htdemucs").unwrap();
+        assert!(htdemucs.available);
+        assert_eq!(htdemucs.revision.as_deref(), Some("deadbeef"));
+        assert_eq!(htdemucs.last_modified.as_deref(), Some("2026-09-02"));
+
+        for f in ["htdemucs.onnx", "htdemucs.onnx.sha256"] {
+            let _ = std::fs::remove_file(dir.join(f));
+        }
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_merge_direct_download_status_adds_missing_entry() {
+        let dir =
+            std::env::temp_dir().join(format!("stemgen-test-merge-add-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("htdemucs.onnx"), b"bytes").unwrap();
+
+        let merged = merge_direct_download_status_in(&dir, Vec::new());
+        assert!(merged.iter().any(|s| s.id == "htdemucs" && s.available));
+
+        let _ = std::fs::remove_file(dir.join("htdemucs.onnx"));
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_merge_direct_download_status_keeps_hf_cache_available() {
+        // When the HF cache already reports htdemucs available, a stale or
+        // missing direct .onnx must not downgrade it.
+        let dir =
+            std::env::temp_dir().join(format!("stemgen-test-merge-keep-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let statuses = vec![ModelStatus {
+            id: "htdemucs".to_string(),
+            available: true,
+            revision: Some("cbc8a9b1".to_string()),
+            last_modified: Some("2026-09-02".to_string()),
+            update_available: None,
+            upstream_last_modified: None,
+            error: None,
+        }];
+        let merged = merge_direct_download_status_in(&dir, statuses);
+        let htdemucs = merged.iter().find(|s| s.id == "htdemucs").unwrap();
+        assert!(htdemucs.available);
+        assert_eq!(htdemucs.revision.as_deref(), Some("cbc8a9b1"));
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_ensure_known_models_returns_all_models() {
+        let statuses = vec![ModelStatus {
+            id: "htdemucs".to_string(),
+            available: true,
+            revision: Some("cbc8a9b1".to_string()),
+            last_modified: None,
+            update_available: None,
+            upstream_last_modified: None,
+            error: None,
+        }];
+        let known = ensure_known_models(statuses);
+        assert_eq!(known.len(), 4);
+        let ids: Vec<&str> = known.iter().map(|s| s.id.as_str()).collect();
+        assert!(ids.contains(&"bs_roformer"));
+        assert!(ids.contains(&"demucs"));
+        assert!(ids.contains(&"htdemucs_ft"));
+        let bs = known.iter().find(|s| s.id == "bs_roformer").unwrap();
+        assert!(!bs.available);
+        let htdemucs = known.iter().find(|s| s.id == "htdemucs").unwrap();
+        assert!(htdemucs.available);
+        // Order matches get_available_models().
+        assert_eq!(known.first().map(|s| s.id.as_str()), Some("bs_roformer"));
+    }
+
+    #[test]
+    fn test_model_update_serializes_camel_case() {
+        let update = ModelUpdate {
+            id: "htdemucs".to_string(),
+            update_available: Some(true),
+            upstream_last_modified: Some("2026-08-31".to_string()),
+        };
+        let json = serde_json::to_string(&update).unwrap();
+        assert!(json.contains("\"updateAvailable\":true"));
+        assert!(json.contains("\"upstreamLastModified\":\"2026-08-31\""));
+        assert!(!json.contains("update_available"));
+    }
+
+    #[test]
+    fn test_model_update_serialization_omits_none_fields() {
+        let update = ModelUpdate {
+            id: "htdemucs".to_string(),
+            update_available: None,
+            upstream_last_modified: None,
+        };
+        let json = serde_json::to_string(&update).unwrap();
+        assert!(!json.contains("updateAvailable"));
+        assert!(!json.contains("upstreamLastModified"));
+    }
+
+    #[test]
+    fn test_parse_model_updates_reads_available_and_date() {
+        let stdout = r#"[
+            {"id":"htdemucs","update_available":true,"upstream_last_modified":"2026-08-31"},
+            {"id":"htdemucs_ft","update_available":false,"upstream_last_modified":"2026-08-31"},
+            {"id":"demucs","update_available":null,"error":"offline"}
+        ]"#;
+        let updates = parse_model_updates(stdout).unwrap();
+        assert_eq!(updates.len(), 3);
+        let htdemucs = updates.iter().find(|u| u.id == "htdemucs").unwrap();
+        assert_eq!(htdemucs.update_available, Some(true));
+        assert_eq!(
+            htdemucs.upstream_last_modified.as_deref(),
+            Some("2026-08-31")
+        );
+        let offline = updates.iter().find(|u| u.id == "demucs").unwrap();
+        assert_eq!(offline.update_available, None);
+    }
+
+    #[test]
+    fn test_parse_model_updates_handles_invalid_json() {
+        assert!(parse_model_updates("not json").is_err());
     }
 }

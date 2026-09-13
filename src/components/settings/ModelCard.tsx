@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Download, Trash2, Check, Cpu, Zap, AlertCircle, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
-import type { AIModel, ModelCheckStatus } from '@/lib/types';
+import type { AIModel, ModelCheckStatus, ModelUpdateState } from '@/lib/types';
 
 export interface ModelCardData {
   id: AIModel;
@@ -21,6 +21,13 @@ interface ModelCardProps {
   downloadProgress: number;
   downloadMessage: string | null;
   downloadError: string | null;
+  /** Installed version line, e.g. "rev cbc8a9b1 · 2026-09-02". */
+  version?: string;
+  /** Update state when installed; undefined before the first update check. */
+  updateState?: ModelUpdateState;
+  /** True while an upstream update re-download is in progress. */
+  isUpdating?: boolean;
+  onUpdate?: (modelId: string) => void;
   onDownload: (modelId: string) => void;
   onDelete: (modelId: string) => void;
   onRetry: (modelId: string) => void;
@@ -33,6 +40,10 @@ export function ModelCard({
   downloadProgress,
   downloadMessage,
   downloadError,
+  version,
+  updateState,
+  isUpdating,
+  onUpdate,
   onDownload,
   onDelete,
   onRetry,
@@ -145,11 +156,36 @@ export function ModelCard({
               Selected
             </span>
           )}
+          {isDownloaded && updateState === 'available' && (
+            <span
+              data-testid={`update-available-${model.id}`}
+              className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-600"
+            >
+              Update available
+            </span>
+          )}
+          {isDownloaded && updateState === 'up-to-date' && (
+            <span
+              data-testid={`up-to-date-${model.id}`}
+              className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs text-green-600"
+            >
+              Up to date
+            </span>
+          )}
         </div>
 
         <p className="mt-1 text-sm text-muted-foreground">
           {model.description}
         </p>
+
+        {isDownloaded && version && (
+          <p
+            data-testid={`model-version-${model.id}`}
+            className="mt-1 text-xs text-muted-foreground"
+          >
+            {version}
+          </p>
+        )}
 
         <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
@@ -212,8 +248,25 @@ export function ModelCard({
 
       {/* Action Button */}
       <div className="flex-shrink-0">
-        {isDownloaded ? (
+        {isUpdating ? (
+          <span
+            data-testid={`updating-${model.id}`}
+            className="flex items-center gap-1 text-xs text-muted-foreground"
+          >
+            <Download className="h-3 w-3 animate-pulse" />
+            Updating...
+          </span>
+        ) : isDownloaded ? (
           <div className="flex items-center gap-1">
+            {updateState === 'available' && (
+              <button
+                data-testid={`update-btn-${model.id}`}
+                onClick={() => onUpdate?.(model.id)}
+                className="rounded-md border border-amber-500/50 px-3 py-1.5 text-sm text-amber-600 hover:bg-amber-500/10"
+              >
+                Update
+              </button>
+            )}
             {!isSelected && (
               <button
                 data-testid={`select-model-${model.id}`}
