@@ -1,0 +1,44 @@
+{
+  "allowlist_version": 1,
+  "description": "Maintained allowlist of vetted stem-separation upstream projects used by the model-proposal bot (issue #266). Each project contributes its GitHub repo (stars/maintenance signal) and optional HuggingFace weight repos to scan.",
+  "projects": [
+    {
+      "name": "Demucs",
+      "github": "adefossez/demucs",
+      "hf_repos": [
+        "adefossez/HTDemucs",
+        "adefossez/HTDemucs-ft",
+        "adefossez/HTDemucs-6s"
+      ],
+      "notes": "Meta hybrid-transformer separation model; official 4/6-stem weights. Already in the Stemgen catalog (htdemucs family)."
+    },
+    {
+      "name": "BS-RoFormer",
+      "github": "axeldelafosse/BS-RoFormer",
+      "hf_repos": [
+        "anvuew/BS-RoFormer"
+      ],
+      "notes": "KitsAI band-split RoFormer architecture; community-hosted 4-stem weights. Architecture already supported (bs_roformer)."
+    },
+    {
+      "name": "MDX-Net",
+      "github": "kuielab/mdx-net",
+      "hf_repos": [],
+      "notes": "MDX-Net / UVR-MDX-Net research baseline used across the UVR ecosystem."
+    },
+    {
+      "name": "Open-Unmix",
+      "github": "sigsep/open-unmix-pytorch",
+      "hf_repos": [
+        "faroit/open-unmix"
+      ],
+      "notes": "SigSep open-source music separator; official pre-trained weights."
+    },
+    {
+      "name": "UVR",
+      "github": "Anjok07/ultimatevocalremovergui",
+      "hf_repos": [],
+      "notes": "Ultimate Vocal Remover ecosystem (MDX-Net, Demucs and VR models); weights are hosted across many community HF repos."
+    }
+  ]
+}
