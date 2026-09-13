@@ -348,6 +348,8 @@ pub fn run() {
             commands::check_model_downloaded,
             commands::list_downloaded_models,
             commands::get_model_statuses,
+            commands::check_model_updates,
+            commands::update_model,
             commands::get_processing_history,
             commands::add_to_history,
             commands::get_settings,

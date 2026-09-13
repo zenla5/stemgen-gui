@@ -857,6 +857,185 @@ class TestModelDetail:
         assert parsed["last_modified"] == "2026-09-02"
 
 
+class TestUpdateCheck:
+    """Tests for --update-check (file sha256 vs upstream) and --download-model --force."""
+
+    @staticmethod
+    def _fake_upstream(monkeypatch, tmp_path, sig_sha, yaml_content, last_modified=None, sha="cbc8a9b1a87023b7fd74e7b3412e6321c0eab003"):
+        import stemgen_sidecar
+        from datetime import datetime, timezone
+        from types import SimpleNamespace as NS
+        from unittest.mock import MagicMock
+
+        local_yaml = tmp_path / "htdemucs.yaml"
+        local_yaml.write_text(yaml_content)
+        local_sig = tmp_path / "955717e8.safetensors"
+        local_sig.write_bytes(b"weights")
+
+        # Upstream yaml: same content for "up to date", different otherwise.
+        upstream_yaml = tmp_path / "upstream_htdemucs.yaml"
+        upstream_yaml.write_text(yaml_content)
+        upstream_sig = tmp_path / "upstream_955717e8.safetensors"
+        upstream_sig.write_bytes(b"weights")
+
+        def fake_download(repo_id, filename, **kwargs):
+            if kwargs.get("local_files_only"):
+                if filename == "htdemucs.yaml":
+                    return str(local_yaml)
+                return str(local_sig)
+            # Network fetch into a temp cache_dir (the yaml exposes no hash via the API).
+            if filename == "htdemucs.yaml":
+                return str(upstream_yaml)
+            return str(upstream_sig)
+
+        sibling = NS(
+            rfilename="955717e8.safetensors",
+            path="955717e8.safetensors",
+            lfs=NS(sha256=sig_sha),
+            sha256=None,
+        )
+        info = NS(
+            last_modified=(
+                last_modified if last_modified is not None else datetime(2026, 8, 31, tzinfo=timezone.utc)
+            ),
+            sha=sha,
+            siblings=[sibling],
+        )
+
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", MagicMock(side_effect=fake_download))
+        monkeypatch.setattr("huggingface_hub.list_repo_tree", MagicMock(return_value=[sibling]))
+        monkeypatch.setattr("huggingface_hub.model_info", MagicMock(return_value=info))
+        return stemgen_sidecar
+
+    @staticmethod
+    def _local_sig_sha256():
+        import hashlib
+        return hashlib.sha256(b"weights").hexdigest()
+
+    def test_update_check_up_to_date_when_sha_matches(self, monkeypatch, capsys, tmp_path):
+        """--update-check reports update_available false when loaded sha matches upstream."""
+        self._fake_upstream(monkeypatch, tmp_path, self._local_sig_sha256(), "models:\n  - 955717e8\n")
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--update-check"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            import stemgen_sidecar
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        htdemucs = next(item for item in parsed if item["id"] == "htdemucs")
+        assert htdemucs["update_available"] is False
+        # Repo-level date is informational only.
+        assert htdemucs["upstream_last_modified"] == "2026-08-31"
+        assert htdemucs["upstream_revision"] == "cbc8a9b1"
+
+    def test_update_check_available_when_file_sha_differs(self, monkeypatch, capsys, tmp_path):
+        """--update-check reports update_available true when a loaded file's sha differs."""
+        self._fake_upstream(monkeypatch, tmp_path, "0" * 64, "models:\n  - 955717e8\n")
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--update-check"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            import stemgen_sidecar
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        htdemucs = next(item for item in parsed if item["id"] == "htdemucs")
+        assert htdemucs["update_available"] is True
+
+    def test_update_check_offline_when_model_info_raises(self, monkeypatch, capsys, tmp_path):
+        """--update-check must fail gracefully (null) when the network call fails."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        yaml_path = tmp_path / "htdemucs.yaml"
+        yaml_path.write_text("models:\n  - 955717e8\n")
+        sig_path = tmp_path / "955717e8.safetensors"
+        sig_path.write_bytes(b"weights")
+
+        def fake_local(repo_id, filename, **kwargs):
+            if filename == "htdemucs.yaml":
+                return str(yaml_path)
+            return str(sig_path)
+
+        def raise_network(*args, **kwargs):
+            raise OSError("connection refused")
+
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", MagicMock(side_effect=fake_local))
+        monkeypatch.setattr("huggingface_hub.model_info", MagicMock(side_effect=raise_network))
+        monkeypatch.setattr("huggingface_hub.list_repo_tree", MagicMock(side_effect=raise_network))
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--update-check"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        htdemucs = next(item for item in parsed if item["id"] == "htdemucs")
+        assert htdemucs["update_available"] is None
+        assert htdemucs["error"] == "offline"
+
+    def test_update_check_not_installed(self, monkeypatch, capsys):
+        """--update-check reports not_installed when the model is not cached."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        def raise_not_found(*args, **kwargs):
+            raise FileNotFoundError("Not cached")
+
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", MagicMock(side_effect=raise_not_found))
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--update-check"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        htdemucs = next(item for item in parsed if item["id"] == "htdemucs")
+        assert htdemucs["update_available"] is None
+        assert htdemucs["reason"] == "not_installed"
+
+    def test_download_model_force_passes_force_download(self, monkeypatch, capsys):
+        """--download-model --force must re-download cached files via force_download=True."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        mock_snapshot = MagicMock()
+        available = MagicMock(return_value=True)
+        monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", available)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "htdemucs", "--force"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        mock_snapshot.assert_called_once()
+        assert mock_snapshot.call_args.kwargs.get("force_download") is True
+
+    def test_download_model_without_force_defaults_false(self, monkeypatch, capsys):
+        """--download-model without --force must leave force_download unset (False)."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        mock_snapshot = MagicMock()
+        available = MagicMock(return_value=True)
+        monkeypatch.setattr("huggingface_hub.snapshot_download", mock_snapshot)
+        monkeypatch.setattr(stemgen_sidecar, "_model_weights_available", available)
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--download-model", "htdemucs"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        mock_snapshot.assert_called_once()
+        assert mock_snapshot.call_args.kwargs.get("force_download") is False
+
+
 # ----------------------------------------------------------------------------------------------
 # Tests for DEMUCS_PRETRAINED_NAME mapping (TASK-02)
 # ----------------------------------------------------------------------------------------------
@@ -881,7 +1060,7 @@ class TestDownloadModel:
 
         assert exc_info.value.code == 0
         # The snapshot must target the htdemucs repo (demucs -> htdemucs).
-        mock_snapshot.assert_called_once_with("adefossez/HTDemucs", tqdm_class=stemgen_sidecar._ProgressTqdm)
+        mock_snapshot.assert_called_once_with("adefossez/HTDemucs", force_download=False, tqdm_class=stemgen_sidecar._ProgressTqdm)
         # Post-download verification is cache-only and must use the htdemucs name.
         available.assert_called_once_with("htdemucs")
 
@@ -901,7 +1080,7 @@ class TestDownloadModel:
 
         assert exc_info.value.code == 0
         available.assert_called_once_with("htdemucs_ft")
-        mock_snapshot.assert_called_once_with("adefossez/HTDemucs-ft", tqdm_class=stemgen_sidecar._ProgressTqdm)
+        mock_snapshot.assert_called_once_with("adefossez/HTDemucs-ft", force_download=False, tqdm_class=stemgen_sidecar._ProgressTqdm)
 
     def test_download_unknown_id_passes_through(self, monkeypatch, capsys):
         """--download-model with an unknown ID must pass through unchanged."""

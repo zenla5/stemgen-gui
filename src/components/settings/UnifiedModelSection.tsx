@@ -1,11 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { HardDrive, RefreshCw } from 'lucide-react';
 import { ModelCard, type ModelCardData } from './ModelCard';
 import { useAppStore, computeEnvironmentReadiness } from '@/stores/appStore';
-import { hasPackageStatusKey, type ModelCheckStatus, type ModelStatus } from '@/lib/types';
+import {
+  hasPackageStatusKey,
+  type ModelCheckStatus,
+  type ModelStatus,
+  type ModelUpdate,
+  type ModelUpdateState,
+} from '@/lib/types';
 import { formatInstalledVersion } from '@/lib/modelStatus';
 
 interface DownloadProgress {
@@ -22,12 +28,19 @@ export function UnifiedModelSection() {
   const [models, setModels] = useState<ModelCardData[]>([]);
   const [modelStatuses, setModelStatuses] = useState<Record<string, ModelCheckStatus>>({});
   const [versions, setVersions] = useState<Record<string, string>>({});
+  const [updateStates, setUpdateStates] = useState<Record<string, ModelUpdateState>>({});
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [updating, setUpdating] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
   const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Keep the latest models list available to async callbacks without re-running
+  // the mount effect (re-running loadModels on every models change would loop).
+  const modelsRef = useRef<ModelCardData[]>(models);
+  modelsRef.current = models;
 
   // Use appStore for persisted downloaded models
   const addDownloadedModel = useAppStore(state => state.addDownloadedModel);
@@ -107,6 +120,36 @@ export function UnifiedModelSection() {
     }
   }, [loadModelStatuses]);
 
+  /**
+   * Compare installed demucs-family models against upstream (file sha256).
+   * Network-bound, so it only runs on-demand (Refresh / after an update) and
+   * fails gracefully offline — each model reports unknown when no data.
+   */
+  const checkForUpdates = useCallback(async () => {
+    try {
+      const updates = await invoke<ModelUpdate[]>('check_model_updates');
+      const next: Record<string, ModelUpdateState> = {};
+      for (const u of updates) {
+        if (u.updateAvailable === true) {
+          next[u.id] = 'available';
+        } else if (u.updateAvailable === false) {
+          next[u.id] = 'up-to-date';
+        } else {
+          next[u.id] = 'unknown';
+        }
+      }
+      setUpdateStates(prev => ({ ...prev, ...next }));
+    } catch (err) {
+      console.error('Failed to check model updates:', err);
+    }
+  }, []);
+
+  /** Refresh availability + versions, then re-run the upstream update check. */
+  const handleRefresh = useCallback(() => {
+    loadModels();
+    checkForUpdates();
+  }, [loadModels, checkForUpdates]);
+
   useEffect(() => {
     loadModels();
 
@@ -116,12 +159,17 @@ export function UnifiedModelSection() {
 
       if (status === 'complete') {
         setDownloading(null);
+        setUpdating(null);
         setDownloadProgress(0);
         setDownloadMessage(null);
         addDownloadedModel(model_id);
         setModelStatuses(prev => ({ ...prev, [model_id]: 'available' }));
         setDownloadErrors(prev => { const next = { ...prev }; delete next[model_id]; return next; });
         refreshDownloadedModels();
+        // Refresh the installed version and re-run the update check so a
+        // freshly downloaded/updated model shows "Up to date".
+        loadModelStatuses(modelsRef.current);
+        checkForUpdates();
         toast.success(`${model_id} downloaded`);
       } else if (status === 'downloading') {
         setDownloading(model_id);
@@ -129,6 +177,7 @@ export function UnifiedModelSection() {
         setDownloadMessage(message || null);
       } else if (status === 'error') {
         setDownloading(null);
+        setUpdating(null);
         setDownloadProgress(0);
         setDownloadMessage(null);
         const errMsg = error || 'Model download failed';
@@ -140,7 +189,7 @@ export function UnifiedModelSection() {
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [loadModels, addDownloadedModel, refreshDownloadedModels]);
+  }, [loadModels, addDownloadedModel, refreshDownloadedModels, loadModelStatuses, checkForUpdates]);
 
   const downloadModel = async (modelId: string) => {
     // Guard: ensure sidecar is available before attempting download
@@ -166,6 +215,25 @@ export function UnifiedModelSection() {
       console.error('Failed to download model:', msg);
       setDownloadErrors(prev => ({ ...prev, [modelId]: msg }));
       setDownloading(null);
+      setDownloadMessage(null);
+      toast.error(msg);
+    }
+  };
+
+  /** Re-download an installed model's changed files from upstream. */
+  const updateModel = async (modelId: string) => {
+    setUpdating(modelId);
+    setDownloadProgress(0);
+    setDownloadMessage('Updating...');
+    setDownloadErrors(prev => { const next = { ...prev }; delete next[modelId]; return next; });
+
+    try {
+      await invoke('update_model', { modelId });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Failed to update model:', msg);
+      setDownloadErrors(prev => ({ ...prev, [modelId]: msg }));
+      setUpdating(null);
       setDownloadMessage(null);
       toast.error(msg);
     }
@@ -212,7 +280,7 @@ export function UnifiedModelSection() {
         </h3>
         <button
           data-testid="refresh-models-btn"
-          onClick={loadModels}
+          onClick={handleRefresh}
           className="flex items-center gap-1 rounded-md border border-muted px-2 py-1 text-xs hover:bg-muted"
         >
           <RefreshCw className="h-3 w-3" />
@@ -238,10 +306,13 @@ export function UnifiedModelSection() {
             model={model}
             status={modelStatuses[model.id] ?? 'checking'}
             isDownloading={downloading === model.id}
-            downloadProgress={downloading === model.id ? downloadProgress : 0}
-            downloadMessage={downloading === model.id ? downloadMessage : null}
+            downloadProgress={downloading === model.id || updating === model.id ? downloadProgress : 0}
+            downloadMessage={downloading === model.id || updating === model.id ? downloadMessage : null}
             downloadError={downloadErrors[model.id] || null}
             version={versions[model.id]}
+            updateState={updateStates[model.id]}
+            isUpdating={updating === model.id}
+            onUpdate={updateModel}
             onDownload={downloadModel}
             onDelete={deleteModel}
             onRetry={retryDownload}

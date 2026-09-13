@@ -89,6 +89,21 @@ pub struct ModelStatus {
     pub error: Option<String>,
 }
 
+/// Per-model upstream update status returned by `check_model_updates`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelUpdate {
+    pub id: String,
+    /// true when a loaded file's sha256 differs upstream; false when verified
+    /// identical; None when unknown (offline / not installed / no upstream).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_available: Option<bool>,
+    /// Upstream repo last-modified date (informational only — never triggers
+    /// an update by itself).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_last_modified: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -356,7 +371,7 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
     info!("Starting model download: {}", model_id);
 
     if requires_sidecar_download(&model_id) {
-        return download_model_via_sidecar(model_id, app).await;
+        return download_model_via_sidecar(model_id, app, false).await;
     }
 
     let url =
@@ -521,8 +536,14 @@ pub async fn download_model(model_id: String, app: AppHandle) -> Result<(), Stri
 /// "stage":"downloading","progress":<0..1>,"message":...}`) which we stream
 /// to the frontend as `model-download-progress` events, so the UI shows real
 /// progress instead of a 0→100 jump. On failure an `error` event is emitted
-/// with the sidecar's stderr and the command returns `Err`.
-async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<(), String> {
+/// with the sidecar's stderr and the command returns `Err`. When `force` is
+/// set the sidecar re-fetches even already-cached files (`--force`), which is
+/// the "update" path for demucs-family models.
+async fn download_model_via_sidecar(
+    model_id: String,
+    app: AppHandle,
+    force: bool,
+) -> Result<(), String> {
     use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
 
     let python = find_python().ok_or("Python not found — cannot download model via sidecar")?;
@@ -551,8 +572,12 @@ async fn download_model_via_sidecar(model_id: String, app: AppHandle) -> Result<
         },
     );
 
-    let mut child = tokio::process::Command::new(&python)
-        .args([sidecar.to_str().unwrap(), "--download-model", &model_id])
+    let mut cmd = tokio::process::Command::new(&python);
+    cmd.args([sidecar.to_str().unwrap(), "--download-model", &model_id]);
+    if force {
+        cmd.arg("--force");
+    }
+    let mut child = cmd
         .python_env()
         .no_window()
         .stdout(std::process::Stdio::piped())
@@ -820,6 +845,76 @@ pub async fn list_downloaded_models(_app: AppHandle) -> Result<Vec<String>, Stri
         .filter(|s| s.available)
         .map(|s| s.id)
         .collect())
+}
+
+/// Parse the sidecar's `--update-check` JSON array into `Vec<ModelUpdate>`.
+fn parse_model_updates(stdout: &str) -> Result<Vec<ModelUpdate>, String> {
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(stdout)
+        .map_err(|e| format!("Failed to parse sidecar update-check output: {e}"))?;
+    Ok(parsed
+        .into_iter()
+        .map(|item| ModelUpdate {
+            id: item
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            update_available: item.get("update_available").and_then(|v| v.as_bool()),
+            upstream_last_modified: item
+                .get("upstream_last_modified")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+        })
+        .collect())
+}
+
+/// Check each demucs-family model for an upstream update.
+///
+/// Compares the sha256 of the exact files demucs loads against upstream `main`
+/// via the sidecar's `--update-check`. The sidecar fails gracefully per model
+/// when offline; a hard sidecar failure (e.g. Python missing) surfaces as an
+/// `Err`, which the panel treats as "no update info".
+#[tauri::command]
+pub async fn check_model_updates(_app: AppHandle) -> Result<Vec<ModelUpdate>, String> {
+    use super::probe::{find_python, get_data_dir, NoWindow, PythonEnv};
+
+    let python = find_python().ok_or("Python not found — cannot check model updates")?;
+    let sidecar = get_data_dir().join("stemgen_sidecar.py");
+    if !sidecar.exists() {
+        return Err(format!(
+            "Sidecar script not found at '{}'. Open Settings → System Status → Repair Installation.",
+            sidecar.display()
+        ));
+    }
+
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        tokio::process::Command::new(&python)
+            .args([sidecar.to_str().unwrap(), "--update-check"])
+            .python_env()
+            .no_window()
+            .output(),
+    )
+    .await
+    .map_err(|_| "update-check timed out after 60s".to_string())?
+    .map_err(|e| format!("Failed to run sidecar update-check: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    parse_model_updates(&stdout)
+}
+
+/// Re-download an installed model's changed files from upstream.
+///
+/// Demucs-family models are updated via the sidecar (`--download-model --force`
+/// → `snapshot_download(force_download=True)`), which re-fetches the model
+/// files. Direct `.onnx` downloads are re-fetched through the same HTTP path
+/// as `download_model` and emit `model-download-progress` events.
+#[tauri::command]
+pub async fn update_model(model_id: String, app: AppHandle) -> Result<(), String> {
+    if requires_sidecar_download(&model_id) {
+        return download_model_via_sidecar(model_id, app, true).await;
+    }
+    download_model(model_id, app).await
 }
 
 // ============================================================
@@ -1328,5 +1423,54 @@ mod tests {
         assert!(htdemucs.available);
         // Order matches get_available_models().
         assert_eq!(known.first().map(|s| s.id.as_str()), Some("bs_roformer"));
+    }
+
+    #[test]
+    fn test_model_update_serializes_camel_case() {
+        let update = ModelUpdate {
+            id: "htdemucs".to_string(),
+            update_available: Some(true),
+            upstream_last_modified: Some("2026-08-31".to_string()),
+        };
+        let json = serde_json::to_string(&update).unwrap();
+        assert!(json.contains("\"updateAvailable\":true"));
+        assert!(json.contains("\"upstreamLastModified\":\"2026-08-31\""));
+        assert!(!json.contains("update_available"));
+    }
+
+    #[test]
+    fn test_model_update_serialization_omits_none_fields() {
+        let update = ModelUpdate {
+            id: "htdemucs".to_string(),
+            update_available: None,
+            upstream_last_modified: None,
+        };
+        let json = serde_json::to_string(&update).unwrap();
+        assert!(!json.contains("updateAvailable"));
+        assert!(!json.contains("upstreamLastModified"));
+    }
+
+    #[test]
+    fn test_parse_model_updates_reads_available_and_date() {
+        let stdout = r#"[
+            {"id":"htdemucs","update_available":true,"upstream_last_modified":"2026-08-31"},
+            {"id":"htdemucs_ft","update_available":false,"upstream_last_modified":"2026-08-31"},
+            {"id":"demucs","update_available":null,"error":"offline"}
+        ]"#;
+        let updates = parse_model_updates(stdout).unwrap();
+        assert_eq!(updates.len(), 3);
+        let htdemucs = updates.iter().find(|u| u.id == "htdemucs").unwrap();
+        assert_eq!(htdemucs.update_available, Some(true));
+        assert_eq!(
+            htdemucs.upstream_last_modified.as_deref(),
+            Some("2026-08-31")
+        );
+        let offline = updates.iter().find(|u| u.id == "demucs").unwrap();
+        assert_eq!(offline.update_available, None);
+    }
+
+    #[test]
+    fn test_parse_model_updates_handles_invalid_json() {
+        assert!(parse_model_updates("not json").is_err());
     }
 }
