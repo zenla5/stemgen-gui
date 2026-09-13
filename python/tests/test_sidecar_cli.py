@@ -2,6 +2,7 @@
 
 import json
 import sys
+import types
 from pathlib import Path
 from unittest.mock import patch
 
@@ -692,6 +693,168 @@ class TestCheckModel:
         last = lines[-1]
         assert last["status"] == "error"
         assert "Model not found" in last["error"]
+
+
+class TestModelDetail:
+    """Tests for _model_detail() revision/date resolution from the HF cache."""
+
+    @staticmethod
+    def _fake_cache_info(repo_id="adefossez/HTDemucs", commit_hash="abc123456789",
+                         last_modified="2026-09-02"):
+        from datetime import datetime, timezone
+
+        class FakeRevision:
+            pass
+
+        revision = FakeRevision()
+        revision.commit_hash = commit_hash
+        revision.last_modified = datetime.fromisoformat(
+            f"{last_modified}T12:00:00+00:00"
+        )
+        if last_modified is None:
+            revision.last_modified = None
+
+        class FakeRepo:
+            pass
+
+        repo = FakeRepo()
+        repo.repo_id = repo_id
+        repo.revisions = [revision]
+
+        class FakeCacheInfo:
+            pass
+
+        cache_info = FakeCacheInfo()
+        cache_info.repos = [repo]
+        return cache_info
+
+    def test_model_detail_returns_revision_and_date(self, monkeypatch):
+        """_model_detail returns short commit hash and YYYY-MM-DD date."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        cache_info = self._fake_cache_info()
+        monkeypatch.setattr(
+            "huggingface_hub.scan_cache_dir", MagicMock(return_value=cache_info)
+        )
+        assert stemgen_sidecar._model_detail("htdemucs") == {
+            "revision": "abc12345",
+            "last_modified": "2026-09-02",
+        }
+
+    def test_model_detail_prefers_most_recent_revision(self, monkeypatch):
+        """When multiple revisions exist, the newest last_modified wins."""
+        import stemgen_sidecar
+        from datetime import datetime, timezone
+        from unittest.mock import MagicMock
+
+        older = types.SimpleNamespace(
+            commit_hash="aaaa1111aaaa", last_modified=datetime(2026, 1, 1, tzinfo=timezone.utc)
+        )
+        newer = types.SimpleNamespace(
+            commit_hash="bbbb2222bbbb", last_modified=datetime(2026, 9, 2, tzinfo=timezone.utc)
+        )
+        repo = types.SimpleNamespace(repo_id="adefossez/HTDemucs", revisions=[older, newer])
+        cache_info = types.SimpleNamespace(repos=[repo])
+        monkeypatch.setattr(
+            "huggingface_hub.scan_cache_dir", MagicMock(return_value=cache_info)
+        )
+        assert stemgen_sidecar._model_detail("htdemucs") == {
+            "revision": "bbbb2222",
+            "last_modified": "2026-09-02",
+        }
+
+    def test_model_detail_returns_none_when_not_cached(self, monkeypatch):
+        """_model_detail returns None when the repo has no cached revisions."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        cache_info = types.SimpleNamespace(repos=[])
+        monkeypatch.setattr(
+            "huggingface_hub.scan_cache_dir", MagicMock(return_value=cache_info)
+        )
+        assert stemgen_sidecar._model_detail("htdemucs") is None
+
+    def test_model_detail_handles_cache_not_found(self, monkeypatch):
+        """_model_detail returns None when scan_cache_dir raises (no cache dir)."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        def raise_not_found(*args, **kwargs):
+            raise FileNotFoundError("Cache not found")
+
+        monkeypatch.setattr(
+            "huggingface_hub.scan_cache_dir", MagicMock(side_effect=raise_not_found)
+        )
+        assert stemgen_sidecar._model_detail("htdemucs") is None
+
+    def test_model_detail_returns_none_without_huggingface_hub(self, monkeypatch):
+        """_model_detail returns None when huggingface_hub is not installed."""
+        import stemgen_sidecar
+
+        monkeypatch.setitem(sys.modules, "huggingface_hub", None)
+        assert stemgen_sidecar._model_detail("htdemucs") is None
+
+    def test_list_models_includes_revision_when_available(self, monkeypatch, capsys, tmp_path):
+        """--list-models returns revision + last_modified for an installed model."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        yaml_path = tmp_path / "htdemucs.yaml"
+        yaml_path.write_text("models:\n  - 955717e8\nweights: [1.0]\nsegment: 10\n")
+
+        def fake_hf_download(repo_id, filename, **kwargs):
+            if filename == "htdemucs.yaml":
+                return str(yaml_path)
+            return "/fake/cache/955717e8.safetensors"
+
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", MagicMock(side_effect=fake_hf_download))
+        monkeypatch.setattr(
+            "huggingface_hub.scan_cache_dir",
+            MagicMock(return_value=self._fake_cache_info()),
+        )
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--list-models"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        htdemucs = next(item for item in parsed if item["id"] == "htdemucs")
+        assert htdemucs["available"] is True
+        assert htdemucs["revision"] == "abc12345"
+        assert htdemucs["last_modified"] == "2026-09-02"
+
+    def test_check_model_includes_revision_when_available(self, monkeypatch, capsys, tmp_path):
+        """--check-model returns revision + last_modified for an installed model."""
+        import stemgen_sidecar
+        from unittest.mock import MagicMock
+
+        yaml_path = tmp_path / "htdemucs.yaml"
+        yaml_path.write_text("models:\n  - 955717e8\nweights: [1.0]\nsegment: 10\n")
+
+        def fake_hf_download(repo_id, filename, **kwargs):
+            if filename == "htdemucs.yaml":
+                return str(yaml_path)
+            return "/fake/cache/955717e8.safetensors"
+
+        monkeypatch.setattr("huggingface_hub.hf_hub_download", MagicMock(side_effect=fake_hf_download))
+        monkeypatch.setattr(
+            "huggingface_hub.scan_cache_dir",
+            MagicMock(return_value=self._fake_cache_info()),
+        )
+        monkeypatch.setattr(sys, "argv", ["stemgen_sidecar", "--check-model", "htdemucs"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            stemgen_sidecar.main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out.strip())
+        assert parsed["available"] is True
+        assert parsed["revision"] == "abc12345"
+        assert parsed["last_modified"] == "2026-09-02"
 
 
 # ----------------------------------------------------------------------------------------------

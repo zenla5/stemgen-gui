@@ -21,6 +21,8 @@ interface ModelCardProps {
   downloadProgress: number;
   downloadMessage: string | null;
   downloadError: string | null;
+  /** Installed version line, e.g. "rev cbc8a9b1 · 2026-09-02". */
+  version?: string;
   onDownload: (modelId: string) => void;
   onDelete: (modelId: string) => void;
   onRetry: (modelId: string) => void;
@@ -33,6 +35,7 @@ export function ModelCard({
   downloadProgress,
   downloadMessage,
   downloadError,
+  version,
   onDownload,
   onDelete,
   onRetry,
@@ -150,6 +153,15 @@ export function ModelCard({
         <p className="mt-1 text-sm text-muted-foreground">
           {model.description}
         </p>
+
+        {isDownloaded && version && (
+          <p
+            data-testid={`model-version-${model.id}`}
+            className="mt-1 text-xs text-muted-foreground"
+          >
+            {version}
+          </p>
+        )}
 
         <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">

@@ -291,4 +291,42 @@ describe('ModelCard', () => {
     expect(screen.getByText('Highest quality')).toBeInTheDocument();
     expect(screen.getByText('Very Slow')).toBeInTheDocument();
   });
+
+  it('renders the installed version line when downloaded', () => {
+    render(
+      <ModelCard
+        model={MODEL}
+        status="available"
+        isDownloading={false}
+        downloadProgress={0}
+        downloadMessage={null}
+        downloadError={null}
+        version="rev cbc8a9b1 · 2026-09-02"
+        onDownload={vi.fn()}
+        onDelete={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('model-version-demucs')).toHaveTextContent('rev cbc8a9b1 · 2026-09-02');
+  });
+
+  it('omits the version line when not downloaded', () => {
+    render(
+      <ModelCard
+        model={MODEL}
+        status="unavailable"
+        isDownloading={false}
+        downloadProgress={0}
+        downloadMessage={null}
+        downloadError={null}
+        version="rev cbc8a9b1 · 2026-09-02"
+        onDownload={vi.fn()}
+        onDelete={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId('model-version-demucs')).not.toBeInTheDocument();
+  });
 });

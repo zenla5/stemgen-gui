@@ -122,6 +122,29 @@ export type ModelCheckStatus =
   | 'gpu-warning'   // model installed but gpu_required && no GPU detected
   | 'unavailable';  // model not installed — show Download button
 
+/** Per-model status returned by the backend `get_model_statuses` command. */
+export interface ModelStatus {
+  id: AIModel;
+  available: boolean;
+  revision?: string;
+  lastModified?: string;
+  updateAvailable?: boolean | null;
+  upstreamLastModified?: string;
+}
+
+/** Update state derived from `check_model_updates` for a single model card. */
+export type ModelUpdateState =
+  | 'available'    // a loaded file's sha256 differs upstream — show update action
+  | 'up-to-date'   // verified identical to upstream
+  | 'unknown';     // no data (offline, not checked, or no upstream to compare)
+
+/** Per-model update result returned by the backend `check_model_updates` command. */
+export interface ModelUpdate {
+  id: AIModel;
+  updateAvailable?: boolean | null;
+  upstreamLastModified?: string;
+}
+
 export interface ModelInfo {
   id: AIModel;
   name: string;

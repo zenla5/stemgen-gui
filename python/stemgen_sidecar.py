@@ -289,6 +289,89 @@ def _delete_model_weights(pretrained_name: str) -> None:
         cache_info.delete_revisions(*revisions).execute()
 
 
+def _model_detail(pretrained_name: str) -> Optional[Dict[str, str]]:
+    """Return the cached copy's resolved revision and last-modified date.
+
+    Reads the HuggingFace cache via `scan_cache_dir()` — cache-only, no network
+    and no torch/demucs import — and returns `{"revision", "last_modified"}` for
+    the most recently modified cached revision of this model's repo, or `None`
+    when the model is not cached. `revision` is the short git commit hash of the
+    snapshot; `last_modified` is the revision's last-modified date as
+    `YYYY-MM-DD`. Never raises: any cache/scan problem yields `None`.
+    """
+    try:
+        from huggingface_hub import scan_cache_dir
+    except ImportError:
+        return None
+
+    try:
+        from datetime import datetime as _datetime
+
+        repo_id = hf_repo_id(pretrained_name)
+        cache_info = scan_cache_dir()
+
+        best = None
+        for repo in cache_info.repos:
+            if getattr(repo, "repo_id", None) != repo_id:
+                continue
+            for revision in repo.revisions:
+                commit_hash = getattr(revision, "commit_hash", None)
+                if not commit_hash:
+                    continue
+                last_modified = getattr(revision, "last_modified", None)
+                ts = 0.0
+                if isinstance(last_modified, (int, float)):
+                    ts = float(last_modified)
+                elif last_modified is not None:
+                    try:
+                        ts = last_modified.timestamp()
+                    except (TypeError, ValueError, OverflowError):
+                        ts = 0.0
+                if best is None or ts > best[0]:
+                    best = (ts, commit_hash, last_modified)
+
+        if best is None:
+            return None
+
+        _, commit_hash, last_modified = best
+        result: Dict[str, str] = {"revision": commit_hash[:8]}
+        if last_modified is not None:
+            try:
+                if isinstance(last_modified, (int, float)):
+                    date = _datetime.fromtimestamp(last_modified).date()
+                else:
+                    date = last_modified.date()
+                result["last_modified"] = date.isoformat()
+            except (AttributeError, ValueError, OSError, OverflowError):
+                pass
+        return result
+    except Exception:
+        return None
+
+
+def _model_check_result(model_id: str) -> Dict[str, object]:
+    """Build the per-model JSON result used by --check-model and --list-models.
+
+    Availability is resolved from the HuggingFace cache only (no torch/demucs
+    import — see issue #265) and enriched with the resolved revision and
+    last-modified date when the model is installed.
+    """
+    pretrained_name = DEMUCS_PRETRAINED_NAME.get(model_id, model_id)
+    available = _model_weights_available(pretrained_name)
+    result: Dict[str, object] = {
+        "id": model_id,
+        "model_id": model_id,
+        "available": available,
+        "pretrained_name": pretrained_name,
+    }
+    if available:
+        detail = _model_detail(pretrained_name)
+        if detail:
+            result["revision"] = detail.get("revision")
+            result["last_modified"] = detail.get("last_modified")
+    return result
+
+
 # ------------------------------------------------------------------------------
 # JSON line output helper
 # ------------------------------------------------------------------------------
@@ -1024,12 +1107,8 @@ def main() -> None:
 
         pretrained_name = DEMUCS_PRETRAINED_NAME.get(args.check_model, args.check_model)
         try:
-            available = _model_weights_available(pretrained_name)
-            print(json.dumps({
-                "available": available,
-                "pretrained_name": pretrained_name,
-                "model_id": args.check_model,
-            }), flush=True)
+            result = _model_check_result(args.check_model)
+            print(json.dumps(result), flush=True)
             sys.exit(0)
         except Exception as e:
             print(json.dumps({
@@ -1054,11 +1133,7 @@ def main() -> None:
     # Handle --list-models (standalone list mode)
     if args.list_models:
         try:
-            results = []
-            for model_id in DEMUCS_PRETRAINED_NAME:
-                pretrained_name = DEMUCS_PRETRAINED_NAME[model_id]
-                available = _model_weights_available(pretrained_name)
-                results.append({"id": model_id, "available": available})
+            results = [_model_check_result(model_id) for model_id in DEMUCS_PRETRAINED_NAME]
             print(json.dumps(results), flush=True)
             sys.exit(0)
         except Exception as e:

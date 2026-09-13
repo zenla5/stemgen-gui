@@ -72,8 +72,9 @@ vi.mock('lucide-react', () => ({
 // ─── Mock ModelCard ────────────────────────────────────────────────────────────
 
 vi.mock('../ModelCard', () => ({
-  ModelCard: ({ model, isDownloaded, downloadError, onDownload, onDelete, onRetry }: {
+  ModelCard: ({ model, version, isDownloaded, downloadError, onDownload, onDelete, onRetry }: {
     model: { id: string; name: string };
+    version?: string;
     isDownloaded: boolean;
     downloadError: string | null;
     onDownload: (id: string) => void;
@@ -83,6 +84,7 @@ vi.mock('../ModelCard', () => ({
     <div data-testid={`model-card-${model.id}`}>
       <span>{model.name}</span>
       <span data-testid={`downloaded-${model.id}`}>{isDownloaded ? 'downloaded' : 'not-downloaded'}</span>
+      {version && <span data-testid={`version-${model.id}`}>{version}</span>}
       {downloadError && <span data-testid={`error-${model.id}`}>{downloadError}</span>}
       <button data-testid={`download-btn-${model.id}`} onClick={() => onDownload(model.id)}>Download</button>
       <button data-testid={`delete-btn-${model.id}`} onClick={() => onDelete(model.id)}>Delete</button>
@@ -125,8 +127,8 @@ describe('UnifiedModelSection', () => {
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
-        return false;
+      if (cmd === 'get_model_statuses') {
+        return [{ id: 'bs_roformer', available: false }];
       }
       return null;
     });
@@ -148,8 +150,11 @@ describe('UnifiedModelSection', () => {
           { id: 'htdemucs', name: 'HTDemucs', description: 'Good all-around', quality: 'high', speed: 'slow', gpuRequired: true },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
-        return false;
+      if (cmd === 'get_model_statuses') {
+        return [
+          { id: 'bs_roformer', available: false },
+          { id: 'htdemucs', available: false },
+        ];
       }
       return null;
     });
@@ -196,7 +201,7 @@ describe('UnifiedModelSection', () => {
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
+      if (cmd === 'get_model_statuses') {
         throw new Error('Python not available');
       }
       return null;
@@ -227,8 +232,8 @@ describe('UnifiedModelSection', () => {
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
-        return false;
+      if (cmd === 'get_model_statuses') {
+        return [{ id: 'bs_roformer', available: false }];
       }
       return null;
     });
@@ -261,8 +266,8 @@ describe('UnifiedModelSection', () => {
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
-        return false;
+      if (cmd === 'get_model_statuses') {
+        return [{ id: 'bs_roformer', available: false }];
       }
       if (cmd === 'download_model') {
         return null;
@@ -301,8 +306,8 @@ describe('UnifiedModelSection', () => {
           { id: 'bs_roformer', name: 'BS-RoFormer', description: 'High quality', quality: 'high', speed: 'medium', gpuRequired: true },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
-        return false;
+      if (cmd === 'get_model_statuses') {
+        return [{ id: 'bs_roformer', available: false }];
       }
       return null;
     });
@@ -339,8 +344,8 @@ describe('UnifiedModelSection', () => {
           { id: 'demucs', name: 'Demucs', description: 'CPU', quality: 'medium', speed: 'fast', gpuRequired: false },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
-        return false;
+      if (cmd === 'get_model_statuses') {
+        return [{ id: 'demucs', available: false }];
       }
       return null;
     });
@@ -374,8 +379,8 @@ describe('UnifiedModelSection', () => {
           { id: 'demucs', name: 'Demucs', description: 'CPU', quality: 'medium', speed: 'fast', gpuRequired: false },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
-        return false;
+      if (cmd === 'get_model_statuses') {
+        return [{ id: 'demucs', available: false }];
       }
       return null;
     });
@@ -410,8 +415,8 @@ describe('UnifiedModelSection', () => {
           { id: 'demucs', name: 'Demucs', description: 'CPU', quality: 'medium', speed: 'fast', gpuRequired: false },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
-        return false;
+      if (cmd === 'get_model_statuses') {
+        return [{ id: 'demucs', available: false }];
       }
       return null;
     });
@@ -441,8 +446,8 @@ describe('UnifiedModelSection', () => {
           { id: 'demucs', name: 'Demucs', description: 'CPU', quality: 'medium', speed: 'fast', gpuRequired: false },
         ];
       }
-      if (cmd === 'check_model_downloaded') {
-        return true;
+      if (cmd === 'get_model_statuses') {
+        return [{ id: 'demucs', available: true }];
       }
       if (cmd === 'delete_model') {
         return null;
@@ -463,5 +468,58 @@ describe('UnifiedModelSection', () => {
     });
     expect(mockRemoveDownloadedModel).toHaveBeenCalledWith('demucs');
     expect(mockRefreshDownloadedModels).toHaveBeenCalled();
+  });
+
+  // ── Test 13: Unified status call replaces per-row check_model_downloaded ──
+
+  it('uses get_model_statuses and never check_model_downloaded', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_models') {
+        return [
+          { id: 'demucs', name: 'Demucs', description: 'CPU', quality: 'medium', speed: 'fast', gpuRequired: false },
+        ];
+      }
+      if (cmd === 'get_model_statuses') {
+        return [{ id: 'demucs', available: true }];
+      }
+      return null;
+    });
+
+    render(<UnifiedModelSection />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-card-demucs')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(mockAddDownloadedModel).toHaveBeenCalledWith('demucs');
+    });
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('check_model_downloaded', expect.anything());
+    const statusCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === 'get_model_statuses');
+    expect(statusCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // ── Test 14: Installed version (revision + date) is passed to the card ──
+
+  it('passes the installed version line to the model card', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_models') {
+        return [
+          { id: 'htdemucs', name: 'HTDemucs', description: 'Good all-around', quality: 'high', speed: 'slow', gpuRequired: true },
+        ];
+      }
+      if (cmd === 'get_model_statuses') {
+        return [
+          { id: 'htdemucs', available: true, revision: 'cbc8a9b1', lastModified: '2026-09-02' },
+        ];
+      }
+      return null;
+    });
+
+    render(<UnifiedModelSection />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('version-htdemucs')).toHaveTextContent('rev cbc8a9b1 · 2026-09-02');
+    });
   });
 });

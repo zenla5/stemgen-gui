@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import { HardDrive, RefreshCw } from 'lucide-react';
 import { ModelCard, type ModelCardData } from './ModelCard';
 import { useAppStore, computeEnvironmentReadiness } from '@/stores/appStore';
-import { hasPackageStatusKey, type ModelCheckStatus } from '@/lib/types';
+import { hasPackageStatusKey, type ModelCheckStatus, type ModelStatus } from '@/lib/types';
+import { formatInstalledVersion } from '@/lib/modelStatus';
 
 interface DownloadProgress {
   model_id: string;
@@ -20,6 +21,7 @@ interface DownloadProgress {
 export function UnifiedModelSection() {
   const [models, setModels] = useState<ModelCardData[]>([]);
   const [modelStatuses, setModelStatuses] = useState<Record<string, ModelCheckStatus>>({});
+  const [versions, setVersions] = useState<Record<string, string>>({});
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
@@ -32,8 +34,12 @@ export function UnifiedModelSection() {
   const removeDownloadedModel = useAppStore(state => state.removeDownloadedModel);
   const refreshDownloadedModels = useAppStore(state => state.refreshDownloadedModels);
 
-  /** Run per-model availability checks in parallel. */
-  const checkModelsInParallel = useCallback(async (modelList: ModelCardData[]) => {
+  /**
+   * Resolve per-model availability + installed version from the backend's
+   * unified `get_model_statuses` command (HF cache + direct .onnx merged),
+   * so the panel always shows the same installed set as the footer indicator.
+   */
+  const loadModelStatuses = useCallback(async (modelList: ModelCardData[]) => {
     // Initialise all rows to 'checking' so the panel renders instantly with spinners
     const initialStatuses: Record<string, ModelCheckStatus> = {};
     for (const m of modelList) {
@@ -55,28 +61,32 @@ export function UnifiedModelSection() {
       }
     }
 
-    // Fire all checks concurrently — each row updates independently
-    const checkPromises = modelList.map(async (model) => {
-      try {
-        const downloaded = await invoke<boolean>('check_model_downloaded', { modelId: model.id });
-        if (!downloaded) {
-          setModelStatuses(prev => ({ ...prev, [model.id]: 'unavailable' }));
-          return;
+    try {
+      const statuses = await invoke<ModelStatus[]>('get_model_statuses');
+      const nextStatuses: Record<string, ModelCheckStatus> = {};
+      const nextVersions: Record<string, string> = {};
+      for (const status of statuses) {
+        if (!status.available) {
+          nextStatuses[status.id] = 'unavailable';
+          continue;
         }
-        // Model is downloaded — determine colour
-        if (model.gpu_required && !gpuPresent) {
-          setModelStatuses(prev => ({ ...prev, [model.id]: 'gpu-warning' }));
+        const model = modelList.find(m => m.id === status.id);
+        if (model?.gpu_required && !gpuPresent) {
+          nextStatuses[status.id] = 'gpu-warning';
         } else {
-          setModelStatuses(prev => ({ ...prev, [model.id]: 'available' }));
-          addDownloadedModel(model.id);
+          nextStatuses[status.id] = 'available';
+          addDownloadedModel(status.id);
         }
-      } catch {
-        // Sidecar error or timeout → mark as unavailable
-        setModelStatuses(prev => ({ ...prev, [model.id]: 'unavailable' }));
+        const version = formatInstalledVersion(status.revision, status.lastModified);
+        if (version) {
+          nextVersions[status.id] = version;
+        }
       }
-    });
-
-    await Promise.allSettled(checkPromises);
+      setModelStatuses(nextStatuses);
+      setVersions(nextVersions);
+    } catch (err) {
+      console.error('Failed to load model statuses:', err);
+    }
   }, [addDownloadedModel]);
 
   // Load models and check availability on mount
@@ -89,14 +99,13 @@ export function UnifiedModelSection() {
       setModels(availableModels);
       setLoading(false);
 
-      // Per-model async checks replace the old list_downloaded_models call
-      await checkModelsInParallel(availableModels);
+      await loadModelStatuses(availableModels);
     } catch (err) {
       console.error('Failed to load models:', err);
       setError(err instanceof Error ? err.message : String(err));
       setLoading(false);
     }
-  }, [checkModelsInParallel]);
+  }, [loadModelStatuses]);
 
   useEffect(() => {
     loadModels();
@@ -232,6 +241,7 @@ export function UnifiedModelSection() {
             downloadProgress={downloading === model.id ? downloadProgress : 0}
             downloadMessage={downloading === model.id ? downloadMessage : null}
             downloadError={downloadErrors[model.id] || null}
+            version={versions[model.id]}
             onDownload={downloadModel}
             onDelete={deleteModel}
             onRetry={retryDownload}

@@ -607,11 +607,11 @@ mod tests {
         // will still spawn; we just verify it exits normally.
         // Use an absolute path so the command is found even if a concurrently
         // running test temporarily overrides PATH.
-        let mut cmd = Command::new(if cfg!(windows) { "cmd" } else { "/bin/echo" });
+        let mut cmd = Command::new(if cfg!(windows) { "cmd" } else { "/bin/sh" });
         if cfg!(windows) {
             cmd.args(["/C", "echo", "hello"]);
         } else {
-            cmd.arg("hello");
+            cmd.args(["-c", "echo hello"]);
         }
         let output = cmd.no_window().output().expect("command failed to run");
         assert!(output.status.success());
