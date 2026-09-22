@@ -136,6 +136,11 @@ class TestLoadAllowlist:
         demucs = next(p for p in allowlist if p.name == "Demucs")
         assert "adefossez/HTDemucs" in demucs.hf_repos
 
+    def test_bs_roformer_maps_to_catalog_id(self):
+        allowlist = mpb.load_allowlist(mpb.DEFAULT_ALLOWLIST)
+        bs = next(p for p in allowlist if p.name == "BS-RoFormer")
+        assert bs.catalog_ids["anvuew/BS-RoFormer"] == "bs_roformer"
+
 
 class TestClassifyLicense:
     @pytest.mark.parametrize(
@@ -258,6 +263,27 @@ class TestKnownCatalog:
         assert "adefossez/htdemucs" in repos
 
 
+class TestNormName:
+    def test_hyphen_and_underscore_are_equivalent(self):
+        assert mpb._norm_name("BS-RoFormer") == mpb._norm_name("bs_roformer")
+        assert mpb._norm_name("HTDemucs-ft") == "htdemucs_ft"
+
+    def test_lowercases(self):
+        assert mpb._norm_name("Anvuew/BS-RoFormer") == "anvuew/bs_roformer"
+
+
+class TestAdoptedCatalog:
+    def test_extracts_adopted_repos_and_ids(self):
+        allowlist = [
+            AllowlistProject(name="BS-RoFormer", hf_repos=["anvuew/BS-RoFormer"],
+                             catalog_ids={"anvuew/BS-RoFormer": "bs_roformer"}),
+            AllowlistProject(name="Plain", hf_repos=["owner/x"]),
+        ]
+        repos, ids = mpb.adopted_catalog(allowlist)
+        assert repos == {"anvuew/bs-roformer"}
+        assert ids == {"bs_roformer"}
+
+
 class TestDedupe:
     def test_skips_known_model_id(self):
         candidates = {
@@ -267,6 +293,39 @@ class TestDedupe:
         ids, repos = mpb.known_catalog()
         result = mpb.dedupe(candidates, ids, repos, [])
         assert [c.repo_id for c in result] == ["owner/newmodel"]
+
+    def test_skips_catalog_architecture_despite_hyphen_name(self):
+        # Regression: BS-RoFormer (repo anvuew/BS-RoFormer) is already in the
+        # catalog as model id bs_roformer. The hyphen/underscore mismatch used
+        # to let it slip through and get re-proposed after each stale close.
+        candidates = {
+            "anvuew/BS-RoFormer": make_candidate("anvuew/BS-RoFormer"),
+        }
+        ids, repos = mpb.known_catalog()
+        result = mpb.dedupe(candidates, ids, repos, [])
+        assert result == []
+
+    def test_skips_explicitly_adopted_repo(self):
+        candidates = {
+            "anvuew/BS-RoFormer": make_candidate("anvuew/BS-RoFormer"),
+        }
+        ids, repos = mpb.known_catalog()
+        adopted, _ = mpb.adopted_catalog(mpb.load_allowlist(mpb.DEFAULT_ALLOWLIST))
+        result = mpb.dedupe(candidates, ids, repos, [], adopted_repos=adopted)
+        assert result == []
+
+    def test_open_issue_suppresses_hyphen_candidate(self):
+        candidates = {
+            "anvuew/BS-RoFormer": make_candidate("anvuew/BS-RoFormer"),
+        }
+        open_issues = [
+            {"number": 1,
+             "title": "[Model Proposal] BS-RoFormer (anvuew/BS-RoFormer)",
+             "body": "", "createdAt": "2026-09-01T00:00:00Z"}
+        ]
+        ids, repos = mpb.known_catalog()
+        result = mpb.dedupe(candidates, ids, repos, open_issues)
+        assert result == []
 
     def test_skips_known_hf_repo_case_insensitive(self):
         candidates = {

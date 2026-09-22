@@ -147,6 +147,10 @@ class AllowlistProject:
     name: str
     github: Optional[str] = None
     hf_repos: List[str] = field(default_factory=list)
+    # Maps an HF weight repo to the app-catalog model id it already backs
+    # (e.g. "anvuew/BS-RoFormer" -> "bs_roformer"). Such repos are treated as
+    # already adopted and are never proposed by the bot.
+    catalog_ids: Dict[str, str] = field(default_factory=dict)
     notes: Optional[str] = None
 
     @classmethod
@@ -155,6 +159,7 @@ class AllowlistProject:
             name=data["name"],
             github=data.get("github"),
             hf_repos=list(data.get("hf_repos", [])),
+            catalog_ids=dict(data.get("catalog_ids", {})),
             notes=data.get("notes"),
         )
 
@@ -385,13 +390,39 @@ def known_catalog() -> Tuple[set, set]:
     return set(KNOWN_MODEL_IDS), {r.lower() for r in KNOWN_HF_REPOS}
 
 
+def _norm_name(name: str) -> str:
+    """Normalize a model/repo name so hyphens and underscores are equivalent.
+
+    The app catalog uses snake_case model ids (e.g. `bs_roformer`) while HF
+    repo names use hyphens (e.g. `BS-RoFormer`). Treating them as equal stops
+    the bot from re-proposing a model whose architecture is already adopted.
+    """
+    return name.lower().replace("-", "_")
+
+
+def adopted_catalog(allowlist: List[AllowlistProject]) -> Tuple[set, set]:
+    """Repos already backed by a catalog model id, plus those catalog ids.
+
+    Returns (adopted_repos, extra_model_ids): repos that must never be proposed
+    (option C), and the normalized model ids they map to so any repo sharing the
+    same architecture is likewise skipped (option B).
+    """
+    adopted_repos: set = set()
+    extra_ids: set = set()
+    for project in allowlist:
+        for repo_id, model_id in (project.catalog_ids or {}).items():
+            adopted_repos.add(repo_id.lower())
+            extra_ids.add(_norm_name(model_id))
+    return adopted_repos, extra_ids
+
+
 def open_proposal_keys(open_issues: List[dict]) -> set:
     keys = set()
     for issue in open_issues:
         text = f"{issue.get('title', '')} {issue.get('body', '')}".lower()
         for part in re.split(r"[\s()\[\],;:/]+", text):
             if part:
-                keys.add(part)
+                keys.add(_norm_name(part))
     return keys
 
 
@@ -400,12 +431,17 @@ def dedupe(
     known_ids: set,
     known_repos: set,
     open_issues: List[dict],
+    adopted_repos: Optional[set] = None,
 ) -> List[Candidate]:
     open_keys = open_proposal_keys(open_issues)
+    known_id_keys = {_norm_name(i) for i in known_ids}
+    adopted_repos = adopted_repos or set()
     results: List[Candidate] = []
     for repo_id, candidate in candidates.items():
-        name = repo_id.split("/")[-1].lower()
-        if name in known_ids or repo_id.lower() in known_repos:
+        name = _norm_name(repo_id.split("/")[-1])
+        if name in known_id_keys or repo_id.lower() in known_repos:
+            continue
+        if repo_id.lower() in adopted_repos:
             continue
         if repo_id.lower() in open_keys or name in open_keys:
             continue
@@ -558,8 +594,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             gated.append((candidate, reasons))
 
     known_ids, known_repos = known_catalog()
+    adopted_repos, extra_ids = adopted_catalog(allowlist)
+    known_ids = known_ids | extra_ids
     open_issues = gh.list_open_issues(args.repo, args.label)
-    proposals = dedupe(passed, known_ids, known_repos, open_issues)
+    proposals = dedupe(passed, known_ids, known_repos, open_issues, adopted_repos)
 
     print(f"[model-bot] repo={args.repo} candidates={len(candidates)} "
           f"proposals={len(proposals)} gated_out={len(gated)}")
