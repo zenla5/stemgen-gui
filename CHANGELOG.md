@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **[MODEL-PROPOSAL-BOT]** The weekly proposal bot kept re-filing `[Model Proposal] BS-RoFormer (anvuew/BS-RoFormer)` after each stale auto-close, even though the `bs_roformer` architecture is already in the app catalog. The dedupe compared the candidate's HF repo name (`BS-RoFormer`, hyphen) against the catalog model id (`bs_roformer`, underscore), so the "already adopted" check never matched. Model/repo names are now compared with hyphens and underscores treated as equivalent, and the allowlist maps each weight repo to the catalog model id it backs (`catalog_ids`, e.g. `anvuew/BS-RoFormer` → `bs_roformer`) so already-supported models are never proposed again (Refs #266).
+
 ## [1.5.9] — Sep 13 2026 — Version Bump
 
 ### Changed

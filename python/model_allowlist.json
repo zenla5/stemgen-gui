@@ -10,6 +10,11 @@
         "adefossez/HTDemucs-ft",
         "adefossez/HTDemucs-6s"
       ],
+      "catalog_ids": {
+        "adefossez/HTDemucs": "htdemucs",
+        "adefossez/HTDemucs-ft": "htdemucs_ft",
+        "adefossez/HTDemucs-6s": "htdemucs"
+      },
       "notes": "Meta hybrid-transformer separation model; official 4/6-stem weights. Already in the Stemgen catalog (htdemucs family)."
     },
     {
@@ -18,6 +23,9 @@
       "hf_repos": [
         "anvuew/BS-RoFormer"
       ],
+      "catalog_ids": {
+        "anvuew/BS-RoFormer": "bs_roformer"
+      },
       "notes": "KitsAI band-split RoFormer architecture; community-hosted 4-stem weights. Architecture already supported (bs_roformer)."
     },
     {
