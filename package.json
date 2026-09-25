@@ -82,7 +82,7 @@
     "@typescript-eslint/eslint-plugin": "^8.70.0",
     "@typescript-eslint/parser": "^8.70.1",
     "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.1",
     "@wdio/cli": "^9.31.9",
     "@wdio/local-runner": "^9.31.7",
     "@wdio/mocha-framework": "^9.31.7",
