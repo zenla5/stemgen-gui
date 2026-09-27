@@ -128,7 +128,7 @@ core job ids: frontend, integration, backend, e2e, e2e-binary, security, python,
 2. **Integration** (Ubuntu) — Component integration tests
 3. **E2E** (Ubuntu) — Playwright/Chromium smoke tests
 4. **Backend** (×3: Ubuntu, Windows, macOS) — Rust clippy, fmt, build, `cargo test --lib` / `--tests`
-5. **MSRV** (Ubuntu) — `cargo check --workspace` on the declared Rust 1.89.0
+5. **MSRV** (Ubuntu) — `cargo check --workspace` on the declared Rust 1.90.0
 6. **E2E Binary** (×2: Ubuntu, Windows) — drives the compiled Tauri binary (WebdriverIO / CDP); runs in parallel with `backend` (builds its own binary)
 7. **Python** (Ubuntu) — sidecar unit tests with coverage
 8. **Security** (Ubuntu) — `npm audit`, `cargo audit`

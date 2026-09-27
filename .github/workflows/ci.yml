@@ -229,7 +229,7 @@ jobs:
   # MSRV check — verifies the crate still builds on the declared rust-version
   # so dependency upgrades cannot silently raise the MSRV.
   msrv:
-    name: MSRV (1.89.0)
+    name: MSRV (1.90.0)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
@@ -239,7 +239,7 @@ jobs:
       - name: Setup Rust backend (frontend + sidecar + system deps + toolchain)
         uses: ./.github/actions/setup-rust-backend
         with:
-          rust-toolchain: 1.89.0
+          rust-toolchain: 1.90.0
 
       - name: Check MSRV build
         run: cd src-tauri && cargo check --workspace
