@@ -98,7 +98,7 @@ jobs:
         run: cd python && pytest tests/ -m "not integration" --tb=short -v --cov=stemgen_sidecar --cov-report=term-missing --cov-fail-under=40
 
       - name: Upload pytest output
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: python-test-results
@@ -129,7 +129,7 @@ jobs:
         run: npm run test:integration
 
       - name: Upload test results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: integration-test-results
@@ -165,7 +165,7 @@ jobs:
           CI: true
 
       - name: Upload test results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: playwright-results
@@ -391,7 +391,7 @@ jobs:
           CI: 'true'
 
       - name: Upload binary test results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: binary-e2e-results-${{ matrix.os }}

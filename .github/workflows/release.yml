@@ -135,7 +135,7 @@ jobs:
             exit 1
           }
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-installer
           path: |
@@ -234,7 +234,7 @@ jobs:
             exit 1
           fi
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-arm-artifacts
           path: |
@@ -328,7 +328,7 @@ jobs:
           echo "=== Package files ==="
           find "$GITHUB_WORKSPACE/target/release" -type f \( -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" \) -exec ls -lh {} \; 2>/dev/null || echo "No package files found"
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-packages
           path: |
@@ -413,7 +413,7 @@ jobs:
           echo "=== Staged files ==="
           ls -lhR nixos-dist
       - name: Upload NixOS artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nixos-package
           path: |
@@ -492,7 +492,7 @@ jobs:
             exit 1
           fi
       - name: Upload SHA256 checksums
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sha256-checksums
           path: artifacts/SHA256SUMS.txt
@@ -530,7 +530,7 @@ jobs:
             echo "WARNING: TAURI_PRIVATE_KEY or TAURI_SIGNING_PASSWORD not set — manifests unsigned."
           fi
       - name: Upload update manifests
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: update-manifests
           path: artifacts/latest.json
