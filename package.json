@@ -93,7 +93,7 @@
     "eslint-plugin-react-refresh": "^0.5.5",
     "globals": "^17.12.0",
     "happy-dom": "^20.14.5",
-    "postcss": "^8.5.28",
+    "postcss": "^8.5.30",
     "prettier": "^3.9.9",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "selenium-webdriver": "^4.49.0",
