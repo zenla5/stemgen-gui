@@ -9,6 +9,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.10] — Oct 21 2026 — Version Bump
+
+### Changed
+
+- **Version consistency** — All version strings bumped to 1.5.10: `package.json`, `Cargo.toml` (workspace), `src-tauri/Cargo.toml`, `src/lib/constants.ts` (`APP_VERSION`), and `src-tauri/tauri.conf.json`.
+
 ### Fixed
 
 - **[MODEL-PROPOSAL-BOT]** The weekly proposal bot kept re-filing `[Model Proposal] BS-RoFormer (anvuew/BS-RoFormer)` after each stale auto-close, even though the `bs_roformer` architecture is already in the app catalog. The dedupe compared the candidate's HF repo name (`BS-RoFormer`, hyphen) against the catalog model id (`bs_roformer`, underscore), so the "already adopted" check never matched. Model/repo names are now compared with hyphens and underscores treated as equivalent, and the allowlist maps each weight repo to the catalog model id it backs (`catalog_ids`, e.g. `anvuew/BS-RoFormer` → `bs_roformer`) so already-supported models are never proposed again (Refs #266).
