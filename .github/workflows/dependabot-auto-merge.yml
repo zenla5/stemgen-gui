@@ -6,7 +6,6 @@ name: Dependabot Auto-Merge
 # We intentionally do NOT use GitHub's native auto-merge (`gh pr merge --auto`):
 # it requires the repo-level "Allow auto merge" setting to be enabled, and this
 # repo keeps it disabled. Instead we poll the check run and merge directly.
-# GitHub then merges the PR as soon as its required check is green.
 #
 # We trigger on `pull_request_target` (not `pull_request`) because a
 # Dependabot PR's `pull_request` run gets a read-only GITHUB_TOKEN. Under
@@ -17,6 +16,19 @@ name: Dependabot Auto-Merge
 # only reads PR metadata via the GitHub API (dependabot/fetch-metadata, which
 # inspects the diff) and calls `gh pr merge`. That is the safe, well-understood
 # pattern for acting on outsider PRs.
+#
+# Resilience (2026-10): the original poller judged by "count of All Checks
+# Passed runs" and treated ANY completed non-success run (including stale
+# superseded `cancelled`/`timed_out` runs) as permanently fatal, then exited
+# with no way to be re-evaluated. That stranded PRs whenever (a) CI queued so
+# a 30/45-min job timed out, or (b) GitHub's check conclusion propagated a
+# couple of minutes after the workflow finalized. Current design:
+#   * Judge by the LATEST "All Checks Passed" run only, never the count.
+#   * A completed green run merges; a genuinely red gate re-runs the CI run
+#     once (shakes out queuing timeouts/flakes) before being tagged for humans.
+#   * `workflows: write` lets the poller merge PRs that touch workflow files
+#     (all `github-actions` ecosystem bumps) — GitHub refuses those otherwise.
+#   * The merge is verified + retried to bridge any check-conclusion lag.
 
 on:
   pull_request_target:
@@ -25,9 +37,8 @@ on:
 # Only one poller runs per PR at a time. Without this, every pull_request_target
 # event (opened/synchronize/reopened/labeled/...) spawns a parallel wait loop, and
 # together they exhaust the GitHub app installation's 5000 calls/hour API rate
-# limit (HTTP 403) long before the ~1h CI gate finishes, so dependabot PRs never
-# get merged. Cancelling stale runs keeps the API call count per PR to just one
-# poller's worth.
+# limit (HTTP 403) long before the ~1h CI gate finishes. Cancelling stale runs
+# keeps the API call count per PR to just one poller's worth.
 concurrency:
   group: dependabot-auto-merge-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -39,13 +50,19 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  # `actions: write` lets the poller re-run a timed-out/failed CI gate (self-heal).
+  actions: write
+  # `workflows: write` is required by GitHub to merge PRs that modify
+  # .github/workflows/ (every `github-actions` Dependabot bump).
+  workflows: write
 
 jobs:
   auto-merge:
     name: Auto-merge Dependabot PR when green
     runs-on: ubuntu-latest
-    # The full CI gate takes ~1h, so allow a generous window for the poll loop.
-    timeout-minutes: 120
+    # Gate can exceed 2h under runner pressure, plus a CI re-run attempt and a
+    # merge-retry grace period.
+    timeout-minutes: 300
 
     if: github.actor == 'dependabot[bot]'
 
@@ -56,7 +73,7 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Wait for "All Checks Passed" and merge
+      - name: Wait for "All Checks Passed", self-heal, and merge
         run: |
           set -u
           echo "Auto-merging dependabot PR #${PR_NUMBER}"
@@ -64,49 +81,121 @@ jobs:
           echo "  update-type: ${{ steps.metadata.outputs.update-type }}"
           echo "  head: ${HEAD_SHA}"
 
-            counter=0
-            # The PR head may carry multiple "All Checks Passed" runs (e.g. the
-            # non-gating `push`-event run is always "skipped" on this repo). Match
-            # on the CONCLUSION, not array order, so the noise run is ignored and
-            # only the gating PR run decides.
-            success_jq='[.check_runs[] | select(.name == "All Checks Passed" and .conclusion == "success")] | length'
-            failed_jq='[.check_runs[] | select(.name == "All Checks Passed" and .status == "completed" and (.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required"))] | length'
+          RERUN_ORIG_ATTEMPT=""
+          blocked=0
+          merge_err="$(mktemp)"
 
-            # Poll less eagerly to stay well under the API rate limit: ~1 call
-            # every 60s for up to 90 minutes still covers the ~1h CI gate while
-            # costing only ~90 requests per PR (vs ~480 before).
-            while :; do
-              success="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" --jq "$success_jq")"
-              echo "  All Checks Passed success runs: ${success}"
-              if (( success > 0 )); then
+          # Grab the LATEST "All Checks Passed" run on the head commit and put
+          # its status/conclusion/run-id into global vars. We look at the newest
+          # run only (max id): stale superseded runs that were cancelled or timed
+          # out must never sink a PR whose fresh CI is green.
+          fetch_latest() {
+            local s
+            s="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
+              --jq '[.check_runs[] | select(.name == "All Checks Passed")] | sort_by(.id) | last' 2>/dev/null)" || s='{}'
+            LCM_STATUS="$(jq -r '.status // "missing"' <<<"$s")"
+            LCM_CONCLUSION="$(jq -r '.conclusion // "missing"' <<<"$s")"
+            LCM_RUN_ID="$(jq -r '.details_url' <<<"$s" | sed -n 's#.*/actions/runs/\([0-9]*\)/.*#\1#p')"
+          }
+
+          run_attempt() {
+            gh run view "$1" --repo "$GITHUB_REPOSITORY" --json attempt --jq '.attempt' 2>/dev/null || echo ""
+          }
+
+          # Merge, verifying the PR is still open first. Retries for a few
+          # minutes to bridge the gap between "check shows green" and GitHub
+          # accepting the merge. If GITHUB_TOKEN lacks the `workflows` write
+          # needed to merge a workflow-touching PR, falls back to the repo PAT
+          # (a human token) when one is configured.
+          merge_or_retry() {
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              state="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq '.state')"
+              if [[ "$state" == "MERGED" ]]; then
+                echo "PR #${PR_NUMBER} already merged — nothing to do."
+                exit 0
+              fi
+
+              if GH_TOKEN="$GITHUB_TOKEN" gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge 2>"$merge_err"; then
+                echo "Merged PR #${PR_NUMBER}."
+                return 0
+              fi
+
+              if grep -q "without \`workflows\` permission" "$merge_err" && [[ -n "$MERGE_PAT" ]]; then
+                echo "  GITHUB_TOKEN cannot merge a workflow-touching PR; retrying with MERGE_PAT."
+                if GH_TOKEN="$MERGE_PAT" gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge 2>"$merge_err"; then
+                  echo "Merged PR #${PR_NUMBER} via MERGE_PAT."
+                  return 0
+                fi
+              fi
+
+              echo "  merge attempt ${attempt} failed (likely check-conclusion lag): $(tr '\n' ' ' <"$merge_err")"
+              sleep 20
+            done
+            echo "Could not merge PR #${PR_NUMBER} after retries — leaving for human review."
+            return 1
+          }
+
+          counter=0
+          while :; do
+            fetch_latest
+            echo "  All Checks Passed: status=${LCM_STATUS} conclusion=${LCM_CONCLUSION} run=${LCM_RUN_ID}"
+
+            if [[ "$LCM_CONCLUSION" == "success" ]]; then
+              echo "  All Checks Passed is green — merging."
+              if merge_or_retry; then
+                exit 0
+              fi
+              blocked=1
+              break
+            fi
+
+            if [[ "$LCM_STATUS" == "completed" ]]; then
+              # The gate reached a definitive conclusion that is not green.
+              if [[ -n "$LCM_RUN_ID" ]]; then
+                if [[ -z "$RERUN_ORIG_ATTEMPT" ]]; then
+                  echo "  Gate finished ${LCM_CONCLUSION}; re-running CI run ${LCM_RUN_ID} once to shake out queuing timeouts/flakes."
+                  if gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$LCM_RUN_ID/rerun" >/dev/null 2>&1; then
+                    RERUN_ORIG_ATTEMPT="$(run_attempt "$LCM_RUN_ID")"
+                    echo "  Re-run requested for run ${LCM_RUN_ID} (attempt ${RERUN_ORIG_ATTEMPT}) — waiting for the fresh gate."
+                    sleep 60
+                    continue
+                  fi
+                  echo "  Could not re-request CI run ${LCM_RUN_ID} — treating the gate as final."
+                else
+                  # A re-run was already requested. Only give up if the re-run
+                  # actually advanced to a fresh attempt AND that attempt also
+                  # finished non-green; otherwise we're still waiting on it.
+                  local_attempt="$(run_attempt "$LCM_RUN_ID")"
+                  if [[ -n "$local_attempt" ]] && [[ "$local_attempt" -gt "${RERUN_ORIG_ATTEMPT}" ]]; then
+                    echo "All Checks Passed finished ${LCM_CONCLUSION} again after a CI re-run — not merging PR #${PR_NUMBER}."
+                    blocked=1
+                    break
+                  fi
+                fi
+              else
+                blocked=1
                 break
               fi
+            fi
 
-              failed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" --jq "$failed_jq")"
-              echo "  All Checks Passed failed runs: ${failed}"
-              if (( failed > 0 )); then
-                echo "All Checks Passed finished with a failure — not merging PR #${PR_NUMBER}."
-                exit 1
-              fi
+            counter=$((counter + 1))
+            if (( counter >= 240 )); then
+              echo "Timed out waiting for All Checks Passed on PR #${PR_NUMBER}."
+              blocked=1
+              break
+            fi
+            sleep 60
+          done
 
-              counter=$((counter + 1))
-              if (( counter >= 90 )); then
-                echo "Timed out waiting for All Checks Passed on PR #${PR_NUMBER}"
-                exit 1
-              fi
-              sleep 60
-            done
-
-          # Re-check the PR is still open (a rebase or external merge may have
-          # happened while we polled).
-          state="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq '.state')"
-          if [[ "$state" == "MERGED" ]]; then
-            echo "PR #${PR_NUMBER} already merged — nothing to do."
-            exit 0
+          if (( blocked )); then
+            echo "Tagging PR #${PR_NUMBER} for human review."
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+              "Auto-merge could not proceed (gate finished non-green after a CI re-run, or repeated merge failure). Please review." >/dev/null 2>&1 || true
           fi
-
-          gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --merge
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Human PAT used only as a merge fallback for workflow-touching PRs.
+          # Empty when the secret is not configured.
+          MERGE_PAT: ${{ secrets.BRANCH_PROTECTION_PAT }}

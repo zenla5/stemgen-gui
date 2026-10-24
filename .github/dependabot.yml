@@ -25,6 +25,20 @@ updates:
       # 7.x major from dependabot until that lands.
       - dependency-name: "typescript"
         versions: ["7.x"]
+    groups:
+      # react and react-dom must always move together (React hard-requires
+      # identical versions and crashes every render-based suite otherwise, e.g.
+      # PR #336 bumped react alone). Group the pair (+ their types) into a
+      # single PR for minor/patch updates.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Python sidecar dependencies
   - package-ecosystem: pip
