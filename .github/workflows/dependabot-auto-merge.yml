@@ -26,13 +26,26 @@ name: Dependabot Auto-Merge
 #   * Judge by the LATEST "All Checks Passed" run only, never the count.
 #   * A completed green run merges; a genuinely red gate re-runs the CI run
 #     once (shakes out queuing timeouts/flakes) before being tagged for humans.
-#   * `workflows: write` lets the poller merge PRs that touch workflow files
-#     (all `github-actions` ecosystem bumps) — GitHub refuses those otherwise.
+#   * PRs that touch .github/workflows (every `github-actions` bump) can only be
+#     merged by a token with the App-level `workflows` permission, which the
+#     GITHUB_TOKEN cannot carry. On the "without \`workflows\` permission" error
+#     the merge falls back to the BRANCH_PROTECTION_PAT user token (if set).
 #   * The merge is verified + retried to bridge any check-conclusion lag.
+#
+# Manual rescue: `workflow_dispatch` with a PR number re-runs the whole poll
+# for an existing PR. Use it when a Dependabot PR was stranded before a
+# workflow fix landed (pull_request_target only fires for dependabot PRs on
+# `opened`/`synchronize`, so existing PRs otherwise never get re-evaluated).
 
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Dependabot PR number to re-evaluate and auto-merge.
+        type: number
+        required: true
 
 # Only one poller runs per PR at a time. Without this, every pull_request_target
 # event (opened/synchronize/reopened/labeled/...) spawns a parallel wait loop, and
@@ -52,9 +65,6 @@ permissions:
   pull-requests: write
   # `actions: write` lets the poller re-run a timed-out/failed CI gate (self-heal).
   actions: write
-  # `workflows: write` is required by GitHub to merge PRs that modify
-  # .github/workflows/ (every `github-actions` Dependabot bump).
-  workflows: write
 
 jobs:
   auto-merge:
@@ -64,18 +74,27 @@ jobs:
     # merge-retry grace period.
     timeout-minutes: 300
 
-    if: github.actor == 'dependabot[bot]'
+    if: github.event_name == 'workflow_dispatch' || github.actor == 'dependabot[bot]'
 
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v2-v3 line, keep updated
+        if: github.event_name != 'workflow_dispatch'
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Wait for "All Checks Passed", self-heal, and merge
         run: |
           set -u
+          PR_NUMBER="${PR_NUMBER:-}"
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "No pull request number supplied. Trigger this workflow via"
+            echo "'workflow_dispatch' with a PR number, or on a Dependabot PR."
+            exit 1
+          fi
+
+          HEAD_SHA="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
           echo "Auto-merging dependabot PR #${PR_NUMBER}"
           echo "  dependency: ${{ steps.metadata.outputs.dependency-names }}"
           echo "  update-type: ${{ steps.metadata.outputs.update-type }}"
@@ -193,8 +212,7 @@ jobs:
               "Auto-merge could not proceed (gate finished non-green after a CI re-run, or repeated merge failure). Please review." >/dev/null 2>&1 || true
           fi
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ inputs.pull_request_number || github.event.pull_request.number || '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Human PAT used only as a merge fallback for workflow-touching PRs.
           # Empty when the secret is not configured.
