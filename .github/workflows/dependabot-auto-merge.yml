@@ -53,7 +53,7 @@ on:
 # limit (HTTP 403) long before the ~1h CI gate finishes. Cancelling stale runs
 # keeps the API call count per PR to just one poller's worth.
 concurrency:
-  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  group: dependabot-auto-merge-${{ github.event.pull_request.number || github.event.inputs.pull_request_number }}
   cancel-in-progress: true
 
 # SHA-pinned actions should be updated periodically (e.g., quarterly or via
