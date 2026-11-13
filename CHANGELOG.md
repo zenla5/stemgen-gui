@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Internal
+
+- **[CI]** The GitHub `ubuntu-latest` runner migrated to Ubuntu 26.04, which removed the `libgdk-pixbuf2.0-dev` and `webkit2gtk-driver` transitional packages. The apt install lists now use their replacements (`libgdk-pixbuf-2.0-dev`, `webkitgtk-webdriver`), and the apt retry loops fail loudly after 3 attempts instead of silently swallowing the error and surfacing later as confusing `gobject-2.0 not found` build failures. The Linux binary E2E `separation.spec.ts` environment probe is now bounded by a 15s timeout (a hang is a valid outcome) so the gate is not blocked by a known `validate_environment` hang on CI.
+
 ## [1.5.10] — Oct 21 2026 — Version Bump
 
 ### Changed
