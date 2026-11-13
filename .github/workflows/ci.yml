@@ -315,17 +315,33 @@ jobs:
           sudo pkill -9 apt-get 2>/dev/null || true
           sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/cache/apt/archives/lock
           sudo dpkg --configure -a || true
-          for i in 1 2 3; do sudo apt-get update -y && break; sleep 10; done
+          update_ok=""
           for i in 1 2 3; do
-            sudo apt-get install -y \
+            if sudo apt-get update -y; then update_ok=1; break; fi
+            sleep 10
+          done
+          if [[ -z "$update_ok" ]]; then
+            echo "::error::apt-get update failed after 3 attempts"
+            exit 1
+          fi
+          install_ok=""
+          for i in 1 2 3; do
+            if sudo apt-get install -y \
               libssl-dev \
               pkg-config \
               libgtk-3-dev \
               libwebkit2gtk-4.1-dev \
               libayatana-appindicator3-dev \
-              webkit2gtk-driver && break
+              webkitgtk-webdriver; then
+              install_ok=1
+              break
+            fi
             sleep 10
           done
+          if [[ -z "$install_ok" ]]; then
+            echo "::error::apt-get install failed after 3 attempts"
+            exit 1
+          fi
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
