@@ -6,8 +6,8 @@
  * These tests require the full Python/demucs environment to be installed.
  * They are marked as slow and will be skipped if dependencies are not available.
  *
- * NOTE: Uses browser.executeAsync() because Tauri invoke calls return promises
- * and browser.execute() cannot return promise values.
+ * NOTE: Uses browser.execute() with an async function because Tauri invoke
+ * calls return promises (WebdriverIO v10 awaits async execute scripts).
  */
 
 import { readBinaryState } from '../helpers';
@@ -67,24 +67,21 @@ describe('Separation', () => {
     // docs/BINARY_E2E_FIX_LOG.md). The timer payload deliberately avoids an
     // "error" key and the whole call is wrapped in try/catch: tauri-driver's
     // async-script handling has rejected values containing an "error" field.
-    let outcome: { success?: boolean; isReady?: boolean; error?: string; timedOut?: boolean };
+    let outcome: { success?: boolean; isReady?: boolean; invokeError?: string; timedOut?: boolean };
     try {
-      outcome = await browser.executeAsync(
-        (done: (result: { success?: boolean; isReady?: boolean; error?: string; timedOut?: boolean }) => void) => {
+      outcome = await browser.execute(
+        async (): Promise<{ success?: boolean; isReady?: boolean; invokeError?: string; timedOut?: boolean }> => {
           try {
-            const timer = setTimeout(() => done({ timedOut: true }), 15000);
+            const timeout = new Promise<{ timedOut: true }>((resolve) =>
+              setTimeout(() => resolve({ timedOut: true }), 15000)
+            );
             // @ts-ignore
-            (window as any).__TAURI_INTERNALS__?.invoke('validate_environment')
-              .then((env: { isReady?: boolean }) => {
-                clearTimeout(timer);
-                done({ success: true, isReady: env?.isReady });
-              })
-              .catch((err: Error) => {
-                clearTimeout(timer);
-                done({ error: String(err) });
-              });
+            const probe = (window as any).__TAURI_INTERNALS__?.invoke('validate_environment')
+              .then((env: { isReady?: boolean }) => ({ success: true, isReady: env?.isReady }))
+              .catch((err: Error) => ({ invokeError: String(err) }));
+            return Promise.race([probe, timeout]);
           } catch (err) {
-            done({ error: String(err) });
+            return { invokeError: String(err) };
           }
         }
       );
@@ -97,7 +94,7 @@ describe('Separation', () => {
       if ('success' in outcome!) {
         expect(typeof outcome.isReady).toBe('boolean');
       } else {
-        expect(outcome).toHaveProperty('error');
+        expect(outcome).toHaveProperty('invokeError');
       }
     }
     await takeScreenshot('linux-sep-env-check');

@@ -5,7 +5,7 @@
  * including corrupt files and invalid invocations.
  *
  * NOTE: On Linux/tauri-driver, Tauri invoke errors propagate as WebDriver-level
- * errors that cannot be caught inside browser.executeAsync(). We wrap calls in
+ * errors that cannot be caught inside browser.execute(). We wrap calls in
  * try/catch at the test level instead.
  */
 
@@ -39,14 +39,12 @@ describe('Error Handling', () => {
     // at the protocol level. We catch it at the test level to verify the app survives.
     let threwError = false;
     try {
-      await browser.executeAsync((done: (result: { success?: boolean; error?: string }) => void) => {
+      await browser.execute(async () => {
         try {
           // @ts-ignore - accessing Tauri internals
-          (window as any).__TAURI_INTERNALS__?.invoke('nonexistent_command')
-            .then(() => done({ success: true }))
-            .catch((err: Error) => done({ error: String(err) }));
+          await (window as any).__TAURI_INTERNALS__?.invoke('nonexistent_command');
         } catch (err) {
-          done({ error: String(err) });
+          return { invokeError: String(err) };
         }
       });
     } catch (e) {
@@ -72,24 +70,20 @@ describe('Error Handling', () => {
     // The corrupt.wav fixture may have a valid WAV header (just 100 bytes).
     // The get_audio_info command may succeed if the header is parseable.
     // We verify the app doesn't crash regardless of the outcome.
-    let result: { success?: boolean; info?: unknown; error?: string } | null = null;
+    let result: { success?: boolean; info?: unknown; invokeError?: string } | null = null;
     try {
-      result = await browser.executeAsync(
-        (filePath: string, done: (result: { success?: boolean; info?: unknown; error?: string }) => void) => {
-          try {
-            // @ts-ignore - accessing Tauri internals
-            (window as any).__TAURI_INTERNALS__?.invoke('get_audio_info', { path: filePath })
-              .then((info: unknown) => done({ success: true, info }))
-              .catch((err: Error) => done({ error: String(err) }));
-          } catch (err) {
-            done({ error: String(err) });
-          }
+      result = await browser.execute(
+        async (filePath: string) => {
+          // @ts-ignore - accessing Tauri internals
+          return (window as any).__TAURI_INTERNALS__?.invoke('get_audio_info', { path: filePath })
+            .then((info: unknown) => ({ success: true, info }))
+            .catch((err: Error) => ({ invokeError: String(err) }));
         },
         corruptPath
       );
     } catch (e) {
       // WebDriver-level error — still acceptable
-      result = { error: String(e) };
+      result = { invokeError: String(e) };
     }
 
     // App should still be functional regardless of the result
@@ -105,17 +99,14 @@ describe('Error Handling', () => {
 
     // On Linux, this throws a WebDriver error "File not found"
     let gotError = false;
+    let result: { success?: boolean; info?: unknown; invokeError?: string } | undefined;
     try {
-      await browser.executeAsync(
-        (filePath: string, done: (result: { success?: boolean; info?: unknown; error?: string }) => void) => {
-          try {
-            // @ts-ignore - accessing Tauri internals
-            (window as any).__TAURI_INTERNALS__?.invoke('get_audio_info', { path: filePath })
-              .then((info: unknown) => done({ success: true, info }))
-              .catch((err: Error) => done({ error: String(err) }));
-          } catch (err) {
-            done({ error: String(err) });
-          }
+      result = await browser.execute(
+        async (filePath: string) => {
+          // @ts-ignore - accessing Tauri internals
+          return (window as any).__TAURI_INTERNALS__?.invoke('get_audio_info', { path: filePath })
+            .then((info: unknown) => ({ success: true, info }))
+            .catch((err: Error) => ({ invokeError: String(err) }));
         },
         nonExistentPath
       );
@@ -124,7 +115,7 @@ describe('Error Handling', () => {
       // Expected: WebDriver error "File not found"
     }
 
-    expect(gotError).toBe(true);
+    expect(gotError || Boolean(result?.invokeError)).toBe(true);
 
     // App should still be functional
     expect(await $('[data-testid="nav-files"]').isDisplayed()).toBe(true);
@@ -137,14 +128,12 @@ describe('Error Handling', () => {
 
     // Trigger an error (catch it at the test level)
     try {
-      await browser.executeAsync((done: () => void) => {
+      await browser.execute(async () => {
         try {
           // @ts-ignore
-          (window as any).__TAURI_INTERNALS__?.invoke('nonexistent_command')
-            .catch(() => { /* expected */ })
-            .finally(() => done());
+          await (window as any).__TAURI_INTERNALS__?.invoke('nonexistent_command');
         } catch {
-          done();
+          /* expected */
         }
       });
     } catch {

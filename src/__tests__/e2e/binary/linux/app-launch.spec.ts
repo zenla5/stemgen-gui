@@ -93,11 +93,11 @@ describe('App Launch', () => {
     // Wait for startup sidecar deployment to complete
     await browser.pause(3000);
 
-    const result = await browser.executeAsync((done: (result: unknown) => void) => {
+    const result = await browser.execute(async () => {
       // @ts-ignore
-      (window as any).__TAURI_INTERNALS__?.invoke('get_sidecar_status')
-        .then((status: unknown) => done({ sidecarScriptFound: (status as Record<string, unknown>)?.sidecarScriptFound }))
-        .catch((err: unknown) => done({ error: String(err) }));
+      return (window as any).__TAURI_INTERNALS__?.invoke('get_sidecar_status')
+        .then((status: unknown) => ({ sidecarScriptFound: (status as Record<string, unknown>)?.sidecarScriptFound }))
+        .catch((err: unknown) => ({ invokeError: String(err) }));
     });
 
     expect((result as { sidecarScriptFound?: boolean }).sidecarScriptFound).toBe(true);
