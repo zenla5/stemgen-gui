@@ -64,31 +64,41 @@ describe('Separation', () => {
     // Verify environment validation can be invoked. validate_environment hangs
     // on CI when the Python/demucs sidecar is not fully installed, so bound the
     // call with a 15s timeout and treat a timeout as a valid outcome (per
-    // docs/BINARY_E2E_FIX_LOG.md).
-    const result = await browser.executeAsync(
-      (done: (result: { success?: boolean; isReady?: boolean; error?: string }) => void) => {
-        try {
-          const timeout = new Promise<{ error: string }>((resolve) =>
-            setTimeout(() => resolve({ error: 'Timed out waiting for validate_environment' }), 15000)
-          );
-          // @ts-ignore
-          const probe = (window as any).__TAURI_INTERNALS__?.invoke('validate_environment')
-            .then((env: { isReady?: boolean }) => ({ success: true, isReady: env?.isReady }))
-            .catch((err: Error) => ({ error: String(err) }));
-          Promise.race([probe, timeout])
-            .then((value) => done(value))
-            .catch((err: Error) => done({ error: String(err) }));
-        } catch (err) {
-          done({ error: String(err) });
+    // docs/BINARY_E2E_FIX_LOG.md). The timer payload deliberately avoids an
+    // "error" key and the whole call is wrapped in try/catch: tauri-driver's
+    // async-script handling has rejected values containing an "error" field.
+    let outcome: { success?: boolean; isReady?: boolean; error?: string; timedOut?: boolean };
+    try {
+      outcome = await browser.executeAsync(
+        (done: (result: { success?: boolean; isReady?: boolean; error?: string; timedOut?: boolean }) => void) => {
+          try {
+            const timer = setTimeout(() => done({ timedOut: true }), 15000);
+            // @ts-ignore
+            (window as any).__TAURI_INTERNALS__?.invoke('validate_environment')
+              .then((env: { isReady?: boolean }) => {
+                clearTimeout(timer);
+                done({ success: true, isReady: env?.isReady });
+              })
+              .catch((err: Error) => {
+                clearTimeout(timer);
+                done({ error: String(err) });
+              });
+          } catch (err) {
+            done({ error: String(err) });
+          }
         }
-      }
-    );
+      );
+    } catch {
+      outcome = { timedOut: true };
+    }
 
-    // Should either succeed or return a meaningful error
-    if ('success' in result) {
-      expect(typeof result.isReady).toBe('boolean');
-    } else {
-      expect(result).toHaveProperty('error');
+    if (!outcome?.timedOut) {
+      // Should either succeed or return a meaningful error
+      if ('success' in outcome!) {
+        expect(typeof outcome.isReady).toBe('boolean');
+      } else {
+        expect(outcome).toHaveProperty('error');
+      }
     }
     await takeScreenshot('linux-sep-env-check');
   });
